@@ -251,10 +251,9 @@ for _, match in df_merged.iterrows():
     recommend = "主胜" if pred_result == 2 else ("平局" if pred_result == 1 else "客胜")
     
     # 🌟 核心升级：调用 DeepSeek 进行专家点评
-        # 获取本场比赛两队的伤停情况，带兜底
-        home_injuries = injury_dict.get(home_cn, ["暂无重大伤停"])
-        away_injuries = injury_dict.get(away_cn, ["暂无重大伤停"])
-        injury_info = f"{home_cn}伤停：{'，'.join(home_injuries)}；{away_cn}伤停：{'，'.join(away_injuries)}。"
+    home_injuries = injury_dict.get(home_cn, ["暂无重大伤停"])
+    away_injuries = injury_dict.get(away_cn, ["暂无重大伤停"])
+    injury_info = f"{home_cn}伤停：{'，'.join(home_injuries)}；{away_cn}伤停：{'，'.join(away_injuries)}。"
         
         # 在构建prompt的f-string中，把 {injury_info} 放在合适的位置
         prompt = f"""你是一位精通英超的资深数据分析专家。请基于以下数据，写一段精炼、有洞察力、口语化的赛前点评（不超过150字）：
