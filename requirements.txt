@@ -7,3 +7,4 @@ openai
 scikit-learn
 xgboost
 lightgbm
+espn-sports-api

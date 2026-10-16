@@ -144,6 +144,38 @@ try:
 except: pass
 df_odds = pd.DataFrame(odds_records) if odds_records else pd.DataFrame(columns=['主队', '客队', '主胜概率', '平局概率', '客胜概率'])
 
+# ==================== 获取伤停数据（带兜底逻辑） ====================
+print("⏳ 正在获取最新伤停数据...")
+injury_dict = {}  # 初始化为空字典
+try:
+    from espn_sports_api import Soccer
+    epl = Soccer(league="epl")
+    raw_injuries = epl.injuries()
+    
+    # 兼容字典和列表，安全提取数据
+    if isinstance(raw_injuries, dict) and 'injuries' in raw_injuries:
+        injury_list = raw_injuries['injuries']
+    elif isinstance(raw_injuries, list):
+        injury_list = raw_injuries
+    else:
+        injury_list = []
+        
+    if injury_list:
+        # 如果有数据，按球队整理（具体解析逻辑依赖实际结构，这里先做防御性处理）
+        for inj in injury_list:
+            # 提取队名（假设结构包含 team 信息）
+            team = inj.get('team', {}).get('displayName', 'Unknown') if isinstance(inj, dict) else 'Unknown'
+            if team not in injury_dict:
+                injury_dict[team] = []
+            player = inj.get('athlete', {}).get('displayName', 'Unknown') if isinstance(inj, dict) else 'Unknown'
+            status = inj.get('status', 'Unknown') if isinstance(inj, dict) else 'Unknown'
+            injury_dict[team].append(f"{player}({status})")
+        print(f"✅ 成功获取 {len(injury_list)} 条伤停记录。")
+    else:
+        print("⚠️ 当前无公开伤停数据（赛季初或休赛期正常现象）。")
+except Exception as e:
+    print(f"⚠️ 伤停数据获取失败（将忽略此特征）: {e}")
+
 df_standings = pd.read_csv('epl_standings.csv')
 team_rank_dict = dict(zip(df_standings['球队'], df_standings['排名']))
 team_avg_pts_dict = {k: v/30 for k, v in dict(zip(df_standings['球队'], df_standings['积分'])).items()}
@@ -219,14 +251,21 @@ for _, match in df_merged.iterrows():
     recommend = "主胜" if pred_result == 2 else ("平局" if pred_result == 1 else "客胜")
     
     # 🌟 核心升级：调用 DeepSeek 进行专家点评
-    prompt = f"""你是一位精通英超的资深数据分析专家。请基于以下数据，写一段精炼、有洞察力、口语化的赛前点评（不超过150字）：
-    比赛：{home_cn}（联赛排名 {team_rank_dict.get(home_cn, '未知')}） vs {away_cn}（联赛排名 {team_rank_dict.get(away_cn, '未知')}）
-    近5场状态：{home_cn} 场均进 {h_avg_scored:.2f} 球，失 {h_avg_conceded:.2f} 球；{away_cn} 场均进 {a_avg_scored:.2f} 球，失 {a_avg_conceded:.2f} 球。
-    天气：{weather if isinstance(weather, str) else weather['天气']}。
-    市场赔率倾向：主胜 {match['主胜概率']*100:.1f}%，平局 {match['平局概率']*100:.1f}%，客胜 {match['客胜概率']*100:.1f}%。
-    V11模型预测：主胜 {probs[2]*100:.1f}%，平局 {probs[1]*100:.1f}%，客胜 {probs[0]*100:.1f}%。
-    请给出你的综合分析，并以“推荐关注：XXX”结尾。"""
-    
+        # 获取本场比赛两队的伤停情况，带兜底
+        home_injuries = injury_dict.get(home_cn, ["暂无重大伤停"])
+        away_injuries = injury_dict.get(away_cn, ["暂无重大伤停"])
+        injury_info = f"{home_cn}伤停：{'，'.join(home_injuries)}；{away_cn}伤停：{'，'.join(away_injuries)}。"
+        
+        # 在构建prompt的f-string中，把 {injury_info} 放在合适的位置
+        prompt = f"""你是一位精通英超的资深数据分析专家。请基于以下数据，写一段精炼、有洞察力、口语化的赛前点评（不超过150字）：
+        比赛：{home_cn}（联赛排名 {team_rank_dict.get(home_cn, '未知')}） vs {away_cn}（联赛排名 {team_rank_dict.get(away_cn, '未知')}）
+        近5场状态：{home_cn} 场均进 {h_avg_scored:.2f} 球，失 {h_avg_conceded:.2f} 球；{away_cn} 场均进 {a_avg_scored:.2f} 球，失 {a_avg_conceded:.2f} 球。
+        天气：{weather if isinstance(weather, str) else weather['天气']}。
+        市场赔率倾向：主胜 {match['主胜概率']*100:.1f}%，平局 {match['平局概率']*100:.1f}%，客胜 {match['客胜概率']*100:.1f}%。
+        V11模型预测：主胜 {probs[2]*100:.1f}%，平局 {probs[1]*100:.1f}%，客胜 {probs[0]*100:.1f}%。
+        {injury_info}
+        请给出你的综合分析，并以“推荐关注：XXX”结尾。"""
+  
     try:
         response = llm_client.chat.completions.create(
             model="deepseek-chat",
