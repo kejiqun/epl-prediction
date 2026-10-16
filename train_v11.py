@@ -82,6 +82,11 @@ for idx, row in df_hist.iterrows():
     last_match_date[home] = date; last_match_date[away] = date
 
 df_model = pd.DataFrame(features_list)
+
+# 🌟 核心修复：剔除进球数为空值的行，并强制转为整数
+df_model = df_model.dropna(subset=['home_goals', 'away_goals'])
+df_model['home_goals'] = df_model['home_goals'].astype(int)
+df_model['away_goals'] = df_model['away_goals'].astype(int)
 feature_cols = ['attack', 'defense', 'opp_attack', 'opp_defense', 'win_rate', 'opp_win_rate', 'rest_days', 'opp_rest_days', 'is_home', 'home_rank', 'away_rank', 'home_avg_points', 'away_avg_points', 'prob_h_odds', 'prob_d_odds', 'prob_a_odds']
 X = df_model[feature_cols].fillna(0.33)
 y_home = df_model['home_goals']
