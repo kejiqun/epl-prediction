@@ -160,19 +160,21 @@ df_standings = pd.read_csv('epl_standings.csv')
 team_rank_dict = dict(zip(df_standings['球队'], df_standings['排名']))
 team_avg_pts_dict = {k: v/30 for k, v in dict(zip(df_standings['球队'], df_standings['积分'])).items()}
 
-# ==================== 4. 获取伤停数据 ====================
-print("⏳ 正在获取最新伤停数据...")
+# ==================== 4. 自动获取伤停数据 ====================
+print("⏳ 正在自动获取伤停数据...")
 injury_dict = {}
 try:
     from espn_sports_api import Soccer
     epl = Soccer(league="epl")
     raw_injuries = epl.injuries()
+    
     if isinstance(raw_injuries, dict) and 'injuries' in raw_injuries:
         injury_list = raw_injuries['injuries']
     elif isinstance(raw_injuries, list):
         injury_list = raw_injuries
     else:
         injury_list = []
+    
     if injury_list:
         for inj in injury_list:
             team = inj.get('team', {}).get('displayName', 'Unknown') if isinstance(inj, dict) else 'Unknown'
@@ -181,6 +183,9 @@ try:
             player = inj.get('athlete', {}).get('displayName', 'Unknown') if isinstance(inj, dict) else 'Unknown'
             status = inj.get('status', 'Unknown') if isinstance(inj, dict) else 'Unknown'
             injury_dict[team].append(f"{player}({status})")
+        print(f"✅ 成功获取 {len(injury_list)} 条伤停记录。")
+    else:
+        print("⚠️ 当前无公开伤停数据，将使用默认值。")
 except Exception as e:
     print(f"⚠️ 伤停数据获取失败（将忽略此特征）: {e}")
 
@@ -282,8 +287,9 @@ for _, match in df_merged.iterrows():
     天气：{weather if isinstance(weather, str) else weather['天气']}。
     市场赔率倾向：主胜 {match['主胜概率']*100:.1f}%，平局 {match['平局概率']*100:.1f}%，客胜 {match['客胜概率']*100:.1f}%。
     V11模型预测：主胜 {probs[2]*100:.1f}%，平局 {probs[1]*100:.1f}%，客胜 {probs[0]*100:.1f}%。
+    **额外情报（自动获取的伤停信息）：**
     {injury_info}
-    请给出你的综合分析，并以“推荐关注：XXX”结尾。"""
+    请综合以上所有信息给出你的分析，并以“推荐关注：XXX”结尾。"""
     
     try:
         response = llm_client.chat.completions.create(
@@ -306,7 +312,7 @@ for _, match in df_merged.iterrows():
         print(f"\n🌤️ 比赛日天气：{weather['天气']} | 温度 {weather['温度']}°C | 风速 {weather['风速']} km/h | 降雨概率 {weather['降雨概率']}%")
     else:
         print(f"\n🌤️ 比赛日天气：{weather}")
-    print(f"\n📈 赔率市场分析：")
+    print(f"\n📈 赔率市场分析（已剔除异常值）：")
     print(f"   市场平均：主胜 {match['主胜概率']*100:.1f}% | 平局 {match['平局概率']*100:.1f}% | 客胜 {match['客胜概率']*100:.1f}%")
     print(f"\n🎯 V11模型综合预测：")
     print(f"   胜平负：主胜 {probs[2]*100:.1f}% | 平局 {probs[1]*100:.1f}% | 客胜 {probs[0]*100:.1f}%")
