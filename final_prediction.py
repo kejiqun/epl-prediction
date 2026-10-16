@@ -248,14 +248,15 @@ for _, match in df_merged.iterrows():
     score_probs.sort(key=lambda x: x[1], reverse=True); top3 = score_probs[:3]
     weather = get_match_weather(home_cn, match_time)
     pred_result = np.argmax(probs)
-    recommend = "主胜" if pred_result == 2 else ("平局" if pred_result == 1 else "客胜")
-    
-    # 🌟 核心升级：调用 DeepSeek 进行专家点评
-    home_injuries = injury_dict.get(home_cn, ["暂无重大伤停"])
-    away_injuries = injury_dict.get(away_cn, ["暂无重大伤停"])
-    injury_info = f"{home_cn}伤停：{'，'.join(home_injuries)}；{away_cn}伤停：{'，'.join(away_injuries)}。"
+        recommend = "主胜" if pred_result == 2 else ("平局" if pred_result == 1 else "客胜")
         
-        # 在构建prompt的f-string中，把 {injury_info} 放在合适的位置
+        # 🌟 核心升级：调用 DeepSeek 进行专家点评
+        # 1. 获取本场比赛两队的伤停情况，带兜底
+        home_injuries = injury_dict.get(home_cn, ["暂无重大伤停"])
+        away_injuries = injury_dict.get(away_cn, ["暂无重大伤停"])
+        injury_info = f"{home_cn}伤停：{'，'.join(home_injuries)}；{away_cn}伤停：{'，'.join(away_injuries)}。"
+        
+        # 2. 构建发送给 DeepSeek 的提示词
         prompt = f"""你是一位精通英超的资深数据分析专家。请基于以下数据，写一段精炼、有洞察力、口语化的赛前点评（不超过150字）：
         比赛：{home_cn}（联赛排名 {team_rank_dict.get(home_cn, '未知')}） vs {away_cn}（联赛排名 {team_rank_dict.get(away_cn, '未知')}）
         近5场状态：{home_cn} 场均进 {h_avg_scored:.2f} 球，失 {h_avg_conceded:.2f} 球；{away_cn} 场均进 {a_avg_scored:.2f} 球，失 {a_avg_conceded:.2f} 球。
@@ -264,16 +265,17 @@ for _, match in df_merged.iterrows():
         V11模型预测：主胜 {probs[2]*100:.1f}%，平局 {probs[1]*100:.1f}%，客胜 {probs[0]*100:.1f}%。
         {injury_info}
         请给出你的综合分析，并以“推荐关注：XXX”结尾。"""
-  
-    try:
-        response = llm_client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            stream=False
-        )
-        expert_comment = response.choices[0].message.content.strip()
-    except Exception as e:
-        expert_comment = "【AI深度分析暂时不可用】"
+        
+        # 3. 调用 API
+        try:
+            response = llm_client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": prompt}],
+                stream=False
+            )
+            expert_comment = response.choices[0].message.content.strip()
+        except Exception as e:
+            expert_comment = "【AI深度分析暂时不可用】"
     
     # 打印报告
     print(f"\n{'='*60}")
