@@ -1,0 +1,9 @@
+pandas
+numpy
+requests
+scipy
+joblib
+openai
+scikit-learn
+xgboost
+lightgbm
