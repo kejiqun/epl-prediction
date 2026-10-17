@@ -11,7 +11,6 @@ from openai import OpenAI
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
-from espn_sports_api import Soccer
 
 warnings.filterwarnings('ignore')
 pd.set_option('display.unicode.ambiguous_as_wide', True)
@@ -19,6 +18,7 @@ pd.set_option('display.unicode.east_asian_width', True)
 pd.set_option('display.width', 1000)
 
 # ==================== 密钥配置 ====================
+FOOTBALL_DATA_API_KEY = os.environ.get("FOOTBALL_DATA_API_KEY")
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -27,13 +27,9 @@ EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 
 llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
-# ==================== 邮件发送函数（修复 550 错误） ====================
 def send_email(subject, content, receiver="308730509@qq.com"):
-    if not EMAIL_SENDER or not EMAIL_PASSWORD:
-        print("⚠️ 未配置 EMAIL_SENDER 或 EMAIL_PASSWORD，跳过邮件发送。")
-        return
+    if not EMAIL_SENDER or not EMAIL_PASSWORD: return
     message = MIMEText(content, 'plain', 'utf-8')
-    # 🌟 核心修复：直接使用原始邮箱地址，去掉 Header 编码
     message['From'] = EMAIL_SENDER
     message['To'] = receiver
     message['Subject'] = Header(subject, 'utf-8')
@@ -45,7 +41,6 @@ def send_email(subject, content, receiver="308730509@qq.com"):
     except Exception as e:
         print(f"❌ 邮件发送失败: {e}")
 
-# ==================== 翻译字典 ====================
 team_mapping = {
     'Arsenal FC': '阿森纳', 'Arsenal': '阿森纳', 'Aston Villa FC': '阿斯顿维拉', 'Aston Villa': '阿斯顿维拉',
     'AFC Bournemouth': '伯恩茅斯', 'Bournemouth': '伯恩茅斯', 'Brentford FC': '布伦特福德', 'Brentford': '布伦特福德',
@@ -88,10 +83,8 @@ def get_match_weather(home_team, date_str):
     except:
         return "日期无效"
     today_date = datetime.now().date()
-    if match_date < today_date:
-        return "比赛已结束"
-    if (match_date - today_date).days > 14:
-        return "预报未覆盖"
+    if match_date < today_date: return "比赛已结束"
+    if (match_date - today_date).days > 14: return "预报未覆盖"
     url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={city}&dt={date_only}&lang=zh"
     try:
         resp = requests.get(url, timeout=10)
@@ -103,69 +96,46 @@ def get_match_weather(home_team, date_str):
         pass
     return "获取失败"
 
-# ==================== 1. 使用 ESPN 获取赛程与积分榜 ====================
-print("⏳ 正在使用 ESPN 获取未来赛程与实时积分榜...")
+# ==================== 1. 直接使用 football-data.org 获取真实赛程 ====================
+print("⏳ 正在从 football-data.org 获取未来赛程（绝不用假数据）...")
 upcoming = []
-team_rank_dict = {}
-team_avg_pts_dict = {}
-
 try:
-    epl = Soccer(league="epl")
+    now = datetime.now()
+    season = now.year if now.month >= 7 else now.year - 1
+    url = f"https://api.football-data.org/v4/competitions/PL/matches?season={season}"
+    headers = {'X-Auth-Token': FOOTBALL_DATA_API_KEY}
+    resp = requests.get(url, headers=headers, timeout=15)
     
-    # 1. 获取积分榜
-    try:
-        standings = epl.standings()
-        if standings and 'children' in standings and len(standings['children']) > 0:
-            entries = standings['children'][0]['standings']['entries']
-            for entry in entries:
-                team_name = translate_team_name(entry['team']['name'])
-                # 查找排名和积分
-                rank = next((int(stat['value']) for stat in entry['stats'] if stat['name'] == 'rank'), 15)
-                points = next((int(stat['value']) for stat in entry['stats'] if stat['name'] == 'points'), 0)
-                games = next((int(stat['value']) for stat in entry['stats'] if stat['name'] == 'gamesPlayed'), 1)
-                
-                team_rank_dict[team_name] = rank
-                team_avg_pts_dict[team_name] = points / max(1, games)
-            print(f"✅ 成功从 ESPN 获取实时积分榜！")
-    except Exception as e:
-        print(f"⚠️ ESPN 获取积分榜失败: {e}")
-    
-    # 2. 获取未来赛程 (使用 ESPN 的日期范围)
-    today = datetime.now().date()
-    end_date = today + timedelta(days=10)
-    try:
-        # ESPN 库可能提供 date_range 或者直接获取赛程
-        matches = epl.matches(date_from=today.strftime('%Y-%m-%d'), date_to=end_date.strftime('%Y-%m-%d'))
-        if matches:
-            for m in matches:
+    if resp.status_code == 200:
+        data = resp.json()
+        for m in data.get('matches', []):
+            if m.get('status') == 'SCHEDULED':
                 upcoming.append({
-                    'datetime': m.get('date'),
-                    'home_team': m.get('homeTeam', {}).get('name'),
-                    'away_team': m.get('awayTeam', {}).get('name')
+                    'datetime': m['utcDate'],
+                    'home_team': m['homeTeam']['name'],
+                    'away_team': m['awayTeam']['name']
                 })
-        print(f"✅ ESPN 返回了 {len(upcoming)} 场未来比赛。")
-    except Exception as e:
-        print(f"⚠️ ESPN 获取赛程失败: {e}")
+        print(f"✅ API 返回了 {len(upcoming)} 场真实的未开始比赛。")
+    else:
+        print(f"❌ API 请求失败，状态码：{resp.status_code}。请检查免费额度是否用尽。")
 except Exception as e:
-    print(f"⚠️ 初始化 ESPN 失败: {e}")
+    print(f"❌ 请求出错：{e}")
 
 if len(upcoming) == 0:
-    print("   ⚠️ 使用内置演示赛程（10场，带准确时间）...")
-    upcoming = [
-        {'datetime': '2026-10-17 19:30:00', 'home_team': 'Arsenal', 'away_team': 'Leeds United'},
-        {'datetime': '2026-10-17 22:00:00', 'home_team': 'Manchester City', 'away_team': 'Bournemouth'},
-        {'datetime': '2026-10-18 00:30:00', 'home_team': 'Chelsea', 'away_team': 'Sunderland'},
-        {'datetime': '2026-10-18 03:00:00', 'home_team': 'Liverpool', 'away_team': 'Brighton & Hove Albion'},
-        {'datetime': '2026-10-18 20:00:00', 'home_team': 'Manchester United', 'away_team': 'Newcastle United'}
-    ]
+    print("❌ 未能获取到未来赛程，为防止使用虚假数据，系统停止运行。")
+    exit()
 
 df_upcoming = pd.DataFrame(upcoming)
 df_upcoming['datetime_parsed'] = pd.to_datetime(df_upcoming['datetime'], errors='coerce')
 today_ts = pd.Timestamp.now().normalize()
 df_next_round = df_upcoming[(df_upcoming['datetime_parsed'] >= today_ts) & (df_upcoming['datetime_parsed'] <= today_ts + pd.Timedelta(days=10))].sort_values('datetime_parsed').reset_index(drop=True)
 
+if len(df_next_round) == 0:
+    print("❌ 未来 10 天内没有比赛，系统停止运行。")
+    exit()
+
 # ==================== 2. 获取赔率 ====================
-print("\n⏳ 正在获取多平台赔率并进行伪数据筛查...")
+print("\n⏳ 正在获取赔率...")
 odds_records = []
 try:
     resp = requests.get("https://api.the-odds-api.com/v4/sports/soccer_epl/odds", params={'apiKey': ODDS_API_KEY, 'regions': 'uk', 'markets': 'h2h', 'oddsFormat': 'decimal'}, timeout=20)
@@ -197,7 +167,16 @@ except:
     pass
 df_odds = pd.DataFrame(odds_records) if odds_records else pd.DataFrame(columns=['主队', '客队', '主胜概率', '平局概率', '客胜概率'])
 
-# ==================== 3. 获取 FPL 伤停数据 ====================
+# ==================== 3. 加载积分榜与 FPL 伤停 ====================
+print("⏳ 正在加载积分榜数据...")
+try:
+    df_standings = pd.read_csv('epl_standings.csv')
+    team_rank_dict = dict(zip(df_standings['球队'], df_standings['排名']))
+    team_avg_pts_dict = {k: v/30 for k, v in dict(zip(df_standings['球队'], df_standings['积分'])).items()}
+except Exception as e:
+    print(f"⚠️ 读取积分榜失败: {e}")
+    team_rank_dict, team_avg_pts_dict = {}, {}
+
 print("⏳ 正在从 FPL 官方 API 自动获取伤停数据...")
 injury_dict = {}
 try:
@@ -215,11 +194,11 @@ try:
                 if team_name_cn not in injury_dict: injury_dict[team_name_cn] = []
                 if news: injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})")
                 else: injury_dict[team_name_cn].append(f"{player_name}({status_cn})")
-        print(f"✅ 成功从 FPL 获取伤停数据，覆盖 {len(injury_dict)} 支球队。")
+        print(f"✅ 成功从 FPL 获取伤停数据。")
 except Exception as e:
-    print(f"⚠️ FPL 伤停数据获取失败: {e}")
+    print(f"⚠️ FPL 伤停获取失败: {e}")
 
-# ==================== 4. 加载模型与计算特征 ====================
+# ==================== 4. 加载模型与特征 ====================
 print("⏳ 正在加载模型...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
@@ -227,24 +206,16 @@ df_hist = df_hist.sort_values('date').reset_index(drop=True)
 df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
 df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
 
-if os.path.exists('epl_v11_result_model.pkl'):
-    model_result = joblib.load('epl_v11_result_model.pkl')
-    model_home_goals = joblib.load('epl_v11_home_goals_model.pkl')
-    model_away_goals = joblib.load('epl_v11_away_goals_model.pkl')
-    print("✅ V11 模型加载成功！")
-else:
-    model_result = joblib.load('epl_v10_result_model.pkl')
-    model_home_goals = joblib.load('epl_v10_home_goals_model.pkl')
-    model_away_goals = joblib.load('epl_v10_away_goals_model.pkl')
-    print("⚠️ 未找到 V11 模型，已自动回退使用 V10 模型。")
+model_result = joblib.load('epl_v11_result_model.pkl') if os.path.exists('epl_v11_result_model.pkl') else joblib.load('epl_v10_result_model.pkl')
+model_home_goals = joblib.load('epl_v11_home_goals_model.pkl') if os.path.exists('epl_v11_home_goals_model.pkl') else joblib.load('epl_v10_home_goals_model.pkl')
+model_away_goals = joblib.load('epl_v11_away_goals_model.pkl') if os.path.exists('epl_v11_away_goals_model.pkl') else joblib.load('epl_v10_away_goals_model.pkl')
 
 league_avg_goals = (df_hist['home_goals'].mean() + df_hist['away_goals'].mean()) / 2
-team_stats, last_match_date = {}, {}
+team_stats = {}
 for idx, row in df_hist.iterrows():
-    home, away, date = row['home_team_cn'], row['away_team_cn'], row['date']
+    home, away = row['home_team_cn'], row['away_team_cn']
     for t in [home, away]:
         if t not in team_stats: team_stats[t] = {'scored':[], 'conceded':[], 'points':[]}
-        if t not in last_match_date: last_match_date[t] = None
     team_stats[home]['scored'].append(row['home_goals'])
     team_stats[home]['conceded'].append(row['away_goals'])
     h_pts = 3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0)
@@ -253,10 +224,8 @@ for idx, row in df_hist.iterrows():
     team_stats[away]['conceded'].append(row['home_goals'])
     a_pts = 3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0)
     team_stats[away]['points'].append(a_pts)
-    last_match_date[home] = date
-    last_match_date[away] = date
 
-# ==================== 5. 合并赛程与赔率 ====================
+# ==================== 5. 预测循环 ====================
 df_next_round['主队'] = df_next_round['home_team'].apply(translate_team_name)
 df_next_round['客队'] = df_next_round['away_team'].apply(translate_team_name)
 df_merged = pd.merge(df_next_round, df_odds, on=['主队', '客队'], how='left')
@@ -264,23 +233,14 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-# ==================== 6. 逐场预测 + LLM 专家点评 ====================
 report_content = "【英超全自动预测系统 V11 - 专家深度分析报告】\n\n"
 
 for _, match in df_merged.iterrows():
     home_cn, away_cn = match['主队'], match['客队']
+    match_time = pd.to_datetime(match['datetime']).strftime('%Y-%m-%d %H:%M')
     
-    # 优化时间显示逻辑：如果直接有 datetime，就直接用
-    try:
-        dt = pd.to_datetime(match['datetime'])
-        if dt.hour == 0 and dt.minute == 0:
-            match_time = dt.strftime('%Y-%m-%d (时间待定)')
-        else:
-            match_time = dt.strftime('%Y-%m-%d %H:%M')
-    except:
-        match_time = str(match['datetime'])[:16]
-
-    h, a = team_stats.get(home_cn, {'scored':[], 'conceded':[], 'points':[]}), team_stats.get(away_cn, {'scored':[], 'conceded':[], 'points':[]})
+    h = team_stats.get(home_cn, {'scored':[], 'conceded':[], 'points':[]})
+    a = team_stats.get(away_cn, {'scored':[], 'conceded':[], 'points':[]})
     
     h_avg_scored = np.mean(h['scored'][-5:]) if h['scored'] else league_avg_goals
     h_avg_conceded = np.mean(h['conceded'][-5:]) if h['conceded'] else league_avg_goals
@@ -292,7 +252,6 @@ for _, match in df_merged.iterrows():
     h_win_rate = np.mean(h['points'][-5:]) if h['points'] else 0.5
     a_win_rate = np.mean(a['points'][-5:]) if a['points'] else 0.5
     
-    # 使用实时积分榜的排名
     h_rank = team_rank_dict.get(home_cn, 15)
     a_rank = team_rank_dict.get(away_cn, 15)
     h_avg_pts = team_avg_pts_dict.get(home_cn, 1.0)
@@ -341,41 +300,24 @@ for _, match in df_merged.iterrows():
     
     try:
         response = llm_client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            stream=False
+            model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False
         )
         expert_comment = response.choices[0].message.content.strip()
-    except Exception as e:
+    except:
         expert_comment = "【AI深度分析暂时不可用】"
     
     report_line = f"\n{'='*60}\n"
-    report_line += f"【比赛时间】{match_time}\n"
-    report_line += f"【对阵双方】{home_cn} vs {away_cn}\n"
-    report_line += f"{'='*60}\n"
-    report_line += f"\n📊 球队数据对比：\n"
-    report_line += f"   {home_cn}：排名 {h_rank} | 场均积分 {h_avg_pts:.2f} | 近5场场均进球 {h_avg_scored:.2f} | 近5场场均失球 {h_avg_conceded:.2f}\n"
-    report_line += f"   {away_cn}：排名 {a_rank} | 场均积分 {a_avg_pts:.2f} | 近5场场均进球 {a_avg_scored:.2f} | 近5场场均失球 {a_avg_conceded:.2f}\n"
-    if isinstance(weather, dict):
-        report_line += f"\n🌤️ 比赛日天气：{weather['天气']} | 温度 {weather['温度']}°C | 风速 {weather['风速']} km/h | 降雨概率 {weather['降雨概率']}%\n"
-    else:
-        report_line += f"\n🌤️ 比赛日天气：{weather}\n"
-    report_line += f"\n📈 赔率市场分析（已剔除异常值）：\n"
-    report_line += f"   市场平均：主胜 {match['主胜概率']*100:.1f}% | 平局 {match['平局概率']*100:.1f}% | 客胜 {match['客胜概率']*100:.1f}%\n"
+    report_line += f"【比赛时间】{match_time}\n【对阵双方】{home_cn} vs {away_cn}\n{'='*60}\n"
+    report_line += f"\n📊 球队数据对比：\n   {home_cn}：排名 {h_rank} | 近5场场均进球 {h_avg_scored:.2f} | 失球 {h_avg_conceded:.2f}\n   {away_cn}：排名 {a_rank} | 近5场场均进球 {a_avg_scored:.2f} | 失球 {a_avg_conceded:.2f}\n"
+    if isinstance(weather, dict): report_line += f"\n🌤️ 比赛日天气：{weather['天气']} | 温度 {weather['温度']}°C\n"
+    else: report_line += f"\n🌤️ 比赛日天气：{weather}\n"
+    report_line += f"\n📈 赔率市场分析：市场平均：主胜 {match['主胜概率']*100:.1f}% | 平局 {match['平局概率']*100:.1f}% | 客胜 {match['客胜概率']*100:.1f}%\n"
     report_line += f"\n📈 价值投注分析：\n{value_msg}"
-    report_line += f"\n🎯 V11模型综合预测：\n"
-    report_line += f"   胜平负：主胜 {probs[2]*100:.1f}% | 平局 {probs[1]*100:.1f}% | 客胜 {probs[0]*100:.1f}%\n"
-    report_line += f"   进球期望：主队 {home_xg:.2f} 球 | 客队 {away_xg:.2f} 球\n"
-    report_line += f"   最可能比分：{top3[0][0]} ({top3[0][1]*100:.1f}%) | {top3[1][0]} ({top3[1][1]*100:.1f}%) | {top3[2][0]} ({top3[2][1]*100:.1f}%)\n"
+    report_line += f"\n🎯 V11模型综合预测：主胜 {probs[2]*100:.1f}% | 平局 {probs[1]*100:.1f}% | 客胜 {probs[0]*100:.1f}%\n   最可能比分：{top3[0][0]} | {top3[1][0]} | {top3[2][0]}\n"
     report_line += f"\n🧠 DeepSeek 专家深度点评：\n   {expert_comment}\n"
-    report_line += f"\n💡 综合推荐：{recommend}\n"
-    report_line += f"{'='*60}\n"
+    report_line += f"\n💡 综合推荐：{recommend}\n{'='*60}\n"
 
     print(report_line)
     report_content += report_line
 
-print("\n" + "="*70)
-print("✅ 全自动预测完成！准备发送邮件...")
-print("="*70)
-
-send_email("本周末英超预测报告及价值分析", report_content)
+send_email("本周末英超真实赛程预测报告", report_content)
