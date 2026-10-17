@@ -1,11 +1,11 @@
 name: 英超预测自动化定时任务
+
 permissions:
   contents: write
+
 on:
   schedule:
-    # UTC 时间每周六 00:00 运行（对应北京时间周六早上 8:00）
     - cron: '0 0 * * 6'
-  # 允许你手动点击按钮测试
   workflow_dispatch:
 
 jobs:
@@ -25,23 +25,25 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-      - name: 3.5 云端自动训练 V11 模型
-        run: python train_v11.py
-        
+
       - name: 4. 运行赛前预测
         env:
           FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python final_prediction.py
 
       - name: 5. 运行赛后复盘
         env:
           FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python auto_review_llm.py
-      
+
       - name: 6. 自动提交更新的数据
         run: |
           git config --global user.name "GitHub Actions Bot"
