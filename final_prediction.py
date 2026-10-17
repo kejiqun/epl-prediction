@@ -51,24 +51,17 @@ team_mapping = {
     'Brighton & Hove Albion FC': '布莱顿', 'Brighton & Hove Albion': '布莱顿', 'Brighton': '布莱顿',
     'Chelsea FC': '切尔西', 'Chelsea': '切尔西', 'Crystal Palace FC': '水晶宫', 'Crystal Palace': '水晶宫',
     'Everton FC': '埃弗顿', 'Everton': '埃弗顿', 'Fulham FC': '富勒姆', 'Fulham': '富勒姆',
-    'Ipswich Town FC': '伊普斯维奇', 'Ipswich Town': '伊普斯维奇', 'Ipswich': '伊普斯维奇',
-    'Leicester City FC': '莱斯特城', 'Leicester City': '莱斯特城', 'Leicester': '莱斯特城',
+    'Ipswich Town FC': '伊普斯维奇', 'Ipswich Town': '伊普斯维奇', 'Leicester City FC': '莱斯特城', 'Leicester City': '莱斯特城',
     'Liverpool FC': '利物浦', 'Liverpool': '利物浦', 'Manchester City FC': '曼城', 'Manchester City': '曼城', 'Man City': '曼城',
-    'Manchester United FC': '曼联', 'Manchester United': '曼联', 'Man United': '曼联', 'Man Utd': '曼联',
+    'Manchester United FC': '曼联', 'Manchester United': '曼联', 'Man United': '曼联',
     'Newcastle United FC': '纽卡斯尔联', 'Newcastle United': '纽卡斯尔联', 'Newcastle': '纽卡斯尔联',
-    'Nottingham Forest FC': '诺丁汉森林', 'Nottingham Forest': '诺丁汉森林', "Nott'm Forest": '诺丁汉森林', 'Nottm Forest': '诺丁汉森林',
-    'Southampton FC': '南安普顿', 'Southampton': '南安普顿', 'Tottenham Hotspur FC': '托特纳姆热刺', 'Tottenham Hotspur': '托特纳姆热刺', 'Tottenham': '托特纳姆热刺', 'Spurs': '托特纳姆热刺',
-    'West Ham United FC': '西汉姆联', 'West Ham United': '西汉姆联', 'West Ham': '西汉姆联', 
-    'Wolverhampton Wanderers FC': '狼队', 'Wolverhampton Wanderers': '狼队', 'Wolves': '狼队',
-    'Leeds United FC': '利兹联', 'Leeds United': '利兹联', 'Leeds': '利兹联',
-    'Sunderland AFC': '桑德兰', 'Sunderland': '桑德兰',
-    'Hull City AFC': '赫尔城', 'Hull City': '赫尔城', 'Hull': '赫尔城',
-    'Coventry City FC': '考文垂', 'Coventry City': '考文垂', 'Coventry': '考文垂',
-    'Burnley FC': '伯恩利', 'Burnley': '伯恩利',
-    'Sheffield United FC': '谢菲尔德联', 'Sheffield United': '谢菲尔德联',
-    'Luton Town FC': '卢顿', 'Luton Town': '卢顿', 'Luton': '卢顿',
-    'Watford FC': '沃特福德', 'Watford': '沃特福德',
-    'Norwich City FC': '诺维奇', 'Norwich City': '诺维奇'
+    'Nottingham Forest FC': '诺丁汉森林', 'Nottingham Forest': '诺丁汉森林',
+    'Southampton FC': '南安普顿', 'Southampton': '南安普顿', 'Tottenham Hotspur FC': '托特纳姆热刺', 'Tottenham Hotspur': '托特纳姆热刺',
+    'West Ham United FC': '西汉姆联', 'West Ham United': '西汉姆联', 'Wolverhampton Wanderers FC': '狼队', 'Wolverhampton Wanderers': '狼队',
+    'Leeds United FC': '利兹联', 'Leeds United': '利兹联', 'Sunderland AFC': '桑德兰', 'Sunderland': '桑德兰',
+    'Hull City AFC': '赫尔城', 'Hull City': '赫尔城', 'Coventry City FC': '考文垂', 'Coventry City': '考文垂',
+    'Burnley FC': '伯恩利', 'Burnley': '伯恩利', 'Sheffield United FC': '谢菲尔德联', 'Sheffield United': '谢菲尔德联',
+    'Luton Town FC': '卢顿', 'Luton Town': '卢顿', 'Watford FC': '沃特福德', 'Watford': '沃特福德', 'Norwich City FC': '诺维奇', 'Norwich City': '诺维奇'
 }
 
 def translate_team_name(name):
@@ -190,51 +183,30 @@ except:
     pass
 df_odds = pd.DataFrame(odds_records) if odds_records else pd.DataFrame(columns=['主队', '客队', '主胜概率', '平局概率', '客胜概率'])
 
-# ==================== 3. 加载积分榜、情报与伤停数据 ====================
+# ==================== 3. 加载积分榜与伤停数据 ====================
 print("⏳ 正在加载积分榜数据...")
 df_standings = pd.read_csv('epl_standings.csv')
 team_rank_dict = dict(zip(df_standings['球队'], df_standings['排名']))
 team_avg_pts_dict = {k: v/30 for k, v in dict(zip(df_standings['球队'], df_standings['积分'])).items()}
-
-print("⏳ 正在读取手动情报文件 intel.txt...")
-intel_info = "无特殊情报"
-if os.path.exists('intel.txt'):
-    with open('intel.txt', 'r', encoding='utf-8') as f:
-        intel_info = f.read()
-    print("✅ 成功读取情报文件！")
-else:
-    print("⚠️ 未找到 intel.txt，将使用默认情报。")
 
 print("⏳ 正在从 FPL 官方 API 自动获取伤停数据...")
 injury_dict = {}
 try:
     fpl_url = "https://fantasy.premierleague.com/api/bootstrap-static/"
     fpl_resp = requests.get(fpl_url, timeout=15)
-    
     if fpl_resp.status_code == 200:
         fpl_data = fpl_resp.json()
         teams_map = {t['id']: t['name'] for t in fpl_data['teams']}
-        
         for element in fpl_data['elements']:
             if element['status'] in ['d', 'i', 's', 'u']:
-                team_name_en = teams_map.get(element['team'])
-                team_name_cn = translate_team_name(team_name_en)
+                team_name_cn = translate_team_name(teams_map.get(element['team']))
                 player_name = element['web_name']
                 news = element['news']
-                
                 status_cn = {"d": "出战成疑", "i": "受伤", "s": "停赛", "u": "不可用"}.get(element['status'], "未知")
-                
-                if team_name_cn not in injury_dict:
-                    injury_dict[team_name_cn] = []
-                
-                if news:
-                    injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})")
-                else:
-                    injury_dict[team_name_cn].append(f"{player_name}({status_cn})")
-                    
+                if team_name_cn not in injury_dict: injury_dict[team_name_cn] = []
+                if news: injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})")
+                else: injury_dict[team_name_cn].append(f"{player_name}({status_cn})")
         print(f"✅ 成功从 FPL 获取伤停数据，覆盖 {len(injury_dict)} 支球队。")
-    else:
-        print(f"⚠️ FPL API 请求失败，状态码：{fpl_resp.status_code}")
 except Exception as e:
     print(f"⚠️ FPL 伤停数据获取失败: {e}")
 
@@ -288,7 +260,17 @@ report_content = "【英超全自动预测系统 V11 - 专家深度分析报告�
 
 for _, match in df_merged.iterrows():
     home_cn, away_cn = match['主队'], match['客队']
-    match_time = pd.to_datetime(match['datetime']).strftime('%Y-%m-%d %H:%M')
+    
+    # 优化时间显示逻辑
+    try:
+        dt = pd.to_datetime(match['datetime'])
+        if dt.hour == 0 and dt.minute == 0:
+            match_time = dt.strftime('%Y-%m-%d (时间待定)')
+        else:
+            match_time = dt.strftime('%Y-%m-%d %H:%M')
+    except:
+        match_time = str(match['datetime'])[:10]
+
     h, a = team_stats.get(home_cn, {'scored':[], 'conceded':[], 'points':[]}), team_stats.get(away_cn, {'scored':[], 'conceded':[], 'points':[]})
     
     h_avg_scored = np.mean(h['scored'][-5:]) if h['scored'] else league_avg_goals
@@ -319,37 +301,28 @@ for _, match in df_merged.iterrows():
     pred_result = np.argmax(probs)
     recommend = "主胜" if pred_result == 2 else ("平局" if pred_result == 1 else "客胜")
     
-    # ==================== 价值投注计算 ====================
     market_h, market_d, market_a = match['主胜概率'], match['平局概率'], match['客胜概率']
     model_h, model_d, model_a = probs[2], probs[1], probs[0]
-    
-    value_home = model_h - market_h
-    value_draw = model_d - market_d
-    value_away = model_a - market_a
-    
+    value_home, value_draw, value_away = model_h - market_h, model_d - market_d, model_a - market_a
     value_msg = ""
-    if value_home > 0.05:
-        value_msg += f"   🌟 发现主胜价值：模型 {model_h*100:.1f}% > 市场 {market_h*100:.1f}% (差额 +{value_home*100:.1f}%)\n"
-    elif value_draw > 0.05:
-        value_msg += f"   🌟 发现平局价值：模型 {model_d*100:.1f}% > 市场 {market_d*100:.1f}% (差额 +{value_draw*100:.1f}%)\n"
-    elif value_away > 0.05:
-        value_msg += f"   🌟 发现客胜价值：模型 {model_a*100:.1f}% > 市场 {market_a*100:.1f}% (差额 +{value_away*100:.1f}%)\n"
-    else:
-        value_msg += "   ⚪ 市场定价合理，未发现明显的价值机会。\n"
+    if value_home > 0.05: value_msg += f"   🌟 发现主胜价值：模型 {model_h*100:.1f}% > 市场 {market_h*100:.1f}% (差额 +{value_home*100:.1f}%)\n"
+    elif value_draw > 0.05: value_msg += f"   🌟 发现平局价值：模型 {model_d*100:.1f}% > 市场 {market_d*100:.1f}% (差额 +{value_draw*100:.1f}%)\n"
+    elif value_away > 0.05: value_msg += f"   🌟 发现客胜价值：模型 {model_a*100:.1f}% > 市场 {market_a*100:.1f}% (差额 +{value_away*100:.1f}%)\n"
+    else: value_msg += "   ⚪ 市场定价合理，未发现明显的价值机会。\n"
     
     home_injuries = injury_dict.get(home_cn, ["暂无重大伤停"])
     away_injuries = injury_dict.get(away_cn, ["暂无重大伤停"])
     injury_info = f"{home_cn}伤停：{'，'.join(home_injuries)}；{away_cn}伤停：{'，'.join(away_injuries)}。"
     
+    # 彻底移除 intel_info 的依赖
     prompt = f"""你是一位精通英超的资深数据分析专家。请基于以下数据，写一段精炼、有洞察力、口语化的赛前点评（不超过150字）：
-    比赛：{home_cn}（联赛排名 {team_rank_dict.get(home_cn, '未知')}） vs {away_cn}（联赛排名 {team_rank_dict.get(away_cn, '未知')}）
+    比赛：{home_cn}（排名 {team_rank_dict.get(home_cn, '未知')}） vs {away_cn}（排名 {team_rank_dict.get(away_cn, '未知')}）
     近5场状态：{home_cn} 场均进 {h_avg_scored:.2f} 球，失 {h_avg_conceded:.2f} 球；{away_cn} 场均进 {a_avg_scored:.2f} 球，失 {a_avg_conceded:.2f} 球。
     天气：{weather if isinstance(weather, str) else weather['天气']}。
     市场赔率倾向：主胜 {match['主胜概率']*100:.1f}%，平局 {match['平局概率']*100:.1f}%，客胜 {match['客胜概率']*100:.1f}%。
     V11模型预测：主胜 {probs[2]*100:.1f}%，平局 {probs[1]*100:.1f}%，客胜 {probs[0]*100:.1f}%。
-    **额外情报（真实伤停）：**
+    **实时伤停情报：**
     {injury_info}
-    {intel_info}
     请综合以上所有信息给出你的分析，并以“推荐关注：XXX”结尾。"""
     
     try:
@@ -362,7 +335,6 @@ for _, match in df_merged.iterrows():
     except Exception as e:
         expert_comment = "【AI深度分析暂时不可用】"
     
-    # ==================== 拼接报告文本 ====================
     report_line = f"\n{'='*60}\n"
     report_line += f"【比赛时间】{match_time}\n"
     report_line += f"【对阵双方】{home_cn} vs {away_cn}\n"
