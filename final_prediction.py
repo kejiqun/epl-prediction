@@ -11,7 +11,6 @@ from openai import OpenAI
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
-import time
 
 warnings.filterwarnings('ignore')
 pd.set_option('display.unicode.ambiguous_as_wide', True)
@@ -19,7 +18,6 @@ pd.set_option('display.unicode.east_asian_width', True)
 pd.set_option('display.width', 1000)
 
 # ==================== 密钥配置 ====================
-FOOTBALL_DATA_API_KEY = os.environ.get("FOOTBALL_DATA_API_KEY")
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -29,9 +27,7 @@ EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
 def send_email(subject, content, receiver="308730509@qq.com"):
-    if not EMAIL_SENDER or not EMAIL_PASSWORD:
-        print("⚠️ 未配置 EMAIL_SENDER 或 EMAIL_PASSWORD，跳过邮件发送。")
-        return
+    if not EMAIL_SENDER or not EMAIL_PASSWORD: return
     message = MIMEText(content, 'plain', 'utf-8')
     message['From'] = EMAIL_SENDER
     message['To'] = receiver
@@ -44,6 +40,7 @@ def send_email(subject, content, receiver="308730509@qq.com"):
     except Exception as e:
         print(f"❌ 邮件发送失败: {e}")
 
+# 字典保持不变...
 team_mapping = {
     'Arsenal FC': '阿森纳', 'Arsenal': '阿森纳', 'Aston Villa FC': '阿斯顿维拉', 'Aston Villa': '阿斯顿维拉',
     'AFC Bournemouth': '伯恩茅斯', 'Bournemouth': '伯恩茅斯', 'Brentford FC': '布伦特福德', 'Brentford': '布伦特福德',
@@ -99,44 +96,45 @@ def get_match_weather(home_team, date_str):
         pass
     return "获取失败"
 
-# ==================== 1. 稳健获取赛程 ====================
-print("⏳ 正在从 football-data.org 获取真实赛程...")
+# ==================== 1. 使用 ESPN 官方接口获取真实赛程 ====================
+print("⏳ 正在从 ESPN 官方接口获取未来赛程...")
 upcoming = []
-try:
-    now = datetime.now()
-    season = now.year if now.month >= 7 else now.year - 1
-    url = f"https://api.football-data.org/v4/competitions/PL/matches?season={season}"
-    headers = {'X-Auth-Token': FOOTBALL_DATA_API_KEY}
-    
-    max_retries = 3
-    for attempt in range(max_retries):
-        resp = requests.get(url, headers=headers, timeout=15)
+today = datetime.now()
+# 抓取未来 10 天的赛程
+for i in range(10):
+    date_str = (today + timedelta(days=i)).strftime('%Y%m%d')
+    url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates={date_str}"
+    try:
+        resp = requests.get(url, timeout=10)
         if resp.status_code == 200:
             data = resp.json()
-            for m in data.get('matches', []):
-                if m.get('status') == 'SCHEDULED':
-                    upcoming.append({
-                        'datetime': m['utcDate'],
-                        'home_team': m['homeTeam']['name'],
-                        'away_team': m['awayTeam']['name']
-                    })
-            print(f"✅ API 返回了 {len(upcoming)} 场真实的未开始比赛。")
-            break
-        elif resp.status_code == 403:
-            print(f"⚠️ 免费 API 次数限制 (403)，{3-attempt}秒后重试...")
-            time.sleep(3)
-        else:
-            print(f"❌ API 请求失败，状态码：{resp.status_code}。")
-            break
-except Exception as e:
-    print(f"❌ 请求出错：{e}")
+            for event in data.get('events', []):
+                # 只抓取未开始的比赛
+                if event['status']['type']['state'] == 'pre':
+                    competitions = event.get('competitions', [])
+                    if competitions:
+                        competitors = competitions[0].get('competitors', [])
+                        home_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'home'), None)
+                        away_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'away'), None)
+                        
+                        if home_team and away_team:
+                            upcoming.append({
+                                'datetime': event['date'], # ISO 8601 格式，包含时间和时区
+                                'home_team': home_team,
+                                'away_team': away_team
+                            })
+    except Exception as e:
+        continue
 
 if len(upcoming) == 0:
-    print("❌ 未能获取到未来赛程，为防止使用虚假数据，系统停止运行。")
+    print("❌ ESPN 未能获取到未来赛程，系统停止运行。")
     exit()
 
+print(f"✅ ESPN 成功返回了 {len(upcoming)} 场未来比赛。")
+
 df_upcoming = pd.DataFrame(upcoming)
-df_upcoming['datetime_parsed'] = pd.to_datetime(df_upcoming['datetime'], errors='coerce')
+# 转换时间为本地时间（北京时间）
+df_upcoming['datetime_parsed'] = pd.to_datetime(df_upcoming['datetime']).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
 today_ts = pd.Timestamp.now().normalize()
 df_next_round = df_upcoming[(df_upcoming['datetime_parsed'] >= today_ts) & (df_upcoming['datetime_parsed'] <= today_ts + pd.Timedelta(days=10))].sort_values('datetime_parsed').reset_index(drop=True)
 
@@ -247,7 +245,7 @@ report_content = "【英超全自动预测系统 V11 - 专家深度分析报告�
 
 for _, match in df_merged.iterrows():
     home_cn, away_cn = match['主队'], match['客队']
-    match_time = pd.to_datetime(match['datetime']).strftime('%Y-%m-%d %H:%M')
+    match_time = pd.to_datetime(match['datetime_parsed']).strftime('%Y-%m-%d %H:%M')
     
     h = team_stats.get(home_cn, {'scored':[], 'conceded':[], 'points':[]})
     a = team_stats.get(away_cn, {'scored':[], 'conceded':[], 'points':[]})
