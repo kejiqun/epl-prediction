@@ -14,7 +14,6 @@ warnings.filterwarnings('ignore')
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
 EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
-FOOTBALL_DATA_API_KEY = os.environ.get("FOOTBALL_DATA_API_KEY")
 
 llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
@@ -54,34 +53,36 @@ def translate_team_name(name):
     return name
 
 print("⏳ 正在抓取真实赛果，准备进行宏观赛后复盘...")
+# 使用 ESPN 获取过去 7 天的比赛结果
 try:
-    now = datetime.now()
-    season = now.year if now.month >= 7 else now.year - 1
-    url = f"https://api.football-data.org/v4/competitions/PL/matches?season={season}&status=FINISHED"
-    headers = {'X-Auth-Token': FOOTBALL_DATA_API_KEY}
-    resp = requests.get(url, headers=headers, timeout=15)
+    finished_matches = []
+    seven_days_ago = datetime.now() - timedelta(days=7)
     
-    if resp.status_code == 200:
-        data = resp.json()
-        finished_matches = []
-        seven_days_ago = datetime.now() - timedelta(days=7)
-        
-        for m in data.get('matches', []):
-            match_date = pd.to_datetime(m['utcDate']).tz_localize(None)
-            if match_date >= seven_days_ago:
-                finished_matches.append({
-                    'date': m['utcDate'][:10],
-                    'home_team': m['homeTeam']['name'],
-                    'away_team': m['awayTeam']['name'],
-                    'home_goals': m['score']['fullTime']['home'],
-                    'away_goals': m['score']['fullTime']['away']
-                })
-        
-        df_finished = pd.DataFrame(finished_matches)
-        print(f"✅ 成功获取近7天 {len(df_finished)} 场真实完赛数据。")
-    else:
-        print(f"❌ API 获取失败：{resp.status_code}")
-        df_finished = pd.DataFrame()
+    for i in range(7):
+        date_str = (seven_days_ago + timedelta(days=i)).strftime('%Y%m%d')
+        url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates={date_str}"
+        resp = requests.get(url, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            for event in data.get('events', []):
+                if event['status']['type']['state'] == 'post': # 已结束
+                    competitions = event.get('competitions', [])
+                    if competitions:
+                        competitors = competitions[0].get('competitors', [])
+                        home = next((c for c in competitors if c['homeAway'] == 'home'), None)
+                        away = next((c for c in competitors if c['homeAway'] == 'away'), None)
+                        
+                        if home and away:
+                            finished_matches.append({
+                                'date': event['date'][:10],
+                                'home_team': home['team']['name'],
+                                'away_team': away['team']['name'],
+                                'home_goals': int(home.get('score', 0)),
+                                'away_goals': int(away.get('score', 0))
+                            })
+    
+    df_finished = pd.DataFrame(finished_matches)
+    print(f"✅ 成功获取近7天 {len(df_finished)} 场真实完赛数据。")
 
     if not df_finished.empty:
         review_text = f"【近期赛果复盘】\n"
