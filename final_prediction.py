@@ -11,6 +11,7 @@ from openai import OpenAI
 import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
+import time
 
 warnings.filterwarnings('ignore')
 pd.set_option('display.unicode.ambiguous_as_wide', True)
@@ -28,7 +29,9 @@ EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
 def send_email(subject, content, receiver="308730509@qq.com"):
-    if not EMAIL_SENDER or not EMAIL_PASSWORD: return
+    if not EMAIL_SENDER or not EMAIL_PASSWORD:
+        print("⚠️ 未配置 EMAIL_SENDER 或 EMAIL_PASSWORD，跳过邮件发送。")
+        return
     message = MIMEText(content, 'plain', 'utf-8')
     message['From'] = EMAIL_SENDER
     message['To'] = receiver
@@ -96,28 +99,35 @@ def get_match_weather(home_team, date_str):
         pass
     return "获取失败"
 
-# ==================== 1. 直接使用 football-data.org 获取真实赛程 ====================
-print("⏳ 正在从 football-data.org 获取未来赛程（绝不用假数据）...")
+# ==================== 1. 稳健获取赛程 ====================
+print("⏳ 正在从 football-data.org 获取真实赛程...")
 upcoming = []
 try:
     now = datetime.now()
     season = now.year if now.month >= 7 else now.year - 1
     url = f"https://api.football-data.org/v4/competitions/PL/matches?season={season}"
     headers = {'X-Auth-Token': FOOTBALL_DATA_API_KEY}
-    resp = requests.get(url, headers=headers, timeout=15)
     
-    if resp.status_code == 200:
-        data = resp.json()
-        for m in data.get('matches', []):
-            if m.get('status') == 'SCHEDULED':
-                upcoming.append({
-                    'datetime': m['utcDate'],
-                    'home_team': m['homeTeam']['name'],
-                    'away_team': m['awayTeam']['name']
-                })
-        print(f"✅ API 返回了 {len(upcoming)} 场真实的未开始比赛。")
-    else:
-        print(f"❌ API 请求失败，状态码：{resp.status_code}。请检查免费额度是否用尽。")
+    max_retries = 3
+    for attempt in range(max_retries):
+        resp = requests.get(url, headers=headers, timeout=15)
+        if resp.status_code == 200:
+            data = resp.json()
+            for m in data.get('matches', []):
+                if m.get('status') == 'SCHEDULED':
+                    upcoming.append({
+                        'datetime': m['utcDate'],
+                        'home_team': m['homeTeam']['name'],
+                        'away_team': m['awayTeam']['name']
+                    })
+            print(f"✅ API 返回了 {len(upcoming)} 场真实的未开始比赛。")
+            break
+        elif resp.status_code == 403:
+            print(f"⚠️ 免费 API 次数限制 (403)，{3-attempt}秒后重试...")
+            time.sleep(3)
+        else:
+            print(f"❌ API 请求失败，状态码：{resp.status_code}。")
+            break
 except Exception as e:
     print(f"❌ 请求出错：{e}")
 
