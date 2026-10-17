@@ -55,8 +55,6 @@ def translate_team_name(name):
 
 print("⏳ 正在抓取真实赛果，准备进行宏观赛后复盘...")
 try:
-    # 彻底抛弃 ESPNsportsapi 的 date_range 坑
-    # 直接调 football-data.org 的 FINISHED 接口
     now = datetime.now()
     season = now.year if now.month >= 7 else now.year - 1
     url = f"https://api.football-data.org/v4/competitions/PL/matches?season={season}&status=FINISHED"
@@ -66,12 +64,10 @@ try:
     if resp.status_code == 200:
         data = resp.json()
         finished_matches = []
-        
-        # 获取最近 7 天的比赛
         seven_days_ago = datetime.now() - timedelta(days=7)
         
         for m in data.get('matches', []):
-            match_date = pd.to_datetime(m['utcDate']).tz_localize(None) # 去除时区
+            match_date = pd.to_datetime(m['utcDate']).tz_localize(None)
             if match_date >= seven_days_ago:
                 finished_matches.append({
                     'date': m['utcDate'][:10],
@@ -115,7 +111,6 @@ try:
         review_text += f"\n🧠 DeepSeek 宏观复盘与进化建议：\n{review_comment}\n"
         send_email("近期英超真实赛果宏观复盘", review_text)
         
-        # ==================== 自动回写数据 ====================
         print("\n⏳ 正在将新赛果追加到历史数据库...")
         try:
             df_hist = pd.read_csv('epl_matches_10y.csv')
