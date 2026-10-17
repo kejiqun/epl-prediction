@@ -1,9 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
 import pandas as pd
 import numpy as np
 import requests
@@ -11,15 +5,34 @@ import os
 from datetime import datetime
 from openai import OpenAI
 import warnings
+import smtplib
+from email.mime.text import MIMEText
+from email.header import Header
 warnings.filterwarnings('ignore')
 
-# ⚠️ 请配置你的密钥（这里保持你之前的设置，不用改）
+# ==================== 密钥配置 ====================
 FOOTBALL_DATA_API_KEY = os.environ.get("FOOTBALL_DATA_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 
 llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
-# 🌟 新增：中英文球队对照字典（覆盖常见英超球队及杯赛对手）
+def send_email(subject, content, receiver="308730509@qq.com"):
+    if not EMAIL_SENDER or not EMAIL_PASSWORD: return
+    message = MIMEText(content, 'plain', 'utf-8')
+    message['From'] = Header("英超复盘机器人", 'utf-8')
+    message['To'] = Header("用户", 'utf-8')
+    message['Subject'] = Header(subject, 'utf-8')
+    try:
+        smtpObj = smtplib.SMTP_SSL('smtp.qq.com', 465)
+        smtpObj.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        smtpObj.sendmail(EMAIL_SENDER, [receiver], message.as_string())
+        print("✅ 复盘邮件发送成功！")
+    except Exception as e:
+        print(f"❌ 复盘邮件发送失败: {e}")
+
+# 🌟 中英文球队对照字典
 team_mapping = {
     'Arsenal FC': '阿森纳', 'Arsenal': '阿森纳', 'Aston Villa FC': '阿斯顿维拉', 'Aston Villa': '阿斯顿维拉',
     'AFC Bournemouth': '伯恩茅斯', 'Bournemouth': '伯恩茅斯', 'Brentford FC': '布伦特福德', 'Brentford': '布伦特福德',
@@ -38,13 +51,12 @@ team_mapping = {
     'Burnley FC': '伯恩利', 'Burnley': '伯恩利', 'Sheffield United FC': '谢菲尔德联', 'Sheffield United': '谢菲尔德联',
     'Luton Town FC': '卢顿', 'Luton Town': '卢顿', 'Watford FC': '沃特福德', 'Watford': '沃特福德', 'Norwich City FC': '诺维奇', 'Norwich City': '诺维奇'
 }
-
 def translate_team_name(name):
     if isinstance(name, str):
         return team_mapping.get(name.replace(" and ", " & ").strip(), name)
     return name
 
-print("⏳ 正在抓取真实赛果，准备进行赛后复盘...")
+print("⏳ 正在抓取真实赛果，准备进行宏观赛后复盘...")
 now = datetime.now()
 season = now.year if now.month >= 7 else now.year - 1
 url = f"https://api.football-data.org/v4/competitions/PL/matches?season={season}"
@@ -74,18 +86,28 @@ except Exception as e:
     df_finished = pd.DataFrame()
 
 if not df_finished.empty:
-    # 这里为了演示，我们随机抽取一场已完赛的比赛让DeepSeek复盘
-    latest_match = df_finished.iloc[-1]
+    # 🌟 核心升级：取最近一天的所有比赛进行宏观复盘
+    latest_date = df_finished['date'].max()
+    latest_round_matches = df_finished[df_finished['date'] == latest_date]
     
-    # 🌟 核心修复：将英文队名翻译为中文
-    home = translate_team_name(latest_match['home_team'])
-    away = translate_team_name(latest_match['away_team'])
-    hg = latest_match['home_goals']
-    ag = latest_match['away_goals']
+    review_text = f"【比赛日期】{latest_date} 轮次赛后宏观复盘\n"
+    review_text += f"共包含 {len(latest_round_matches)} 场比赛：\n"
     
-    prompt = f"""你是一位资深英超数据分析师。上一轮比赛中，你的系统预测：{home} vs {away}。
-    实际结果是：{home} {hg} - {ag} {away}。
-    请用中文写一段150字以内的赛后感言，分析这场比赛的结果是否符合预期，并总结一条“经验教训”，以便优化未来的预测模型。"""
+    results_str = ""
+    for _, match in latest_round_matches.iterrows():
+        home = translate_team_name(match['home_team'])
+        away = translate_team_name(match['away_team'])
+        hg = match['home_goals']
+        ag = match['away_goals']
+        results_str += f"- {home} {hg}-{ag} {away}\n"
+        review_text += f"- {home} {hg}-{ag} {away}\n"
+    
+    prompt = f"""你是一位资深英超数据分析师。在 {latest_date} 结束的英超比赛中，实际赛果如下：
+{results_str}
+请基于这些赛果，完成两项任务：
+1. 整体点评这一轮比赛的特点（例如是否冷门频出，平局多不多等，不超过100字）。
+2. 作为预测模型的设计者，请从这些结果中总结出一条用于**优化下一版V12模型**的具体建议（例如：是否需要加大主场权重、是否应加强对保级队死守平局的预测等）。
+请用中文回答，条理清晰。"""
     
     try:
         response = llm_client.chat.completions.create(
@@ -95,13 +117,14 @@ if not df_finished.empty:
         )
         review_comment = response.choices[0].message.content.strip()
         print("\n" + "="*60)
-        # 🌟 核心修复：打印时使用中文队名
-        print(f"【赛后复盘报告】比赛：{home} {hg}-{ag} {away}")
+        print(f"【赛后复盘报告】日期：{latest_date}")
         print("="*60)
-        print(f"\n🧠 DeepSeek 复盘总结：\n{review_comment}")
+        print(f"\n🧠 DeepSeek 宏观复盘与进化建议：\n{review_comment}")
         print("="*60)
+        review_text += f"\n🧠 DeepSeek 宏观复盘与进化建议：\n{review_comment}\n"
     except Exception as e:
         print(f"❌ 复盘请求失败：{e}")
+        review_text += "复盘请求失败。"
 
     # ==================== 自动回写数据 ====================
     print("\n⏳ 正在将新赛果追加到历史数据库...")
@@ -113,12 +136,7 @@ if not df_finished.empty:
         print(f"✅ 数据追加成功！历史数据库从 {len(df_hist)} 场增加到 {len(df_updated)} 场。")
     except Exception as e:
         print(f"❌ 数据追加失败：{e}")
+        
+    send_email(f"{latest_date} 英超赛后复盘及模型进化建议", review_text)
 else:
     print("⚠️ 暂无已结束的比赛可供复盘。")
-
-
-# In[ ]:
-
-
-
-
