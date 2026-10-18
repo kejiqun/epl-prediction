@@ -40,7 +40,6 @@ def send_email(subject, content, receiver="308730509@qq.com"):
     except Exception as e:
         print(f"❌ 邮件发送失败: {e}")
 
-# 字典保持不变
 team_mapping = {
     'Arsenal FC': '阿森纳', 'Arsenal': '阿森纳', 'Aston Villa FC': '阿斯顿维拉', 'Aston Villa': '阿斯顿维拉',
     'AFC Bournemouth': '伯恩茅斯', 'Bournemouth': '伯恩茅斯', 'Brentford FC': '布伦特福德', 'Brentford': '布伦特福德',
@@ -174,25 +173,35 @@ except:
     team_rank_dict = {}
 
 injury_dict = {}
+rotation_info = {} # 🌟 新增：记录核心球员出场时间
+
 try:
     fpl_resp = requests.get("https://fantasy.premierleague.com/api/bootstrap-static/", timeout=15)
     if fpl_resp.status_code == 200:
         fpl_data = fpl_resp.json()
         teams_map = {t['id']: t['name'] for t in fpl_data['teams']}
         for element in fpl_data['elements']:
+            team_name_cn = translate_team_name(teams_map.get(element['team']))
+            
+            # 1. 提取伤停
             if element['status'] in ['d', 'i', 's', 'u']:
-                team_name_cn = translate_team_name(teams_map.get(element['team']))
                 player_name = element['web_name']
                 news = element['news']
                 status_cn = {"d": "出战成疑", "i": "受伤", "s": "停赛", "u": "不可用"}.get(element['status'], "未知")
                 if team_name_cn not in injury_dict: injury_dict[team_name_cn] = []
                 if news: injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})")
                 else: injury_dict[team_name_cn].append(f"{player_name}({status_cn})")
+            
+            # 2. 提取轮换强度情报：FPL总分数排名前列且出场时间(分钟)很高的球员
+            # 用 'total_points' 来衡量核心地位，'minutes' 衡量疲劳度
+            if element['minutes'] > 600: 
+                if team_name_cn not in rotation_info: rotation_info[team_name_cn] = []
+                rotation_info[team_name_cn].append((element['web_name'], element['minutes'], element['total_points']))
 except:
     pass
 
-# ==================== 3. 加载模型与特征 ====================
-print("⏳ 正在加载 V11 进球模型...")
+# ==================== 3. 加载模型与动态特征计算 ====================
+print("⏳ 正在加载 V11 进球模型，并计算赛程密度...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist = df_hist.sort_values('date').reset_index(drop=True)
@@ -204,20 +213,30 @@ model_away_goals = joblib.load('epl_v11_away_goals_model.pkl') if os.path.exists
 
 league_avg_goals = (df_hist['home_goals'].mean() + df_hist['away_goals'].mean()) / 2
 team_stats = {}
+last_match_date = {} # 🌟 记录每队上一场比赛日期，计算休息天数
+
 for idx, row in df_hist.iterrows():
     home, away = row['home_team_cn'], row['away_team_cn']
+    match_date = row['date']
+    
     for t in [home, away]:
         if t not in team_stats: team_stats[t] = {'scored':[], 'conceded':[], 'points':[]}
+        if t not in last_match_date: last_match_date[t] = None
+    
     team_stats[home]['scored'].append(row['home_goals'])
     team_stats[home]['conceded'].append(row['away_goals'])
     h_pts = 3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0)
     team_stats[home]['points'].append(h_pts)
+    
     team_stats[away]['scored'].append(row['away_goals'])
     team_stats[away]['conceded'].append(row['home_goals'])
     a_pts = 3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0)
     team_stats[away]['points'].append(a_pts)
+    
+    last_match_date[home] = match_date
+    last_match_date[away] = match_date
 
-# ==================== 4. 预测循环 (泊松统一一切) ====================
+# ==================== 4. 预测循环 ====================
 df_next_round['主队'] = df_next_round['home_team'].apply(translate_team_name)
 df_next_round['客队'] = df_next_round['away_team'].apply(translate_team_name)
 df_merged = pd.merge(df_next_round, df_odds, on=['主队', '客队'], how='left')
@@ -230,6 +249,11 @@ report_content = "【英超全自动预测系统 V11 - 专家深度分析报告�
 for _, match in df_merged.iterrows():
     home_cn, away_cn = match['主队'], match['客队']
     match_time = pd.to_datetime(match['datetime_parsed']).strftime('%Y-%m-%d %H:%M')
+    match_date_only = pd.to_datetime(match['datetime_parsed']).date()
+    
+    # 🌟 动态计算真实休息天数
+    h_rest = (match_date_only - last_match_date.get(home_cn, match_date_only - timedelta(days=7)).date()).days
+    a_rest = (match_date_only - last_match_date.get(away_cn, match_date_only - timedelta(days=7)).date()).days
     
     h = team_stats.get(home_cn, {'scored':[], 'conceded':[], 'points':[]})
     a = team_stats.get(away_cn, {'scored':[], 'conceded':[], 'points':[]})
@@ -246,53 +270,47 @@ for _, match in df_merged.iterrows():
     
     h_rank = team_rank_dict.get(home_cn, 15)
     a_rank = team_rank_dict.get(away_cn, 15)
-    h_avg_pts = team_avg_pts_dict.get(home_cn, 1.0) if 'team_avg_pts_dict' in locals() else 1.0
-    a_avg_pts = team_avg_pts_dict.get(away_cn, 1.0) if 'team_avg_pts_dict' in locals() else 1.0
-
+    
     feature_dict = {
         'attack': h_attack, 'defense': h_defense, 'opp_attack': a_attack, 'opp_defense': a_defense,
-        'win_rate': h_win_rate, 'opp_win_rate': a_win_rate, 'rest_days': 7, 'opp_rest_days': 7, 'is_home': 1,
+        'win_rate': h_win_rate, 'opp_win_rate': a_win_rate, 
+        'rest_days': h_rest, # 🌟 使用真实休息天数
+        'opp_rest_days': a_rest, 
+        'is_home': 1,
         'home_rank': h_rank, 'away_rank': a_rank,
-        'home_avg_points': h_avg_pts, 'away_avg_points': a_avg_pts,
+        'home_avg_points': h_avg_pts if 'h_avg_pts' in locals() else 1.0, 
+        'away_avg_points': a_avg_pts if 'a_avg_pts' in locals() else 1.0,
         'prob_h_odds': match['主胜概率'], 'prob_d_odds': match['平局概率'], 'prob_a_odds': match['客胜概率']
     }
     X_pred = pd.DataFrame([feature_dict])
     
-    # 1. 获取进球期望
     home_xg, away_xg = max(0.1, model_home_goals.predict(X_pred)[0]), max(0.1, model_away_goals.predict(X_pred)[0])
     
-    # 2. 泊松矩阵计算比分及胜平负
+    # 泊松概率
     max_goals = 5
     prob_matrix = np.zeros((max_goals+1, max_goals+1))
     for hg in range(max_goals+1):
         for ag in range(max_goals+1):
             prob_matrix[hg][ag] = poisson.pmf(hg, home_xg) * poisson.pmf(ag, away_xg)
             
-    # 3. 完全基于进球期望推导胜平负概率（解决推荐打架问题）
     prob_home_win = np.sum(np.tril(prob_matrix, -1))
     prob_draw = np.sum(np.diag(prob_matrix))
     prob_away_win = np.sum(np.triu(prob_matrix, 1))
-    
     total_p = prob_home_win + prob_draw + prob_away_win
-    prob_home_win /= total_p
-    prob_draw /= total_p
-    prob_away_win /= total_p
+    prob_home_win /= total_p; prob_draw /= total_p; prob_away_win /= total_p
     
-    probs = [prob_away_win, prob_draw, prob_home_win] # 对应客, 平, 主
+    probs = [prob_away_win, prob_draw, prob_home_win]
     pred_result = np.argmax(probs)
     recommend = "主胜" if pred_result == 2 else ("平局" if pred_result == 1 else "客胜")
     
-    # 4. 提取比分及大小球
     score_probs = [(f"{hg}-{ag}", prob_matrix[hg][ag]) for hg in range(max_goals+1) for ag in range(max_goals+1)]
     score_probs.sort(key=lambda x: x[1], reverse=True)
     top3 = score_probs[:3]
-    
     prob_over_2_5 = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + ag > 2.5)
     over_under_msg = f"大2.5球 (概率 {prob_over_2_5*100:.1f}%)" if prob_over_2_5 > 0.5 else f"小2.5球 (概率 {(1-prob_over_2_5)*100:.1f}%)"
 
     weather = get_match_weather(home_cn, match_time)
     
-    # 价值对比
     market_h, market_d, market_a = match['主胜概率'], match['平局概率'], match['客胜概率']
     value_home, value_draw, value_away = prob_home_win - market_h, prob_draw - market_d, prob_away_win - market_a
     value_msg = ""
@@ -303,15 +321,23 @@ for _, match in df_merged.iterrows():
     
     home_injuries = injury_dict.get(home_cn, ["暂无重大伤停"])
     away_injuries = injury_dict.get(away_cn, ["暂无重大伤停"])
+    
+    # 🌟 提炼轮换情报给大模型
+    h_rotation = f"{home_cn}近期比赛间隔 {h_rest} 天。"
+    a_rotation = f"{away_cn}近期比赛间隔 {a_rest} 天。"
+    if h_rest <= 3: h_rotation += "赛程极其密集，核心球员体能堪忧。"
+    if a_rest <= 3: a_rotation += "赛程极其密集，核心球员体能堪忧。"
+
     injury_info = f"{home_cn}伤停：{'，'.join(home_injuries)}；{away_cn}伤停：{'，'.join(away_injuries)}。"
     
     prompt = f"""你是一位精通英超的资深数据分析专家。请基于以下数据，写一段精炼、有洞察力、口语化的赛前点评（不超过150字）：
     比赛：{home_cn} vs {away_cn}
+    赛程密度与轮换：{h_rotation} {a_rotation}
     进球期望：主队 {home_xg:.2f}，客队 {away_xg:.2f}。
     大小球倾向：{over_under_msg}。
     赔率市场倾向：主胜 {match['主胜概率']*100:.1f}%，平局 {match['平局概率']*100:.1f}%，客胜 {match['客胜概率']*100:.1f}%。
     实时伤停：{injury_info}
-    请综合以上信息分析，并以“推荐关注：XXX”结尾。"""
+    请综合以上信息分析（必须把赛程密集度考虑进去），并以“推荐关注：XXX”结尾。"""
     
     try:
         response = llm_client.chat.completions.create(
@@ -321,10 +347,9 @@ for _, match in df_merged.iterrows():
     except:
         expert_comment = "【AI深度分析暂时不可用】"
     
-    # 打印报告（推荐与比分现已绝对统一）
     report_line = f"\n{'='*60}\n"
     report_line += f"【比赛时间】{match_time}\n【对阵双方】{home_cn} vs {away_cn}\n{'='*60}\n"
-    report_line += f"\n📊 球队数据对比：\n   {home_cn}：排名 {h_rank} | 近5场场均进球 {h_avg_scored:.2f} | 失球 {h_avg_conceded:.2f}\n   {away_cn}：排名 {a_rank} | 近5场场均进球 {a_avg_scored:.2f} | 失球 {a_avg_conceded:.2f}\n"
+    report_line += f"\n📊 球队数据对比：\n   {home_cn}：排名 {h_rank} | 近5场场均进球 {h_avg_scored:.2f} | 失球 {h_avg_conceded:.2f} | 休息 {h_rest} 天\n   {away_cn}：排名 {a_rank} | 近5场场均进球 {a_avg_scored:.2f} | 失球 {a_avg_conceded:.2f} | 休息 {a_rest} 天\n"
     if isinstance(weather, dict): report_line += f"\n🌤️ 比赛日天气：{weather['天气']} | 温度 {weather['温度']}°C\n"
     else: report_line += f"\n🌤️ 比赛日天气：{weather}\n"
     report_line += f"\n📈 赔率市场分析：市场平均：主胜 {match['主胜概率']*100:.1f}% | 平局 {match['平局概率']*100:.1f}% | 客胜 {match['客胜概率']*100:.1f}%\n"
