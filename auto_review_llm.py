@@ -10,7 +10,6 @@ from email.mime.text import MIMEText
 from email.header import Header
 
 warnings.filterwarnings('ignore')
-
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
 EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
@@ -20,16 +19,12 @@ llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com
 def send_email(subject, content, receiver="308730509@qq.com"):
     if not EMAIL_SENDER or not EMAIL_PASSWORD: return
     message = MIMEText(content, 'plain', 'utf-8')
-    message['From'] = EMAIL_SENDER
-    message['To'] = receiver
-    message['Subject'] = Header(subject, 'utf-8')
+    message['From'] = EMAIL_SENDER; message['To'] = receiver; message['Subject'] = Header(subject, 'utf-8')
     try:
         smtpObj = smtplib.SMTP_SSL('smtp.qq.com', 465)
         smtpObj.login(EMAIL_SENDER, EMAIL_PASSWORD)
         smtpObj.sendmail(EMAIL_SENDER, [receiver], message.as_string())
-        print("✅ 复盘邮件发送成功！")
-    except Exception as e:
-        print(f"❌ 复盘邮件发送失败: {e}")
+    except Exception as e: print(f"❌ 复盘邮件发送失败: {e}")
 
 team_mapping = {
     'Arsenal FC': '阿森纳', 'Arsenal': '阿森纳', 'Aston Villa FC': '阿斯顿维拉', 'Aston Villa': '阿斯顿维拉',
@@ -48,16 +43,13 @@ team_mapping = {
     'Hull City AFC': '赫尔城', 'Hull City': '赫尔城', 'Coventry City FC': '考文垂', 'Coventry City': '考文垂'
 }
 def translate_team_name(name):
-    if isinstance(name, str):
-        return team_mapping.get(name.replace(" and ", " & ").strip(), name)
+    if isinstance(name, str): return team_mapping.get(name.replace(" and ", " & ").strip(), name)
     return name
 
-print("⏳ 正在抓取真实赛果，准备进行宏观赛后复盘...")
-# 使用 ESPN 获取过去 7 天的比赛结果
+print("⏳ 正在抓取真实赛果，进行 V12 宏观复盘...")
 try:
     finished_matches = []
     seven_days_ago = datetime.now() - timedelta(days=7)
-    
     for i in range(7):
         date_str = (seven_days_ago + timedelta(days=i)).strftime('%Y%m%d')
         url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates={date_str}"
@@ -65,20 +57,17 @@ try:
         if resp.status_code == 200:
             data = resp.json()
             for event in data.get('events', []):
-                if event['status']['type']['state'] == 'post': # 已结束
+                if event['status']['type']['state'] == 'post':
                     competitions = event.get('competitions', [])
                     if competitions:
                         competitors = competitions[0].get('competitors', [])
                         home = next((c for c in competitors if c['homeAway'] == 'home'), None)
                         away = next((c for c in competitors if c['homeAway'] == 'away'), None)
-                        
                         if home and away:
                             finished_matches.append({
                                 'date': event['date'][:10],
-                                'home_team': home['team']['name'],
-                                'away_team': away['team']['name'],
-                                'home_goals': int(home.get('score', 0)),
-                                'away_goals': int(away.get('score', 0))
+                                'home_team': home['team']['name'], 'away_team': away['team']['name'],
+                                'home_goals': int(home.get('score', 0)), 'away_goals': int(away.get('score', 0))
                             })
     
     df_finished = pd.DataFrame(finished_matches)
@@ -87,30 +76,30 @@ try:
     if not df_finished.empty:
         review_text = f"【近期赛果复盘】\n"
         for _, row in df_finished.iterrows():
-            home = translate_team_name(row['home_team'])
-            away = translate_team_name(row['away_team'])
+            home = translate_team_name(row['home_team']); away = translate_team_name(row['away_team'])
             review_text += f"- {row['date']}：{home} {row['home_goals']}-{row['away_goals']} {away}\n"
             
-        print(review_text)
-        
-        prompt = f"""你是一位资深英超数据分析师。以下是近期结束的英超真实赛果：
+        prompt = f"""你是一位资深英超分析师。以下是近期结束的赛果：
 {review_text}
-请基于这些赛果，完成两项任务：
+请完成两项任务：
 1. 整体点评这一轮比赛的特点（不超过100字）。
-2. 作为预测模型的设计者，请总结一条用于优化模型的具体建议。
-请用中文回答。"""
+2. 提炼一条用于优化预测模型的具体经验（例如：保级队主场防守更强、强队欧战后容易爆冷等），字数不超过50字。用“经验：”开头。"""
         
-        response = llm_client.chat.completions.create(
-            model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False
-        )
+        response = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False)
         review_comment = response.choices[0].message.content.strip()
         
         print("\n" + "="*60)
         print(f"🧠 DeepSeek 宏观复盘：\n{review_comment}")
         print("="*60)
         
-        review_text += f"\n🧠 DeepSeek 宏观复盘与进化建议：\n{review_comment}\n"
-        send_email("近期英超真实赛果宏观复盘", review_text)
+        # 🌟 V12核心：提取经验并存入知识库
+        if "经验：" in review_comment:
+            new_knowledge = review_comment.split("经验：")[-1].strip()
+            with open('knowledge.txt', 'a', encoding='utf-8') as f:
+                f.write(f"- [{datetime.now().strftime('%Y-%m-%d')}] {new_knowledge}\n")
+            print(f"✅ 已成功将新经验追加到 knowledge.txt 中！")
+        
+        send_email("近期英超真实赛果宏观复盘", review_text + "\n" + review_comment)
         
         print("\n⏳ 正在将新赛果追加到历史数据库...")
         try:
@@ -118,11 +107,8 @@ try:
             df_updated = pd.concat([df_hist, df_finished[['date', 'home_team', 'away_team', 'home_goals', 'away_goals']]], ignore_index=True)
             df_updated.drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last', inplace=True)
             df_updated.to_csv('epl_matches_10y.csv', index=False, encoding='utf-8-sig')
-            print(f"✅ 数据追加成功！历史数据库从 {len(df_hist)} 场增加到 {len(df_updated)} 场。")
-        except Exception as e:
-            print(f"❌ 数据追加失败：{e}")
+            print(f"✅ 数据追加成功！")
+        except Exception as e: print(f"❌ 数据追加失败：{e}")
             
-    else:
-        print("⚠️ 近期没有获取到已结束的比赛。")
 except Exception as e:
     print(f"⚠️ 获取赛果或复盘失败: {e}")
