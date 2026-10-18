@@ -46,7 +46,7 @@ def translate_team_name(name):
     if isinstance(name, str): return team_mapping.get(name.replace(" and ", " & ").strip(), name)
     return name
 
-print("⏳ 正在抓取真实赛果，进行 V12 宏观复盘...")
+print("⏳ 正在抓取真实赛果，进行 V13 微观与宏观复盘...")
 try:
     finished_matches = []
     seven_days_ago = datetime.now() - timedelta(days=7)
@@ -66,45 +66,69 @@ try:
                         if home and away:
                             finished_matches.append({
                                 'date': event['date'][:10],
-                                'home_team': home['team']['name'], 'away_team': away['team']['name'],
-                                'home_goals': int(home.get('score', 0)), 'away_goals': int(away.get('score', 0))
+                                'home_team': translate_team_name(home['team']['name']), 
+                                'away_team': translate_team_name(away['team']['name']),
+                                'home_goals': int(home.get('score', 0)), 
+                                'away_goals': int(away.get('score', 0))
                             })
     
     df_finished = pd.DataFrame(finished_matches)
-    print(f"✅ 成功获取近7天 {len(df_finished)} 场真实完赛数据。")
 
     if not df_finished.empty:
+        # 🌟 新增：读取预测日志进行对比
+        match_details_text = ""
+        if os.path.exists('predictions_log.csv'):
+            log_df = pd.read_csv('predictions_log.csv')
+            # 找出刚刚结束的比赛，匹配预测记录
+            for _, row in df_finished.iterrows():
+                pred_match = log_df[(log_df['date'] == row['date']) & 
+                                    (log_df['home_team'] == row['home_team']) & 
+                                    (log_df['away_team'] == row['away_team'])]
+                if not pred_match.empty:
+                    p = pred_match.iloc[-1]
+                    actual_res = "主胜" if row['home_goals'] > row['away_goals'] else ("平局" if row['home_goals'] == row['away_goals'] else "客胜")
+                    match_details_text += f"- {row['home_team']} {row['home_goals']}-{row['away_goals']} {row['away_team']} | 实际: {actual_res}。赛前预测: {p['predicted_result']} (比分{p['predicted_score']})\n"
+
         review_text = f"【近期赛果复盘】\n"
         for _, row in df_finished.iterrows():
-            home = translate_team_name(row['home_team']); away = translate_team_name(row['away_team'])
-            review_text += f"- {row['date']}：{home} {row['home_goals']}-{row['away_goals']} {away}\n"
+            review_text += f"- {row['date']}：{row['home_team']} {row['home_goals']}-{row['away_goals']} {row['away_team']}\n"
             
-        prompt = f"""你是一位资深英超分析师。以下是近期结束的赛果：
+        prompt = f"""你是一位资深英超分析师。请基于以下真实赛果与我们的预测对比，完成两项任务：
+1. 微观归因：分析预测错误或正确的比赛，找出原因（不超过100字）。
+2. 提炼一条优化经验，用“经验：”开头（不超过50字）。
+
+【真实赛果】：
 {review_text}
-请完成两项任务：
-1. 整体点评这一轮比赛的特点（不超过100字）。
-2. 提炼一条用于优化预测模型的具体经验（例如：保级队主场防守更强、强队欧战后容易爆冷等），字数不超过50字。用“经验：”开头。"""
+【预测对比】：
+{match_details_text if match_details_text else "暂无匹配的预测记录"}
+"""
         
         response = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False)
         review_comment = response.choices[0].message.content.strip()
         
         print("\n" + "="*60)
-        print(f"🧠 DeepSeek 宏观复盘：\n{review_comment}")
+        print(f"🧠 DeepSeek V13 复盘：\n{review_comment}")
         print("="*60)
         
-        # 🌟 V12核心：提取经验并存入知识库
         if "经验：" in review_comment:
             new_knowledge = review_comment.split("经验：")[-1].strip()
             with open('knowledge.txt', 'a', encoding='utf-8') as f:
                 f.write(f"- [{datetime.now().strftime('%Y-%m-%d')}] {new_knowledge}\n")
             print(f"✅ 已成功将新经验追加到 knowledge.txt 中！")
         
-        send_email("近期英超真实赛果宏观复盘", review_text + "\n" + review_comment)
+        send_email("近期英超 V13 微观复盘报告", review_text + "\n" + review_comment)
         
         print("\n⏳ 正在将新赛果追加到历史数据库...")
         try:
             df_hist = pd.read_csv('epl_matches_10y.csv')
-            df_updated = pd.concat([df_hist, df_finished[['date', 'home_team', 'away_team', 'home_goals', 'away_goals']]], ignore_index=True)
+            # 转换格式以匹配历史数据库（英文名）
+            df_finished['home_team_en'] = df_finished['home_team'].map({v: k for k, v in team_mapping.items()}).fillna(df_finished['home_team'])
+            df_finished['away_team_en'] = df_finished['away_team'].map({v: k for k, v in team_mapping.items()}).fillna(df_finished['away_team'])
+            
+            new_data = df_finished[['date', 'home_team_en', 'away_team_en', 'home_goals', 'away_goals']].copy()
+            new_data.columns = ['date', 'home_team', 'away_team', 'home_goals', 'away_goals']
+            
+            df_updated = pd.concat([df_hist, new_data], ignore_index=True)
             df_updated.drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last', inplace=True)
             df_updated.to_csv('epl_matches_10y.csv', index=False, encoding='utf-8-sig')
             print(f"✅ 数据追加成功！")
