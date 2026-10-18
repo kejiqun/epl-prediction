@@ -40,7 +40,7 @@ def send_email(subject, content, receiver="308730509@qq.com"):
     except Exception as e:
         print(f"❌ 邮件发送失败: {e}")
 
-# 字典保持不变...
+# 字典保持不变
 team_mapping = {
     'Arsenal FC': '阿森纳', 'Arsenal': '阿森纳', 'Aston Villa FC': '阿斯顿维拉', 'Aston Villa': '阿斯顿维拉',
     'AFC Bournemouth': '伯恩茅斯', 'Bournemouth': '伯恩茅斯', 'Brentford FC': '布伦特福德', 'Brentford': '布伦特福德',
@@ -96,11 +96,10 @@ def get_match_weather(home_team, date_str):
         pass
     return "获取失败"
 
-# ==================== 1. 使用 ESPN 官方接口获取真实赛程 ====================
-print("⏳ 正在从 ESPN 官方接口获取未来赛程...")
+# ==================== 1. ESPN 获取赛程 ====================
+print("⏳ 正在从 ESPN 获取未来赛程...")
 upcoming = []
 today = datetime.now()
-# 抓取未来 10 天的赛程
 for i in range(10):
     date_str = (today + timedelta(days=i)).strftime('%Y%m%d')
     url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates={date_str}"
@@ -109,21 +108,19 @@ for i in range(10):
         if resp.status_code == 200:
             data = resp.json()
             for event in data.get('events', []):
-                # 只抓取未开始的比赛
                 if event['status']['type']['state'] == 'pre':
                     competitions = event.get('competitions', [])
                     if competitions:
                         competitors = competitions[0].get('competitors', [])
                         home_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'home'), None)
                         away_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'away'), None)
-                        
                         if home_team and away_team:
                             upcoming.append({
-                                'datetime': event['date'], # ISO 8601 格式，包含时间和时区
+                                'datetime': event['date'],
                                 'home_team': home_team,
                                 'away_team': away_team
                             })
-    except Exception as e:
+    except:
         continue
 
 if len(upcoming) == 0:
@@ -131,18 +128,12 @@ if len(upcoming) == 0:
     exit()
 
 print(f"✅ ESPN 成功返回了 {len(upcoming)} 场未来比赛。")
-
 df_upcoming = pd.DataFrame(upcoming)
-# 转换时间为本地时间（北京时间）
 df_upcoming['datetime_parsed'] = pd.to_datetime(df_upcoming['datetime']).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
 today_ts = pd.Timestamp.now().normalize()
 df_next_round = df_upcoming[(df_upcoming['datetime_parsed'] >= today_ts) & (df_upcoming['datetime_parsed'] <= today_ts + pd.Timedelta(days=10))].sort_values('datetime_parsed').reset_index(drop=True)
 
-if len(df_next_round) == 0:
-    print("❌ 未来 10 天内没有比赛，系统停止运行。")
-    exit()
-
-# ==================== 2. 获取赔率 ====================
+# ==================== 2. 获取赔率与伤停 ====================
 print("\n⏳ 正在获取赔率...")
 odds_records = []
 try:
@@ -175,21 +166,16 @@ except:
     pass
 df_odds = pd.DataFrame(odds_records) if odds_records else pd.DataFrame(columns=['主队', '客队', '主胜概率', '平局概率', '客胜概率'])
 
-# ==================== 3. 加载积分榜与 FPL 伤停 ====================
-print("⏳ 正在加载积分榜数据...")
+print("⏳ 正在加载积分榜与伤停...")
 try:
     df_standings = pd.read_csv('epl_standings.csv')
     team_rank_dict = dict(zip(df_standings['球队'], df_standings['排名']))
-    team_avg_pts_dict = {k: v/30 for k, v in dict(zip(df_standings['球队'], df_standings['积分'])).items()}
-except Exception as e:
-    print(f"⚠️ 读取积分榜失败: {e}")
-    team_rank_dict, team_avg_pts_dict = {}, {}
+except:
+    team_rank_dict = {}
 
-print("⏳ 正在从 FPL 官方 API 自动获取伤停数据...")
 injury_dict = {}
 try:
-    fpl_url = "https://fantasy.premierleague.com/api/bootstrap-static/"
-    fpl_resp = requests.get(fpl_url, timeout=15)
+    fpl_resp = requests.get("https://fantasy.premierleague.com/api/bootstrap-static/", timeout=15)
     if fpl_resp.status_code == 200:
         fpl_data = fpl_resp.json()
         teams_map = {t['id']: t['name'] for t in fpl_data['teams']}
@@ -202,19 +188,17 @@ try:
                 if team_name_cn not in injury_dict: injury_dict[team_name_cn] = []
                 if news: injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})")
                 else: injury_dict[team_name_cn].append(f"{player_name}({status_cn})")
-        print(f"✅ 成功从 FPL 获取伤停数据。")
-except Exception as e:
-    print(f"⚠️ FPL 伤停获取失败: {e}")
+except:
+    pass
 
-# ==================== 4. 加载模型与特征 ====================
-print("⏳ 正在加载模型...")
+# ==================== 3. 加载模型与特征 ====================
+print("⏳ 正在加载 V11 进球模型...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist = df_hist.sort_values('date').reset_index(drop=True)
 df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
 df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
 
-model_result = joblib.load('epl_v11_result_model.pkl') if os.path.exists('epl_v11_result_model.pkl') else joblib.load('epl_v10_result_model.pkl')
 model_home_goals = joblib.load('epl_v11_home_goals_model.pkl') if os.path.exists('epl_v11_home_goals_model.pkl') else joblib.load('epl_v10_home_goals_model.pkl')
 model_away_goals = joblib.load('epl_v11_away_goals_model.pkl') if os.path.exists('epl_v11_away_goals_model.pkl') else joblib.load('epl_v10_away_goals_model.pkl')
 
@@ -233,7 +217,7 @@ for idx, row in df_hist.iterrows():
     a_pts = 3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0)
     team_stats[away]['points'].append(a_pts)
 
-# ==================== 5. 预测循环 ====================
+# ==================== 4. 预测循环 (泊松统一一切) ====================
 df_next_round['主队'] = df_next_round['home_team'].apply(translate_team_name)
 df_next_round['客队'] = df_next_round['away_team'].apply(translate_team_name)
 df_merged = pd.merge(df_next_round, df_odds, on=['主队', '客队'], how='left')
@@ -262,8 +246,8 @@ for _, match in df_merged.iterrows():
     
     h_rank = team_rank_dict.get(home_cn, 15)
     a_rank = team_rank_dict.get(away_cn, 15)
-    h_avg_pts = team_avg_pts_dict.get(home_cn, 1.0)
-    a_avg_pts = team_avg_pts_dict.get(away_cn, 1.0)
+    h_avg_pts = team_avg_pts_dict.get(home_cn, 1.0) if 'team_avg_pts_dict' in locals() else 1.0
+    a_avg_pts = team_avg_pts_dict.get(away_cn, 1.0) if 'team_avg_pts_dict' in locals() else 1.0
 
     feature_dict = {
         'attack': h_attack, 'defense': h_defense, 'opp_attack': a_attack, 'opp_defense': a_defense,
@@ -273,23 +257,48 @@ for _, match in df_merged.iterrows():
         'prob_h_odds': match['主胜概率'], 'prob_d_odds': match['平局概率'], 'prob_a_odds': match['客胜概率']
     }
     X_pred = pd.DataFrame([feature_dict])
-    probs = model_result.predict_proba(X_pred)[0]
+    
+    # 1. 获取进球期望
     home_xg, away_xg = max(0.1, model_home_goals.predict(X_pred)[0]), max(0.1, model_away_goals.predict(X_pred)[0])
     
-    score_probs = [(f"{hg}-{ag}", poisson.pmf(hg, home_xg) * poisson.pmf(ag, away_xg)) for hg in range(6) for ag in range(6)]
-    score_probs.sort(key=lambda x: x[1], reverse=True)
-    top3 = score_probs[:3]
-    weather = get_match_weather(home_cn, match_time)
+    # 2. 泊松矩阵计算比分及胜平负
+    max_goals = 5
+    prob_matrix = np.zeros((max_goals+1, max_goals+1))
+    for hg in range(max_goals+1):
+        for ag in range(max_goals+1):
+            prob_matrix[hg][ag] = poisson.pmf(hg, home_xg) * poisson.pmf(ag, away_xg)
+            
+    # 3. 完全基于进球期望推导胜平负概率（解决推荐打架问题）
+    prob_home_win = np.sum(np.tril(prob_matrix, -1))
+    prob_draw = np.sum(np.diag(prob_matrix))
+    prob_away_win = np.sum(np.triu(prob_matrix, 1))
+    
+    total_p = prob_home_win + prob_draw + prob_away_win
+    prob_home_win /= total_p
+    prob_draw /= total_p
+    prob_away_win /= total_p
+    
+    probs = [prob_away_win, prob_draw, prob_home_win] # 对应客, 平, 主
     pred_result = np.argmax(probs)
     recommend = "主胜" if pred_result == 2 else ("平局" if pred_result == 1 else "客胜")
     
+    # 4. 提取比分及大小球
+    score_probs = [(f"{hg}-{ag}", prob_matrix[hg][ag]) for hg in range(max_goals+1) for ag in range(max_goals+1)]
+    score_probs.sort(key=lambda x: x[1], reverse=True)
+    top3 = score_probs[:3]
+    
+    prob_over_2_5 = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + ag > 2.5)
+    over_under_msg = f"大2.5球 (概率 {prob_over_2_5*100:.1f}%)" if prob_over_2_5 > 0.5 else f"小2.5球 (概率 {(1-prob_over_2_5)*100:.1f}%)"
+
+    weather = get_match_weather(home_cn, match_time)
+    
+    # 价值对比
     market_h, market_d, market_a = match['主胜概率'], match['平局概率'], match['客胜概率']
-    model_h, model_d, model_a = probs[2], probs[1], probs[0]
-    value_home, value_draw, value_away = model_h - market_h, model_d - market_d, model_a - market_a
+    value_home, value_draw, value_away = prob_home_win - market_h, prob_draw - market_d, prob_away_win - market_a
     value_msg = ""
-    if value_home > 0.05: value_msg += f"   🌟 发现主胜价值：模型 {model_h*100:.1f}% > 市场 {market_h*100:.1f}% (差额 +{value_home*100:.1f}%)\n"
-    elif value_draw > 0.05: value_msg += f"   🌟 发现平局价值：模型 {model_d*100:.1f}% > 市场 {market_d*100:.1f}% (差额 +{value_draw*100:.1f}%)\n"
-    elif value_away > 0.05: value_msg += f"   🌟 发现客胜价值：模型 {model_a*100:.1f}% > 市场 {market_a*100:.1f}% (差额 +{value_away*100:.1f}%)\n"
+    if value_home > 0.05: value_msg += f"   🌟 发现主胜价值：模型 {prob_home_win*100:.1f}% > 市场 {market_h*100:.1f}% (差额 +{value_home*100:.1f}%)\n"
+    elif value_draw > 0.05: value_msg += f"   🌟 发现平局价值：模型 {prob_draw*100:.1f}% > 市场 {market_d*100:.1f}% (差额 +{value_draw*100:.1f}%)\n"
+    elif value_away > 0.05: value_msg += f"   🌟 发现客胜价值：模型 {prob_away_win*100:.1f}% > 市场 {market_a*100:.1f}% (差额 +{value_away*100:.1f}%)\n"
     else: value_msg += "   ⚪ 市场定价合理，未发现明显的价值机会。\n"
     
     home_injuries = injury_dict.get(home_cn, ["暂无重大伤停"])
@@ -297,14 +306,12 @@ for _, match in df_merged.iterrows():
     injury_info = f"{home_cn}伤停：{'，'.join(home_injuries)}；{away_cn}伤停：{'，'.join(away_injuries)}。"
     
     prompt = f"""你是一位精通英超的资深数据分析专家。请基于以下数据，写一段精炼、有洞察力、口语化的赛前点评（不超过150字）：
-    比赛：{home_cn}（排名 {h_rank}） vs {away_cn}（排名 {a_rank}）
-    近5场状态：{home_cn} 场均进 {h_avg_scored:.2f} 球，失 {h_avg_conceded:.2f} 球；{away_cn} 场均进 {a_avg_scored:.2f} 球，失 {a_avg_conceded:.2f} 球。
-    天气：{weather if isinstance(weather, str) else weather['天气']}。
-    市场赔率倾向：主胜 {match['主胜概率']*100:.1f}%，平局 {match['平局概率']*100:.1f}%，客胜 {match['客胜概率']*100:.1f}%。
-    V11模型预测：主胜 {probs[2]*100:.1f}%，平局 {probs[1]*100:.1f}%，客胜 {probs[0]*100:.1f}%。
-    **实时伤停情报：**
-    {injury_info}
-    请综合以上所有信息给出你的分析，并以“推荐关注：XXX”结尾。"""
+    比赛：{home_cn} vs {away_cn}
+    进球期望：主队 {home_xg:.2f}，客队 {away_xg:.2f}。
+    大小球倾向：{over_under_msg}。
+    赔率市场倾向：主胜 {match['主胜概率']*100:.1f}%，平局 {match['平局概率']*100:.1f}%，客胜 {match['客胜概率']*100:.1f}%。
+    实时伤停：{injury_info}
+    请综合以上信息分析，并以“推荐关注：XXX”结尾。"""
     
     try:
         response = llm_client.chat.completions.create(
@@ -314,6 +321,7 @@ for _, match in df_merged.iterrows():
     except:
         expert_comment = "【AI深度分析暂时不可用】"
     
+    # 打印报告（推荐与比分现已绝对统一）
     report_line = f"\n{'='*60}\n"
     report_line += f"【比赛时间】{match_time}\n【对阵双方】{home_cn} vs {away_cn}\n{'='*60}\n"
     report_line += f"\n📊 球队数据对比：\n   {home_cn}：排名 {h_rank} | 近5场场均进球 {h_avg_scored:.2f} | 失球 {h_avg_conceded:.2f}\n   {away_cn}：排名 {a_rank} | 近5场场均进球 {a_avg_scored:.2f} | 失球 {a_avg_conceded:.2f}\n"
@@ -321,7 +329,9 @@ for _, match in df_merged.iterrows():
     else: report_line += f"\n🌤️ 比赛日天气：{weather}\n"
     report_line += f"\n📈 赔率市场分析：市场平均：主胜 {match['主胜概率']*100:.1f}% | 平局 {match['平局概率']*100:.1f}% | 客胜 {match['客胜概率']*100:.1f}%\n"
     report_line += f"\n📈 价值投注分析：\n{value_msg}"
-    report_line += f"\n🎯 V11模型综合预测：主胜 {probs[2]*100:.1f}% | 平局 {probs[1]*100:.1f}% | 客胜 {probs[0]*100:.1f}%\n   最可能比分：{top3[0][0]} | {top3[1][0]} | {top3[2][0]}\n"
+    report_line += f"\n🎯 V11模型综合预测：主胜 {prob_home_win*100:.1f}% | 平局 {prob_draw*100:.1f}% | 客胜 {prob_away_win*100:.1f}%\n"
+    report_line += f"   最可能比分：{top3[0][0]} | {top3[1][0]} | {top3[2][0]}\n"
+    report_line += f"   进球数预测：{over_under_msg}\n"
     report_line += f"\n🧠 DeepSeek 专家深度点评：\n   {expert_comment}\n"
     report_line += f"\n💡 综合推荐：{recommend}\n{'='*60}\n"
 
