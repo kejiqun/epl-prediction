@@ -191,15 +191,12 @@ for idx, row in df_hist.iterrows():
     h_pts = 3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0)
     team_stats[home]['points'].append(h_pts)
     if team_rank_dict.get(away, 15) <= 6: team_stats[home]['vs_strong'].append(h_pts)
-    
     team_stats[away]['scored'].append(row['away_goals']); team_stats[away]['conceded'].append(row['home_goals'])
     a_pts = 3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0)
     team_stats[away]['points'].append(a_pts)
     if team_rank_dict.get(home, 15) <= 6: team_stats[away]['vs_strong'].append(a_pts)
-    
     last_match_date[home] = match_date; last_match_date[away] = match_date
 
-# 🌟 读取知识库经验
 knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f:
@@ -212,7 +209,10 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-report_content = "【英超全自动预测系统 V12 - 专家深度分析报告】\n\n"
+report_content = "【英超全自动预测系统 V13 - 专家深度分析报告】\n\n"
+
+# 🌟 新增：准备预测日志记录
+prediction_logs = []
 
 for _, match in df_merged.iterrows():
     home_cn, away_cn = match['主队'], match['客队']
@@ -234,7 +234,6 @@ for _, match in df_merged.iterrows():
     a_attack, a_defense = a_avg_scored / league_avg_goals, a_avg_conceded / league_avg_goals
     h_win_rate = np.mean(h['points'][-5:]) if h['points'] else 0.5
     a_win_rate = np.mean(a['points'][-5:]) if a['points'] else 0.5
-    
     h_vs_strong = np.mean(h['vs_strong'][-5:]) if h['vs_strong'] else 0.5
     a_vs_strong = np.mean(a['vs_strong'][-5:]) if a['vs_strong'] else 0.5
 
@@ -268,7 +267,7 @@ for _, match in df_merged.iterrows():
     score_probs.sort(key=lambda x: x[1], reverse=True)
     top3 = score_probs[:3]
     prob_over_2_5 = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + ag > 2.5)
-    over_under_msg = f"大2.5球 (概率 {prob_over_2_5*100:.1f}%)" if prob_over_2_5 > 0.5 else f"小2.5球 (概率 {(1-prob_over_2_5)*100:.1f}%)"
+    over_under_msg = f"大2.5球" if prob_over_2_5 > 0.5 else f"小2.5球"
 
     weather = get_match_weather(home_cn, match_time)
     market_h, market_d, market_a = match['主胜概率'], match['平局概率'], match['客胜概率']
@@ -293,6 +292,18 @@ for _, match in df_merged.iterrows():
         expert_comment = response.choices[0].message.content.strip()
     except: expert_comment = "【AI深度分析暂时不可用】"
     
+    # 🌟 记录预测日志
+    prediction_logs.append({
+        'date': match_date_only.strftime('%Y-%m-%d'),
+        'home_team': home_cn,
+        'away_team': away_cn,
+        'predicted_result': recommend,
+        'pred_prob_h': round(prob_home_win, 4),
+        'pred_prob_d': round(prob_draw, 4),
+        'pred_prob_a': round(prob_away_win, 4),
+        'predicted_score': top3[0][0]
+    })
+
     report_line = f"\n{'='*60}\n"
     report_line += f"【比赛时间】{match_time}\n【对阵双方】{home_cn} vs {away_cn}\n{'='*60}\n"
     report_line += f"\n📊 球队数据对比：\n   {home_cn}：排名 {team_rank_dict.get(home_cn, 15)} | 近5场进 {h_avg_scored:.2f} 失 {h_avg_conceded:.2f} | 休息 {h_rest} 天\n   {away_cn}：排名 {team_rank_dict.get(away_cn, 15)} | 近5场进 {a_avg_scored:.2f} 失 {a_avg_conceded:.2f} | 休息 {a_rest} 天\n"
@@ -307,4 +318,12 @@ for _, match in df_merged.iterrows():
     print(report_line)
     report_content += report_line
 
-send_email("本周末英超 V12 真实赛程预测报告", report_content)
+# 保存预测日志，为下一场微观复盘做准备
+log_df = pd.DataFrame(prediction_logs)
+if os.path.exists('predictions_log.csv'):
+    old_log = pd.read_csv('predictions_log.csv')
+    log_df = pd.concat([old_log, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
+log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
+print("✅ 预测结果已存入 predictions_log.csv")
+
+send_email("本周末英超 V13 真实赛程预测报告", report_content)
