@@ -120,7 +120,7 @@ df_upcoming['datetime_parsed'] = pd.to_datetime(df_upcoming['datetime']).dt.tz_c
 today_ts = pd.Timestamp.now().normalize()
 df_next_round = df_upcoming[(df_upcoming['datetime_parsed'] >= today_ts) & (df_upcoming['datetime_parsed'] <= today_ts + pd.Timedelta(days=10))].sort_values('datetime_parsed').reset_index(drop=True)
 
-print("\n⏳ 正在获取赔率...")
+print("\n⏳ 正在获取赔率并监控资金异动...")
 odds_records = []
 try:
     resp = requests.get("https://api.the-odds-api.com/v4/sports/soccer_epl/odds", params={'apiKey': ODDS_API_KEY, 'regions': 'uk', 'markets': 'h2h', 'oddsFormat': 'decimal'}, timeout=20)
@@ -138,16 +138,22 @@ try:
                 a_odd = next((o['price'] for o in outcomes if o['name'] == match['away_team']), None)
                 if h_odd and d_odd and a_odd:
                     total = 1/h_odd + 1/d_odd + 1/a_odd
-                    bookmaker_odds.append({'h': (1/h_odd)/total, 'd': (1/d_odd)/total, 'a': (1/a_odd)/total})
+                    bookmaker_odds.append({'h': (1/h_odd)/total, 'd': (1/d_odd)/total, 'a': (1/a_odd)/total, 'h_odd': h_odd, 'd_odd': d_odd, 'a_odd': a_odd})
         if bookmaker_odds:
             probs_h = [b['h'] for b in bookmaker_odds]; probs_d = [b['d'] for b in bookmaker_odds]; probs_a = [b['a'] for b in bookmaker_odds]
             valid_h = [p for p in probs_h if abs(p - np.mean(probs_h)) / np.mean(probs_h) < 0.2]
             valid_d = [p for p in probs_d if abs(p - np.mean(probs_d)) / np.mean(probs_d) < 0.2]
             valid_a = [p for p in probs_a if abs(p - np.mean(probs_a)) / np.mean(probs_a) < 0.2]
             if valid_h and valid_d and valid_a:
-                odds_records.append({'主队': home_cn, '客队': away_cn, '主胜概率': round(np.mean(valid_h), 4), '平局概率': round(np.mean(valid_d), 4), '客胜概率': round(np.mean(valid_a), 4)})
+                # 取第一家博彩公司的真实赔率作为计算基准
+                ref_odds = bookmaker_odds[0]
+                odds_records.append({
+                    '主队': home_cn, '客队': away_cn, 
+                    '主胜概率': round(np.mean(valid_h), 4), '平局概率': round(np.mean(valid_d), 4), '客胜概率': round(np.mean(valid_a), 4),
+                    '真实赔率主胜': ref_odds['h_odd'], '真实赔率平局': ref_odds['d_odd'], '真实赔率客胜': ref_odds['a_odd']
+                })
 except: pass
-df_odds = pd.DataFrame(odds_records) if odds_records else pd.DataFrame(columns=['主队', '客队', '主胜概率', '平局概率', '客胜概率'])
+df_odds = pd.DataFrame(odds_records) if odds_records else pd.DataFrame(columns=['主队', '客队', '主胜概率', '平局概率', '客胜概率', '真实赔率主胜', '真实赔率平局', '真实赔率客胜'])
 
 try:
     df_standings = pd.read_csv('epl_standings.csv')
@@ -209,9 +215,7 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-report_content = "【英超全自动预测系统 V13 - 专家深度分析报告】\n\n"
-
-# 🌟 新增：准备预测日志记录
+report_content = "【英超全自动预测系统 V14 - 凯利指数与资金管理报告】\n\n"
 prediction_logs = []
 
 for _, match in df_merged.iterrows():
@@ -272,6 +276,22 @@ for _, match in df_merged.iterrows():
     weather = get_match_weather(home_cn, match_time)
     market_h, market_d, market_a = match['主胜概率'], match['平局概率'], match['客胜概率']
     
+    # 🌟 V14 核心：凯利公式计算下注比例
+    # 凯利公式: f = (bp - q) / b  (b为赔率-1，p为模型胜率，q为败率 1-p)
+    kelly_h, kelly_d, kelly_a = 0.0, 0.0, 0.0
+    odds_h = match.get('真实赔率主胜', 2.0)
+    odds_d = match.get('真实赔率平局', 3.0)
+    odds_a = match.get('真实赔率客胜', 3.0)
+    
+    if pd.notna(odds_h) and odds_h > 1.0:
+        kelly_h = (prob_home_win * odds_h - 1) / (odds_h - 1)
+    if pd.notna(odds_d) and odds_d > 1.0:
+        kelly_d = (prob_draw * odds_d - 1) / (odds_d - 1)
+    if pd.notna(odds_a) and odds_a > 1.0:
+        kelly_a = (prob_away_win * odds_a - 1) / (odds_a - 1)
+        
+    kelly_msg = f"最优下注比例（凯利指数）：主胜 {max(0, kelly_h)*100:.1f}% | 平局 {max(0, kelly_d)*100:.1f}% | 客胜 {max(0, kelly_a)*100:.1f}%"
+
     home_injuries = injury_dict.get(home_cn, ["暂无重大伤停"])
     away_injuries = injury_dict.get(away_cn, ["暂无重大伤停"])
     
@@ -283,6 +303,7 @@ for _, match in df_merged.iterrows():
     赛程密度：{h_rot} {a_rot}
     进球期望：主队 {home_xg:.2f}，客队 {away_xg:.2f}。大小球倾向：{over_under_msg}。
     赔率倾向：主胜 {market_h*100:.1f}%，平局 {market_d*100:.1f}%，客胜 {market_a*100:.1f}%。
+    {kelly_msg}
     伤停：{home_cn} [{'，'.join(home_injuries)}]；{away_cn} [{'，'.join(away_injuries)}]。
     **历史经验库（请务必参考）**：{knowledge_base}
     请综合以上信息分析，并以“推荐关注：XXX”结尾。"""
@@ -292,7 +313,6 @@ for _, match in df_merged.iterrows():
         expert_comment = response.choices[0].message.content.strip()
     except: expert_comment = "【AI深度分析暂时不可用】"
     
-    # 🌟 记录预测日志
     prediction_logs.append({
         'date': match_date_only.strftime('%Y-%m-%d'),
         'home_team': home_cn,
@@ -309,6 +329,7 @@ for _, match in df_merged.iterrows():
     report_line += f"\n📊 球队数据对比：\n   {home_cn}：排名 {team_rank_dict.get(home_cn, 15)} | 近5场进 {h_avg_scored:.2f} 失 {h_avg_conceded:.2f} | 休息 {h_rest} 天\n   {away_cn}：排名 {team_rank_dict.get(away_cn, 15)} | 近5场进 {a_avg_scored:.2f} 失 {a_avg_conceded:.2f} | 休息 {a_rest} 天\n"
     if isinstance(weather, dict): report_line += f"\n🌤️ 比赛日天气：{weather['天气']} | 温度 {weather['温度']}°C\n"
     report_line += f"\n📈 赔率市场分析：主胜 {market_h*100:.1f}% | 平局 {market_d*100:.1f}% | 客胜 {market_a*100:.1f}%\n"
+    report_line += f"\n💰 {kelly_msg}\n"
     report_line += f"\n🎯 V12模型综合预测：主胜 {prob_home_win*100:.1f}% | 平局 {prob_draw*100:.1f}% | 客胜 {prob_away_win*100:.1f}%\n"
     report_line += f"   最可能比分：{top3[0][0]} | {top3[1][0]} | {top3[2][0]}\n"
     report_line += f"   进球数预测：{over_under_msg}\n"
@@ -318,7 +339,6 @@ for _, match in df_merged.iterrows():
     print(report_line)
     report_content += report_line
 
-# 保存预测日志，为下一场微观复盘做准备
 log_df = pd.DataFrame(prediction_logs)
 if os.path.exists('predictions_log.csv'):
     old_log = pd.read_csv('predictions_log.csv')
@@ -326,4 +346,4 @@ if os.path.exists('predictions_log.csv'):
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 print("✅ 预测结果已存入 predictions_log.csv")
 
-send_email("本周末英超 V13 真实赛程预测报告", report_content)
+send_email("本周末英超 V14 真实赛程预测报告（含凯利下注比例）", report_content)
