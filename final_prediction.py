@@ -17,7 +17,6 @@ from email.header import Header
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from sklearn.neural_network import MLPRegressor
 
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei', 'Arial Unicode MS']
 plt.rcParams['axes.unicode_minus'] = False
@@ -94,7 +93,7 @@ def get_match_weather(home_team, date_str):
     except: pass
     return "获取失败"
 
-print("⏳ 正在从 ESPN 获取未来赛程...")
+print("⏳ 正在从 ESPN 获取未来赛程（含裁判信息）...")
 upcoming = []
 today = datetime.now()
 for i in range(10):
@@ -111,8 +110,21 @@ for i in range(10):
                         competitors = competitions[0].get('competitors', [])
                         home_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'home'), None)
                         away_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'away'), None)
+                        
+                        # 🌟 核心挖掘：抓取裁判信息
+                        officials = competitions[0].get('officials', [])
+                        referee = "未知"
+                        if officials:
+                            ref_obj = next((o for o in officials if o.get('position', {}).get('displayName') == 'Referee'), officials[0])
+                            referee = ref_obj.get('displayName', "未知")
+                            
                         if home_team and away_team:
-                            upcoming.append({'datetime': event['date'], 'home_team': home_team, 'away_team': away_team})
+                            upcoming.append({
+                                'datetime': event['date'], 
+                                'home_team': home_team, 
+                                'away_team': away_team,
+                                'referee': referee
+                            })
     except: continue
 
 if len(upcoming) == 0:
@@ -178,7 +190,7 @@ try:
                 injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})" if news else f"{player_name}({status_cn})")
 except: pass
 
-print("⏳ 正在加载 V15 模型与神经网络集成模型...")
+print("⏳ 正在加载 V15 模型并计算特征...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist = df_hist.sort_values('date').reset_index(drop=True)
@@ -196,19 +208,15 @@ for idx, row in df_hist.iterrows():
     for t in [home, away]:
         if t not in team_stats: team_stats[t] = {'scored':[], 'conceded':[], 'points':[], 'home_scored':[], 'home_conceded':[], 'away_scored':[], 'away_conceded':[]}
         if t not in last_match_date: last_match_date[t] = None
-    
     if (home, away) not in h2h_stats: h2h_stats[(home, away)] = []
-    
     team_stats[home]['scored'].append(row['home_goals']); team_stats[home]['conceded'].append(row['away_goals'])
     team_stats[home]['home_scored'].append(row['home_goals']); team_stats[home]['home_conceded'].append(row['away_goals'])
     h_pts = 3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0)
     team_stats[home]['points'].append(h_pts)
-    
     team_stats[away]['scored'].append(row['away_goals']); team_stats[away]['conceded'].append(row['home_goals'])
     team_stats[away]['away_scored'].append(row['away_goals']); team_stats[away]['away_conceded'].append(row['home_goals'])
     a_pts = 3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0)
     team_stats[away]['points'].append(a_pts)
-    
     h2h_stats[(home, away)].append((row['home_goals'], row['away_goals']))
     last_match_date[home] = match_date; last_match_date[away] = match_date
 
@@ -223,13 +231,14 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-html_report = "<html><body><h2>⚽ 英超全自动预测系统 V22 - 图文战报</h2>"
+html_report = "<html><body><h2>⚽ 英超全自动预测系统 V23 - 图文战报</h2>"
 prediction_logs = []
 img_buffers = []
 odds_history_list = []
 
 for idx, (_, match) in enumerate(df_merged.iterrows()):
     home_cn, away_cn = match['主队'], match['客队']
+    referee = match['referee']
     match_time = pd.to_datetime(match['datetime_parsed']).strftime('%Y-%m-%d %H:%M')
     match_date_only = pd.to_datetime(match['datetime_parsed']).date()
     
@@ -328,8 +337,10 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     h_rot = f"{home_cn}休息{h_rest}天。" + ("赛程密集!" if h_rest <= 3 else "")
     a_rot = f"{away_cn}休息{a_rest}天。" + ("赛程密集!" if a_rest <= 3 else "")
 
+    # 🌟 将裁判信息加入 Prompt
     prompt = f"""你是一位精通英超的资深数据分析专家，同时也是战术大师。请基于以下数据，结合历史经验，写一段精炼、口语化的赛前点评（不超过180字）：
     比赛：{home_cn} vs {away_cn}
+    当值主裁：{referee}
     赛程密度：{h_rot} {a_rot}
     历史交锋：近3次交手主队胜率 {h2h_home_win_rate*100:.1f}%
     主场龙/客场虫分析：{home_cn}主场进{h_home_scored:.2f}失{h_home_conceded:.2f}；{away_cn}客场进{a_away_scored:.2f}失{a_away_conceded:.2f}。
@@ -338,7 +349,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     赔率异动：{odds_drift_msg}
     {kelly_msg}
     伤停：{home_cn} [{home_injuries_str}]；{away_cn} [{away_injuries_str}]。
-    **任务**：请务必结合两队大概率使用的阵型分析战术克制关系。
+    **任务**：请务必结合两队大概率使用的阵型分析战术克制关系，并简要评价一下当值主裁的执法风格（若了解）。
     **历史经验库**：{knowledge_base}
     请综合以上信息分析，并以“推荐关注：XXX”结尾。"""
     
@@ -358,7 +369,8 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
         'home_injuries': home_injuries_str,
         'away_injuries': away_injuries_str,
         'home_rest': h_rest,
-        'away_rest': a_rest
+        'away_rest': a_rest,
+        'referee': referee # 🌟 存入日志
     })
 
     # ==================== 中文化图表 ====================
@@ -368,7 +380,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     market_probs = [market_h, market_d, market_a]
     x = np.arange(len(labels))
     width = 0.35
-    ax1.bar(x - width/2, model_probs, width, label='V22 模型', color='royalblue')
+    ax1.bar(x - width/2, model_probs, width, label='V23 模型', color='royalblue')
     ax1.bar(x + width/2, market_probs, width, label='市场平均', color='gray', alpha=0.7)
     ax1.set_xticks(x); ax1.set_xticklabels(labels)
     ax1.set_ylabel('概率')
@@ -388,6 +400,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     plt.close(fig)
 
     html_report += f"<hr><h3>{match_time} - {home_cn} vs {away_cn}</h3>"
+    html_report += f"<p><b>👮 当值主裁：</b>{referee}</p>"
     html_report += f"<img src='cid:chart_{idx}' width='600'><br>"
     html_report += f"<p><b>📊 核心数据：</b>{home_cn} 近5场 {h_avg_scored:.2f}进/{h_avg_conceded:.2f}失 | {away_cn} 近5场 {a_avg_scored:.2f}进/{a_avg_conceded:.2f}失</p>"
     html_report += f"<p><b>⚔️ 历史交锋：</b>近3次交手，主队胜率 {h2h_home_win_rate*100:.1f}%</p>"
@@ -402,7 +415,7 @@ html_report += "</body></html>"
 log_df = pd.DataFrame(prediction_logs)
 if os.path.exists('predictions_log.csv'):
     old_log = pd.read_csv('predictions_log.csv')
-    for col in ['odds_h', 'odds_d', 'odds_a', 'weather', 'home_injuries', 'away_injuries', 'home_rest', 'away_rest']:
+    for col in ['odds_h', 'odds_d', 'odds_a', 'weather', 'home_injuries', 'away_injuries', 'home_rest', 'away_rest', 'referee']:
         if col not in old_log.columns: old_log[col] = ""
     log_df = pd.concat([old_log, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
@@ -416,4 +429,4 @@ history_df.to_csv('odds_history.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("本周末英超 V22 图文预测报告", html_report, img_buffers)
+send_rich_email("本周末英超 V23 图文预测报告（含裁判情报）", html_report, img_buffers)
