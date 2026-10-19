@@ -22,7 +22,6 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei', 'Arial Unico
 plt.rcParams['axes.unicode_minus'] = False
 warnings.filterwarnings('ignore')
 
-# ==================== 密钥配置 ====================
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -46,7 +45,7 @@ def send_rich_email(subject, html_content, img_buffers, receiver="308730509@qq.c
         print("✅ 图文邮件发送成功！")
     except Exception as e: print(f"❌ 邮件发送失败: {e}")
 
-# 字典省略（保持原有）
+# 字典省略（保持原样）
 team_mapping = {
     'Arsenal FC': '阿森纳', 'Arsenal': '阿森纳', 'Aston Villa FC': '阿斯顿维拉', 'Aston Villa': '阿斯顿维拉',
     'AFC Bournemouth': '伯恩茅斯', 'Bournemouth': '伯恩茅斯', 'Brentford FC': '布伦特福德', 'Brentford': '布伦特福德',
@@ -101,7 +100,7 @@ def dixon_coles_tau(h, a, home_xg, away_xg, rho=-0.1):
     elif h == 1 and a == 1: return 1 - rho
     else: return 1.0
 
-print("⏳ 正在从 ESPN 获取未来赛程（含裁判信息）...")
+print("⏳ 正在从 ESPN 获取未来赛程...")
 upcoming = []
 today = datetime.now()
 for i in range(10):
@@ -119,7 +118,6 @@ for i in range(10):
                         home_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'home'), None)
                         away_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'away'), None)
                         
-                        # 🌟 容错修复：防止 officials 为空导致报错，找不到就默认“官方未公布”
                         officials = competitions[0].get('officials', [])
                         referee = "官方未公布"
                         if officials:
@@ -202,7 +200,7 @@ try:
                 injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})" if news else f"{player_name}({status_cn})")
 except: pass
 
-print("⏳ 正在加载 V24 模型并计算特征...")
+print("⏳ 正在加载 V24 融合模型并计算特征...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist = df_hist.sort_values('date').reset_index(drop=True)
@@ -243,7 +241,7 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-html_report = "<html><body><h2>⚽ 英超全自动预测系统 V25 - 图文战报</h2>"
+html_report = "<html><body><h2>⚽ 英超全自动预测系统 V26 - 图文战报</h2>"
 prediction_logs = []
 img_buffers = []
 odds_history_list = []
@@ -281,11 +279,15 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     h_win_rate = np.mean(h['points'][-5:]) if h['points'] else 0.5
     a_win_rate = np.mean(a['points'][-5:]) if a['points'] else 0.5
 
+    # 🌟 核心优化：将双方近期胜率差加入特征池，提升强队客场韧性的评估
+    win_rate_diff = h_win_rate - a_win_rate
+
     feature_dict = {
         'attack': h_attack, 'defense': h_defense, 'opp_attack': a_attack, 'opp_defense': a_defense,
         'home_attack_spec': h_home_attack, 'home_defense_spec': h_home_defense, 
         'away_attack_spec': a_away_attack, 'away_defense_spec': a_away_defense,
-        'win_rate': h_win_rate, 'opp_win_rate': a_win_rate, 'rest_days': h_rest, 'opp_rest_days': a_rest, 'is_home': 1,
+        'win_rate': h_win_rate, 'opp_win_rate': a_win_rate, 'win_rate_diff': win_rate_diff, # 🌟 新增特征
+        'rest_days': h_rest, 'opp_rest_days': a_rest, 'is_home': 1,
         'home_rank': team_rank_dict.get(home_cn, 15), 'away_rank': team_rank_dict.get(away_cn, 15),
         'prob_h_odds': match['主胜概率'], 'prob_d_odds': match['平局概率'], 'prob_a_odds': match['客胜概率']
     }
@@ -442,4 +444,4 @@ history_df.to_csv('odds_history.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("本周末英超 V25 终极修复与升维战报", html_report, img_buffers)
+send_rich_email("本周末英超 V26 升级版预测报告", html_report, img_buffers)
