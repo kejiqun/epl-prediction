@@ -75,11 +75,19 @@ try:
     df_finished = pd.DataFrame(finished_matches)
 
     if not df_finished.empty:
-        # 🌟 新增：读取预测日志进行对比
         match_details_text = ""
+        # 🌟 V16 核心：虚拟实盘 ROI 追踪
+        bankroll_file = 'bankroll.csv'
+        if not os.path.exists(bankroll_file):
+            pd.DataFrame([{'date': '2026-01-01', 'balance': 10000, 'pnl': 0, 'bet_count': 0}]).to_csv(bankroll_file, index=False)
+            
+        current_bankroll = pd.read_csv(bankroll_file).iloc[-1]
+        balance = current_bankroll['balance']
+        bet_count = current_bankroll['bet_count']
+        weekly_pnl = 0
+        
         if os.path.exists('predictions_log.csv'):
             log_df = pd.read_csv('predictions_log.csv')
-            # 找出刚刚结束的比赛，匹配预测记录
             for _, row in df_finished.iterrows():
                 pred_match = log_df[(log_df['date'] == row['date']) & 
                                     (log_df['home_team'] == row['home_team']) & 
@@ -87,19 +95,46 @@ try:
                 if not pred_match.empty:
                     p = pred_match.iloc[-1]
                     actual_res = "主胜" if row['home_goals'] > row['away_goals'] else ("平局" if row['home_goals'] == row['away_goals'] else "客胜")
-                    match_details_text += f"- {row['home_team']} {row['home_goals']}-{row['away_goals']} {row['away_team']} | 实际: {actual_res}。赛前预测: {p['predicted_result']} (比分{p['predicted_score']})\n"
+                    
+                    # 检查凯利下注是否命中
+                    odds_h = p.get('odds_h', 2.0)
+                    odds_d = p.get('odds_d', 3.0)
+                    odds_a = p.get('odds_a', 3.0)
+                    
+                    bet_amount = 0
+                    payout = 0
+                    
+                    # 如果当时模型推荐了主胜且有凯利价值，模拟下注
+                    if p['predicted_result'] == '主胜' and p['pred_prob_h'] > (1/odds_h):
+                        bet_pct = (p['pred_prob_h'] * odds_h - 1) / (odds_h - 1)
+                        bet_amount = balance * max(0, bet_pct) * 0.1 # 取10%分数凯利防破产
+                        if actual_res == '主胜': payout = bet_amount * odds_h
+                        else: payout = 0
+                    elif p['predicted_result'] == '客胜' and p['pred_prob_a'] > (1/odds_a):
+                        bet_pct = (p['pred_prob_a'] * odds_a - 1) / (odds_a - 1)
+                        bet_amount = balance * max(0, bet_pct) * 0.1
+                        if actual_res == '客胜': payout = bet_amount * odds_a
+                        else: payout = 0
+                        
+                    if bet_amount > 0:
+                        net_profit = payout - bet_amount
+                        weekly_pnl += net_profit
+                        bet_count += 1
+                        match_details_text += f"- {row['home_team']} {row['home_goals']}-{row['away_goals']} {row['away_team']} | 实际: {actual_res} | 投注: {bet_amount:.0f} | 盈亏: {net_profit:.0f}\n"
+
+        balance += weekly_pnl
+        # 保存最新资金账户
+        pd.DataFrame([{'date': datetime.now().strftime('%Y-%m-%d'), 'balance': balance, 'pnl': weekly_pnl, 'bet_count': bet_count}]).to_csv(bankroll_file, mode='a', header=False, index=False)
 
         review_text = f"【近期赛果复盘】\n"
         for _, row in df_finished.iterrows():
             review_text += f"- {row['date']}：{row['home_team']} {row['home_goals']}-{row['away_goals']} {row['away_team']}\n"
             
-        prompt = f"""你是一位资深英超分析师。请基于以下真实赛果与我们的预测对比，完成两项任务：
+        prompt = f"""你是一位资深英超分析师。请基于以下真实赛果与预测对比，完成两项任务：
 1. 微观归因：分析预测错误或正确的比赛，找出原因（不超过100字）。
 2. 提炼一条优化经验，用“经验：”开头（不超过50字）。
 
-【真实赛果】：
-{review_text}
-【预测对比】：
+【预测对比与虚拟盘口】：
 {match_details_text if match_details_text else "暂无匹配的预测记录"}
 """
         
@@ -108,6 +143,7 @@ try:
         
         print("\n" + "="*60)
         print(f"🧠 DeepSeek V13 复盘：\n{review_comment}")
+        print(f"💰 本周虚拟资金盈亏：{weekly_pnl:.2f} | 当前总资金：{balance:.2f}")
         print("="*60)
         
         if "经验：" in review_comment:
@@ -116,18 +152,15 @@ try:
                 f.write(f"- [{datetime.now().strftime('%Y-%m-%d')}] {new_knowledge}\n")
             print(f"✅ 已成功将新经验追加到 knowledge.txt 中！")
         
-        send_email("近期英超 V13 微观复盘报告", review_text + "\n" + review_comment)
+        send_email("近期英超 V16 复盘与资金报表", review_text + f"\n本周盈亏: {weekly_pnl:.2f} | 当前资金: {balance:.2f}\n" + review_comment)
         
         print("\n⏳ 正在将新赛果追加到历史数据库...")
         try:
             df_hist = pd.read_csv('epl_matches_10y.csv')
-            # 转换格式以匹配历史数据库（英文名）
             df_finished['home_team_en'] = df_finished['home_team'].map({v: k for k, v in team_mapping.items()}).fillna(df_finished['home_team'])
             df_finished['away_team_en'] = df_finished['away_team'].map({v: k for k, v in team_mapping.items()}).fillna(df_finished['away_team'])
-            
             new_data = df_finished[['date', 'home_team_en', 'away_team_en', 'home_goals', 'away_goals']].copy()
             new_data.columns = ['date', 'home_team', 'away_team', 'home_goals', 'away_goals']
-            
             df_updated = pd.concat([df_hist, new_data], ignore_index=True)
             df_updated.drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last', inplace=True)
             df_updated.to_csv('epl_matches_10y.csv', index=False, encoding='utf-8-sig')
