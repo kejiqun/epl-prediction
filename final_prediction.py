@@ -5,7 +5,6 @@ import joblib
 import os
 import json
 import io
-import base64
 from scipy.stats import poisson
 from datetime import datetime, timedelta
 import warnings
@@ -23,7 +22,6 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei', 'Arial Unico
 plt.rcParams['axes.unicode_minus'] = False
 warnings.filterwarnings('ignore')
 
-# ==================== 密钥配置 ====================
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -67,9 +65,7 @@ team_mapping = {
     'Southampton FC': '南安普顿', 'Southampton': '南安普顿', 'Tottenham Hotspur FC': '托特纳姆热刺', 'Tottenham Hotspur': '托特纳姆热刺', 'Tottenham': '托特纳姆热刺',
     'West Ham United FC': '西汉姆联', 'West Ham United': '西汉姆联', 'Wolverhampton Wanderers FC': '狼队', 'Wolverhampton Wanderers': '狼队', 'Wolves': '狼队',
     'Leeds United FC': '利兹联', 'Leeds United': '利兹联', 'Sunderland AFC': '桑德兰', 'Sunderland': '桑德兰',
-    'Hull City AFC': '赫尔城', 'Hull City': '赫尔城', 'Coventry City FC': '考文垂', 'Coventry City': '考文垂',
-    'Burnley FC': '伯恩利', 'Burnley': '伯恩利', 'Sheffield United FC': '谢菲尔德联', 'Sheffield United': '谢菲尔德联',
-    'Luton Town FC': '卢顿', 'Luton Town': '卢顿', 'Watford FC': '沃特福德', 'Watford': '沃特福德', 'Norwich City FC': '诺维奇', 'Norwich City': '诺维奇'
+    'Hull City AFC': '赫尔城', 'Hull City': '赫尔城', 'Coventry City FC': '考文垂', 'Coventry City': '考文垂'
 }
 
 def translate_team_name(name):
@@ -233,7 +229,7 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-html_report = "<html><body><h2>⚽ 英超全自动预测系统 V19 - 图文战报</h2>"
+html_report = "<html><body><h2>⚽ 英超全自动预测系统 V21 - 图文战报</h2>"
 prediction_logs = []
 img_buffers = []
 odds_history_list = []
@@ -243,7 +239,6 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     match_time = pd.to_datetime(match['datetime_parsed']).strftime('%Y-%m-%d %H:%M')
     match_date_only = pd.to_datetime(match['datetime_parsed']).date()
     
-    # H2H 近3次交锋主队胜率
     past_h2h = h2h_stats.get((home_cn, away_cn), [])[-3:]
     h2h_home_win_rate = sum(1 for h, a in past_h2h if h > a) / len(past_h2h) if past_h2h else 0.5
 
@@ -332,8 +327,10 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
                 
     odds_history_list.append({'date': match_date_only.strftime('%Y-%m-%d'), '主队': home_cn, '客队': away_cn, 'odds_h': odds_h, 'odds_d': odds_d, 'odds_a': odds_a})
 
-    home_injuries = injury_dict.get(home_cn, ["暂无重大伤停"])
-    away_injuries = injury_dict.get(away_cn, ["暂无重大伤停"])
+    # 提取完整情报字符串
+    home_injuries_str = '，'.join(injury_dict.get(home_cn, ["无"]))
+    away_injuries_str = '，'.join(injury_dict.get(away_cn, ["无"]))
+    weather_str = weather['天气'] if isinstance(weather, dict) else weather
     
     h_rot = f"{home_cn}休息{h_rest}天。" + ("赛程密集!" if h_rest <= 3 else "")
     a_rot = f"{away_cn}休息{a_rest}天。" + ("赛程密集!" if a_rest <= 3 else "")
@@ -347,7 +344,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     赔率倾向：主胜 {market_h*100:.1f}%，平局 {market_d*100:.1f}%，客胜 {market_a*100:.1f}%。
     赔率异动：{odds_drift_msg}
     {kelly_msg}
-    伤停：{home_cn} [{'，'.join(home_injuries)}]；{away_cn} [{'，'.join(away_injuries)}]。
+    伤停：{home_cn} [{home_injuries_str}]；{away_cn} [{away_injuries_str}]。
     **任务**：请务必结合两队大概率使用的阵型分析战术克制关系。
     **历史经验库**：{knowledge_base}
     请综合以上信息分析，并以“推荐关注：XXX”结尾。"""
@@ -357,13 +354,19 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
         expert_comment = response.choices[0].message.content.strip()
     except: expert_comment = "【AI深度分析暂时不可用】"
     
+    # 🌟 核心：保存完整的上下文情报进日志，供复盘使用
     prediction_logs.append({
         'date': match_date_only.strftime('%Y-%m-%d'),
         'home_team': home_cn, 'away_team': away_cn,
         'predicted_result': recommend,
         'pred_prob_h': round(prob_home_win, 4), 'pred_prob_d': round(prob_draw, 4), 'pred_prob_a': round(prob_away_win, 4),
         'predicted_score': top3[0][0],
-        'odds_h': odds_h, 'odds_d': odds_d, 'odds_a': odds_a
+        'odds_h': odds_h, 'odds_d': odds_d, 'odds_a': odds_a,
+        'weather': weather_str,
+        'home_injuries': home_injuries_str,
+        'away_injuries': away_injuries_str,
+        'home_rest': h_rest,
+        'away_rest': a_rest
     })
 
     # ==================== 中文化图表 ====================
@@ -407,8 +410,8 @@ html_report += "</body></html>"
 log_df = pd.DataFrame(prediction_logs)
 if os.path.exists('predictions_log.csv'):
     old_log = pd.read_csv('predictions_log.csv')
-    for col in ['odds_h', 'odds_d', 'odds_a']:
-        if col not in old_log.columns: old_log[col] = 0.0
+    for col in ['odds_h', 'odds_d', 'odds_a', 'weather', 'home_injuries', 'away_injuries', 'home_rest', 'away_rest']:
+        if col not in old_log.columns: old_log[col] = ""
     log_df = pd.concat([old_log, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
@@ -418,8 +421,7 @@ if os.path.exists('odds_history.csv'):
     history_df = pd.concat([old_hist, history_df]).drop_duplicates(subset=['date', '主队', '客队'], keep='last')
 history_df.to_csv('odds_history.csv', index=False, encoding='utf-8-sig')
 
-# 保存 HTML 看板，上传到 GitHub 可以直接在浏览器打开看图表
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("本周末英超 V19 图文预测报告", html_report, img_buffers)
+send_rich_email("本周末英超 V21 图文预测报告", html_report, img_buffers)
