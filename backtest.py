@@ -35,37 +35,33 @@ def translate_team_name(name):
     if isinstance(name, str): return team_mapping.get(name.replace(" and ", " & ").strip(), name)
     return name
 
-print("⏳ 正在启动时光机 V3.0，加载历史数据与真实赔率...")
+print("⏳ 正在启动时光机 V3.1，加载历史数据与真实赔率...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist = df_hist.sort_values('date').reset_index(drop=True)
 df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
 df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
 
-# 🌟 核心修改：智能识别赔率文件的表头
+# 🌟 核心修改：直接针对你的表头进行重命名
 try:
     df_odds = pd.read_csv('epl_matches_odds.csv')
-    print("发现赔率文件，原始表头为:", df_odds.columns.tolist())
     
-    # 自动重命名列名
-    col_map = {}
-    for col in df_odds.columns:
-        cl = col.lower().strip()
-        if 'date' in cl: col_map[col] = 'date'
-        elif 'home' in cl and ('team' in cl or cl == 'home'): col_map[col] = 'home_team'
-        elif 'away' in cl and ('team' in cl or cl == 'away'): col_map[col] = 'away_team'
-        elif 'h' in cl and ('odd' in cl or cl == 'b365h' or cl == 'h' or cl == 'ph'): col_map[col] = 'odds_h'
-        elif 'd' in cl and ('odd' in cl or cl == 'b365d' or cl == 'd' or cl == 'pd'): col_map[col] = 'odds_d'
-        elif 'a' in cl and ('odd' in cl or cl == 'b365a' or cl == 'a' or cl == 'pa'): col_map[col] = 'odds_a'
+    # 直接映射列名
+    rename_dict = {
+        'date': 'date',
+        'home_team': 'home_team',
+        'away_team': 'away_team',
+        'b365_h': 'odds_h',  
+        'b365_d': 'odds_d',
+        'b365_a': 'odds_a'
+    }
+    df_odds = df_odds.rename(columns=rename_dict)
     
-    df_odds.rename(columns=col_map, inplace=True)
     df_odds['date'] = pd.to_datetime(df_odds['date'], errors='coerce')
-    df_odds = df_odds.dropna(subset=['date'])
+    df_odds = df_odds.dropna(subset=['date', 'odds_h', 'odds_d', 'odds_a'])
     
-    # 处理赔率文件里的球队名（可能已经是中文，也可能是英文）
-    if 'home_team' in df_odds.columns:
-        df_odds['home_team_cn'] = df_odds['home_team'].apply(translate_team_name)
-        df_odds['away_team_cn'] = df_odds['away_team'].apply(translate_team_name)
+    df_odds['home_team_cn'] = df_odds['home_team'].apply(translate_team_name)
+    df_odds['away_team_cn'] = df_odds['away_team'].apply(translate_team_name)
     
     # 合并数据
     df_hist = pd.merge(df_hist, df_odds[['date', 'home_team_cn', 'away_team_cn', 'odds_h', 'odds_d', 'odds_a']], 
@@ -236,7 +232,7 @@ for i in range(len(test_df)):
 plt.figure(figsize=(10, 5))
 plt.plot(bankroll_history, label='资金曲线 (Bankroll)', color='green', linewidth=2)
 plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金 (1000)')
-plt.title('时光机回测：V31 模型历史资金曲线 (真实赔率版 V3.0)')
+plt.title('时光机回测：V31 模型历史资金曲线 (真实赔率版 V3.1)')
 plt.xlabel('下注场次')
 plt.ylabel('资金余额')
 plt.legend()
@@ -249,7 +245,7 @@ win_rate = (bets_won / bets_placed * 100) if bets_placed > 0 else 0
 
 report = f"""
 ====================================
-⚽ 时光机回测报告 (真实赔率版 V3.0)
+⚽ 时光机回测报告 (真实赔率版 V3.1)
 ====================================
 回测比赛总数: {len(test_df)} 场
 实际下注场次: {bets_placed} 场 (已过滤无赔率比赛)
