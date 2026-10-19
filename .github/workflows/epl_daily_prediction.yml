@@ -52,5 +52,6 @@ jobs:
           git add epl_matches_10y.csv
           git add knowledge.txt || true
           git add predictions_log.csv || true
-          git commit -m "自动更新比赛数据、预测日志及经验库 [skip ci]" || echo "没有新数据需要更新"
+          git add bankroll.csv || true
+          git commit -m "自动更新比赛数据、预测日志及资金库 [skip ci]" || echo "没有新数据需要更新"
           git push
