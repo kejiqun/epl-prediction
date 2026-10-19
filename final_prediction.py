@@ -22,7 +22,6 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei', 'Arial Unico
 plt.rcParams['axes.unicode_minus'] = False
 warnings.filterwarnings('ignore')
 
-# ==================== 密钥配置 ====================
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -185,21 +184,17 @@ try:
     if fpl_resp.status_code == 200:
         fpl_data = fpl_resp.json()
         teams_map = {t['id']: t['name'] for t in fpl_data['teams']}
-        
         team_avg_points = {}
         for t in fpl_data['teams']:
             team_avg_points[t['id']] = t['strength_attack_home'] + t['strength_defence_home']
-            
         for element in fpl_data['elements']:
             team_id = element['team']
             team_name_cn = translate_team_name(teams_map.get(team_id))
             player_name = element['web_name']; news = element['news']
-            
             if element['status'] in ['d', 'i', 's', 'u']:
                 status_cn = {"d": "出战成疑", "i": "受伤", "s": "停赛", "u": "不可用"}.get(element['status'], "未知")
                 if team_name_cn not in injury_dict: injury_dict[team_name_cn] = []
                 injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})" if news else f"{player_name}({status_cn})")
-                
                 if element['total_points'] > 30:
                     if team_name_cn not in injury_impact: injury_impact[team_name_cn] = 0
                     injury_impact[team_name_cn] += (element['total_points'] / team_avg_points.get(team_id, 1)) * 0.05
@@ -212,7 +207,6 @@ df_hist = df_hist.sort_values('date').reset_index(drop=True)
 df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
 df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
 
-# 🌟 加载 V28 最新模型
 model_home_goals = joblib.load('epl_v28_home_goals_model.pkl')
 model_away_goals = joblib.load('epl_v28_away_goals_model.pkl')
 
@@ -300,7 +294,6 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     X_pred = pd.DataFrame([feature_dict])
     home_xg, away_xg = max(0.1, model_home_goals.predict(X_pred)[0]), max(0.1, model_away_goals.predict(X_pred)[0])
     
-    # 应用伤病折损
     home_xg = home_xg * h_inj_factor
     away_xg = away_xg * a_inj_factor
     
@@ -322,7 +315,6 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     pred_result = np.argmax(probs)
     recommend = "主胜" if pred_result == 2 else ("平局" if pred_result == 1 else "客胜")
     
-    # 🌟 比分强约束逻辑
     all_scores = [(f"{hg}-{ag}", prob_matrix[hg][ag]) for hg in range(max_goals+1) for ag in range(max_goals+1)]
     if recommend == "主胜":
         valid_scores = [s for s in all_scores if int(s[0].split('-')[0]) > int(s[0].split('-')[1])]
@@ -372,20 +364,22 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     h_rot = f"{home_cn}休息{h_rest}天。" + ("赛程密集!" if h_rest <= 3 else "")
     a_rot = f"{away_cn}休息{a_rest}天。" + ("赛程密集!" if a_rest <= 3 else "")
 
-    prompt = f"""你是一位精通英超的资深数据分析专家，同时也是盘口大师。请基于以下数据，结合历史经验，写一段精炼、口语化的赛前点评（不超过180字）：
+    # 🌟 核心修复：给 AI 戴上紧箍咒，让它的点评与模型预测（recommend）保持一致
+    prompt = f"""你是一位精通英超的资深数据分析专家，同时也是盘口大师。请基于以下数据，写一段精炼、口语化的赛前点评（不超过180字）：
     比赛：{home_cn} vs {away_cn}
+    当前模型综合推荐：{recommend}
     当值主裁：{referee}
     赛程密度：{h_rot} {a_rot}
     历史交锋：近3次交手主队胜率 {h2h_home_win_rate*100:.1f}%
-    主场龙/客场虫分析：{home_cn}主场进{h_home_scored:.2f}失{h_home_conceded:.2f}；{away_cn}客场进{a_away_scored:.2f}失{a_away_conceded:.2f}。
     进球期望：主队 {home_xg:.2f}，客队 {away_xg:.2f}。大小球倾向：{over_under_msg}。
     赔率倾向：主胜 {market_h*100:.1f}%，平局 {market_d*100:.1f}%，客胜 {market_a*100:.1f}%。
     赔率异动：{odds_drift_msg}
     {kelly_msg}
     伤停：{home_cn} [{home_injuries_str}]；{away_cn} [{away_injuries_str}]。
-    **任务**：请结合阵型克制关系，并重点从“机构诱盘心理”角度分析（比如赔率是否在诱导某一方）。最后请结合当值主裁的执法尺度判断比赛流畅度。
+    
+    **任务**：请结合阵型克制关系，重点从“机构诱盘心理”角度分析。**极其重要：你的分析必须支撑模型得出的“{recommend}”结论。**你可以提示该结论的风险（例如防冷），但你的结论必须与模型一致，不要给出与“{recommend}”相违背的推荐。
     **历史经验库**：{knowledge_base}
-    请综合以上信息分析，并以“推荐关注：XXX”结尾。"""
+    请综合以上信息分析，并以“推荐关注：XXX”结尾（XXX必须与模型综合推荐一致，或基于该推荐附加防冷说明）。"""
     
     try:
         response = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False)
@@ -414,7 +408,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     market_probs = [market_h, market_d, market_a]
     x = np.arange(len(labels))
     width = 0.35
-    ax1.bar(x - width/2, model_probs, width, label='V28 xG 模型', color='royalblue')
+    ax1.bar(x - width/2, model_probs, width, label='V28 融合模型', color='royalblue')
     ax1.bar(x + width/2, market_probs, width, label='市场平均', color='gray', alpha=0.7)
     ax1.set_xticks(x); ax1.set_xticklabels(labels)
     ax1.set_ylabel('概率')
@@ -463,4 +457,4 @@ history_df.to_csv('odds_history.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("本周末英超 V28 xG终极预测报告", html_report, img_buffers)
+send_rich_email("本周末英超 V28 终极融合预测报告", html_report, img_buffers)
