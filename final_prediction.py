@@ -19,10 +19,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-# 🌟 设置中文字体
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei', 'Arial Unicode MS']
 plt.rcParams['axes.unicode_minus'] = False
-
 warnings.filterwarnings('ignore')
 
 # ==================== 密钥配置 ====================
@@ -40,24 +38,20 @@ def send_rich_email(subject, html_content, img_buffers, receiver="308730509@qq.c
     msg['From'] = EMAIL_SENDER
     msg['To'] = receiver
     msg['Subject'] = Header(subject, 'utf-8')
-    
     msg_alt = MIMEMultipart('alternative')
     msg.attach(msg_alt)
     html_part = MIMEText(html_content, 'html', 'utf-8')
     msg_alt.attach(html_part)
-    
     for i, buf in enumerate(img_buffers):
         img = MIMEImage(buf.getvalue())
         img.add_header('Content-ID', f'<chart_{i}>')
         msg.attach(img)
-        
     try:
         smtpObj = smtplib.SMTP_SSL('smtp.qq.com', 465)
         smtpObj.login(EMAIL_SENDER, EMAIL_PASSWORD)
         smtpObj.sendmail(EMAIL_SENDER, [receiver], msg.as_string())
         print("✅ 图文邮件发送成功！")
-    except Exception as e:
-        print(f"❌ 邮件发送失败: {e}")
+    except Exception as e: print(f"❌ 邮件发送失败: {e}")
 
 team_mapping = {
     'Arsenal FC': '阿森纳', 'Arsenal': '阿森纳', 'Aston Villa FC': '阿斯顿维拉', 'Aston Villa': '阿斯顿维拉',
@@ -79,8 +73,7 @@ team_mapping = {
 }
 
 def translate_team_name(name):
-    if isinstance(name, str):
-        return team_mapping.get(name.replace(" and ", " & ").strip(), name)
+    if isinstance(name, str): return team_mapping.get(name.replace(" and ", " & ").strip(), name)
     return name
 
 team_city_mapping = {
@@ -193,7 +186,7 @@ try:
                 injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})" if news else f"{player_name}({status_cn})")
 except: pass
 
-print("⏳ 正在加载 V15 进球模型...")
+print("⏳ 正在加载 V15 进球模型并计算历史交锋(H2H)...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist = df_hist.sort_values('date').reset_index(drop=True)
@@ -204,13 +197,16 @@ model_home_goals = joblib.load('epl_v15_home_goals_model.pkl')
 model_away_goals = joblib.load('epl_v15_away_goals_model.pkl')
 
 league_avg_goals = (df_hist['home_goals'].mean() + df_hist['away_goals'].mean()) / 2
-team_stats = {}; last_match_date = {}
+team_stats = {}; last_match_date = {}; h2h_stats = {}
 
 for idx, row in df_hist.iterrows():
     home, away, match_date = row['home_team_cn'], row['away_team_cn'], row['date']
     for t in [home, away]:
         if t not in team_stats: team_stats[t] = {'scored':[], 'conceded':[], 'points':[], 'home_scored':[], 'home_conceded':[], 'away_scored':[], 'away_conceded':[]}
         if t not in last_match_date: last_match_date[t] = None
+    
+    if (home, away) not in h2h_stats: h2h_stats[(home, away)] = []
+    
     team_stats[home]['scored'].append(row['home_goals']); team_stats[home]['conceded'].append(row['away_goals'])
     team_stats[home]['home_scored'].append(row['home_goals']); team_stats[home]['home_conceded'].append(row['away_goals'])
     h_pts = 3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0)
@@ -220,6 +216,8 @@ for idx, row in df_hist.iterrows():
     team_stats[away]['away_scored'].append(row['away_goals']); team_stats[away]['away_conceded'].append(row['home_goals'])
     a_pts = 3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0)
     team_stats[away]['points'].append(a_pts)
+    
+    h2h_stats[(home, away)].append((row['home_goals'], row['away_goals']))
     
     last_match_date[home] = match_date; last_match_date[away] = match_date
 
@@ -235,7 +233,7 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-html_report = "<html><body><h2>⚽ 英超全自动预测系统 V17 - 图文战报</h2>"
+html_report = "<html><body><h2>⚽ 英超全自动预测系统 V19 - 图文战报</h2>"
 prediction_logs = []
 img_buffers = []
 odds_history_list = []
@@ -245,6 +243,10 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     match_time = pd.to_datetime(match['datetime_parsed']).strftime('%Y-%m-%d %H:%M')
     match_date_only = pd.to_datetime(match['datetime_parsed']).date()
     
+    # H2H 近3次交锋主队胜率
+    past_h2h = h2h_stats.get((home_cn, away_cn), [])[-3:]
+    h2h_home_win_rate = sum(1 for h, a in past_h2h if h > a) / len(past_h2h) if past_h2h else 0.5
+
     h_rest = (match_date_only - last_match_date.get(home_cn, match_date_only - timedelta(days=7)).date()).days
     a_rest = (match_date_only - last_match_date.get(away_cn, match_date_only - timedelta(days=7)).date()).days
     
@@ -315,7 +317,6 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
         
     kelly_msg = f"最优下注比例：主胜 {max(0, kelly_h)*100:.1f}% | 平局 {max(0, kelly_d)*100:.1f}% | 客胜 {max(0, kelly_a)*100:.1f}%"
 
-    # 🌟 临场赔率异动监控
     odds_drift_msg = "暂无历史赔率对比。"
     if os.path.exists('odds_history.csv'):
         hist_odds = pd.read_csv('odds_history.csv')
@@ -337,17 +338,17 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     h_rot = f"{home_cn}休息{h_rest}天。" + ("赛程密集!" if h_rest <= 3 else "")
     a_rot = f"{away_cn}休息{a_rest}天。" + ("赛程密集!" if a_rest <= 3 else "")
 
-    # 🌟 阵型克制分析加入 Prompt
     prompt = f"""你是一位精通英超的资深数据分析专家，同时也是战术大师。请基于以下数据，结合历史经验，写一段精炼、口语化的赛前点评（不超过180字）：
     比赛：{home_cn} vs {away_cn}
     赛程密度：{h_rot} {a_rot}
+    历史交锋：近3次交手主队胜率 {h2h_home_win_rate*100:.1f}%
     主场龙/客场虫分析：{home_cn}主场进{h_home_scored:.2f}失{h_home_conceded:.2f}；{away_cn}客场进{a_away_scored:.2f}失{a_away_conceded:.2f}。
     进球期望：主队 {home_xg:.2f}，客队 {away_xg:.2f}。大小球倾向：{over_under_msg}。
     赔率倾向：主胜 {market_h*100:.1f}%，平局 {market_d*100:.1f}%，客胜 {market_a*100:.1f}%。
     赔率异动：{odds_drift_msg}
     {kelly_msg}
     伤停：{home_cn} [{'，'.join(home_injuries)}]；{away_cn} [{'，'.join(away_injuries)}]。
-    **任务**：请务必结合两队大概率使用的阵型（例如4-3-3或4-2-3-1），分析一下战术克制关系（比如边路传中vs三中卫），并给出胜负预测。
+    **任务**：请务必结合两队大概率使用的阵型分析战术克制关系。
     **历史经验库**：{knowledge_base}
     请综合以上信息分析，并以“推荐关注：XXX”结尾。"""
     
@@ -367,7 +368,6 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
 
     # ==================== 中文化图表 ====================
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
-    
     labels = ['主胜', '平局', '客胜']
     model_probs = [prob_home_win, prob_draw, prob_away_win]
     market_probs = [market_h, market_d, market_a]
@@ -395,6 +395,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     html_report += f"<hr><h3>{match_time} - {home_cn} vs {away_cn}</h3>"
     html_report += f"<img src='cid:chart_{idx}' width='600'><br>"
     html_report += f"<p><b>📊 核心数据：</b>{home_cn} 近5场 {h_avg_scored:.2f}进/{h_avg_conceded:.2f}失 | {away_cn} 近5场 {a_avg_scored:.2f}进/{a_avg_conceded:.2f}失</p>"
+    html_report += f"<p><b>⚔️ 历史交锋：</b>近3次交手，主队胜率 {h2h_home_win_rate*100:.1f}%</p>"
     html_report += f"<p><b>⚠️ 临场异动：</b>{odds_drift_msg}</p>"
     html_report += f"<p><b>💰 凯利建议：</b>{kelly_msg}</p>"
     html_report += f"<p><b>🎯 模型预测：</b>主胜 {prob_home_win*100:.1f}% | 平局 {prob_draw*100:.1f}% | 客胜 {prob_away_win*100:.1f}% (比分推荐: {top3[0][0]})</p>"
@@ -411,11 +412,14 @@ if os.path.exists('predictions_log.csv'):
     log_df = pd.concat([old_log, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
-# 记录赔率历史用于监控异动
 history_df = pd.DataFrame(odds_history_list)
 if os.path.exists('odds_history.csv'):
     old_hist = pd.read_csv('odds_history.csv')
     history_df = pd.concat([old_hist, history_df]).drop_duplicates(subset=['date', '主队', '客队'], keep='last')
 history_df.to_csv('odds_history.csv', index=False, encoding='utf-8-sig')
 
-send_rich_email("本周末英超 V17 图文预测报告（含战术与资金异动）", html_report, img_buffers)
+# 保存 HTML 看板，上传到 GitHub 可以直接在浏览器打开看图表
+with open('dashboard.html', 'w', encoding='utf-8') as f:
+    f.write(html_report)
+
+send_rich_email("本周末英超 V19 图文预测报告", html_report, img_buffers)
