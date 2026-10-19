@@ -76,11 +76,15 @@ for idx, row in df_hist.iterrows():
     h_win_rate = np.mean(team_stats[home]['points'][-5:]) if len(team_stats[home]['points']) > 0 else 0.5
     a_win_rate = np.mean(team_stats[away]['points'][-5:]) if len(team_stats[away]['points']) > 0 else 0.5
 
+    # 🌟 核心升级：加入双方胜率差特征
+    win_rate_diff = h_win_rate - a_win_rate
+
     features_list.append({
         'attack': h_attack, 'defense': h_defense, 'opp_attack': a_attack, 'opp_defense': a_defense,
         'home_attack_spec': h_home_attack, 'home_defense_spec': h_home_defense, 
         'away_attack_spec': a_away_attack, 'away_defense_spec': a_away_defense,
-        'win_rate': h_win_rate, 'opp_win_rate': a_win_rate, 'rest_days': h_rest, 'opp_rest_days': a_rest,
+        'win_rate': h_win_rate, 'opp_win_rate': a_win_rate, 'win_rate_diff': win_rate_diff, # 🌟 新增特征
+        'rest_days': h_rest, 'opp_rest_days': a_rest,
         'is_home': 1, 'home_rank': team_rank_dict.get(home, 15), 'away_rank': team_rank_dict.get(away, 15),
         'prob_h_odds': row.get('prob_h_odds', 0.33), 'prob_d_odds': row.get('prob_d_odds', 0.33), 'prob_a_odds': row.get('prob_a_odds', 0.33),
         'home_goals': row['home_goals'], 'away_goals': row['away_goals']
@@ -102,13 +106,18 @@ df_model = pd.DataFrame(features_list).dropna(subset=['home_goals', 'away_goals'
 df_model['home_goals'] = df_model['home_goals'].astype(int)
 df_model['away_goals'] = df_model['away_goals'].astype(int)
 
-feature_cols = ['attack', 'defense', 'opp_attack', 'opp_defense', 'home_attack_spec', 'home_defense_spec', 'away_attack_spec', 'away_defense_spec', 'win_rate', 'opp_win_rate', 'rest_days', 'opp_rest_days', 'is_home', 'home_rank', 'away_rank', 'prob_h_odds', 'prob_d_odds', 'prob_a_odds']
+# 🌟 特征列表同步更新
+feature_cols = [
+    'attack', 'defense', 'opp_attack', 'opp_defense', 
+    'home_attack_spec', 'home_defense_spec', 'away_attack_spec', 'away_defense_spec', 
+    'win_rate', 'opp_win_rate', 'win_rate_diff', 'rest_days', 'opp_rest_days', 
+    'is_home', 'home_rank', 'away_rank', 'prob_h_odds', 'prob_d_odds', 'prob_a_odds'
+]
 X = df_model[feature_cols].fillna(0.33)
 y_home = df_model['home_goals']
 y_away = df_model['away_goals']
 
 print("⏳ 正在构建 Stacking 融合模型 (XGB+LGBM+RF+MLP)...")
-# 定义四大基模型
 estimators = [
     ('xgb', xgb.XGBRegressor(n_estimators=150, max_depth=4, learning_rate=0.05, random_state=42)),
     ('lgbm', lgb.LGBMRegressor(n_estimators=150, max_depth=4, learning_rate=0.05, random_state=42, verbose=-1)),
@@ -116,7 +125,6 @@ estimators = [
     ('mlp', MLPRegressor(hidden_layer_sizes=(50, 25), max_iter=500, random_state=42))
 ]
 
-# 定义顶层元模型（用线性回归做最终融合）
 final_estimator = xgb.XGBRegressor(n_estimators=50, max_depth=3, random_state=42)
 
 model_home_v24 = StackingRegressor(estimators=estimators, final_estimator=final_estimator, cv=3)
@@ -129,4 +137,4 @@ model_away_v24.fit(X, y_away)
 
 joblib.dump(model_home_v24, 'epl_v24_home_goals_model.pkl')
 joblib.dump(model_away_v24, 'epl_v24_away_goals_model.pkl')
-print("✅ V24 融合模型训练完毕并保存！")
+print("✅ V24 融合模型（包含胜率差特征）训练完毕并保存！")
