@@ -43,6 +43,9 @@ jobs:
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python final_prediction.py
+      
+      - name: 4.5 运行时光机回测系统
+        run: python backtest.py
 
       - name: 5. 运行赛后复盘
         env:
