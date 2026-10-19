@@ -42,16 +42,37 @@ df_hist = df_hist.sort_values('date').reset_index(drop=True)
 df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
 df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
 
-# 🌟 尝试加载真实赔率文件
+# 🌟 核心修改：智能识别赔率文件的表头
 try:
     df_odds = pd.read_csv('epl_matches_odds.csv')
-    df_odds['date'] = pd.to_datetime(df_odds['date'])
-    # 假设赔率文件里有 home_team, away_team, odds_h, odds_d, odds_a
-    # 如果表头不一样，这里可能会报错，但我们加个容错
-    df_hist = pd.merge(df_hist, df_odds[['date', 'home_team_cn', 'away_team_cn', 'odds_h', 'odds_d', 'odds_a']], on=['date', 'home_team_cn', 'away_team_cn'], how='left')
-    print("✅ 成功合并真实赔率数据！")
+    print("发现赔率文件，原始表头为:", df_odds.columns.tolist())
+    
+    # 自动重命名列名
+    col_map = {}
+    for col in df_odds.columns:
+        cl = col.lower().strip()
+        if 'date' in cl: col_map[col] = 'date'
+        elif 'home' in cl and ('team' in cl or cl == 'home'): col_map[col] = 'home_team'
+        elif 'away' in cl and ('team' in cl or cl == 'away'): col_map[col] = 'away_team'
+        elif 'h' in cl and ('odd' in cl or cl == 'b365h' or cl == 'h' or cl == 'ph'): col_map[col] = 'odds_h'
+        elif 'd' in cl and ('odd' in cl or cl == 'b365d' or cl == 'd' or cl == 'pd'): col_map[col] = 'odds_d'
+        elif 'a' in cl and ('odd' in cl or cl == 'b365a' or cl == 'a' or cl == 'pa'): col_map[col] = 'odds_a'
+    
+    df_odds.rename(columns=col_map, inplace=True)
+    df_odds['date'] = pd.to_datetime(df_odds['date'], errors='coerce')
+    df_odds = df_odds.dropna(subset=['date'])
+    
+    # 处理赔率文件里的球队名（可能已经是中文，也可能是英文）
+    if 'home_team' in df_odds.columns:
+        df_odds['home_team_cn'] = df_odds['home_team'].apply(translate_team_name)
+        df_odds['away_team_cn'] = df_odds['away_team'].apply(translate_team_name)
+    
+    # 合并数据
+    df_hist = pd.merge(df_hist, df_odds[['date', 'home_team_cn', 'away_team_cn', 'odds_h', 'odds_d', 'odds_a']], 
+                       on=['date', 'home_team_cn', 'away_team_cn'], how='left')
+    print(f"✅ 成功合并真实赔率数据！找到 {df_hist['odds_h'].notna().sum()} 场有赔率的比赛。")
 except Exception as e:
-    print(f"⚠️ 无法加载 epl_matches_odds.csv，继续使用虚拟赔率。(报错: {e})")
+    print(f"⚠️ 无法加载赔率文件，继续使用虚拟赔率。(报错: {e})")
     df_hist['odds_h'] = np.nan
     df_hist['odds_d'] = np.nan
     df_hist['odds_a'] = np.nan
@@ -101,7 +122,7 @@ for idx, row in df_hist.iterrows():
         'h_form_trend': h_form_trend, 'a_form_trend': a_form_trend,
         'prob_h_odds': 0.33, 'prob_d_odds': 0.33, 'prob_a_odds': 0.33,
         'home_goals': row['home_goals'], 'away_goals': row['away_goals'],
-        'odds_h': row['odds_h'], 'odds_d': row['odds_d'], 'odds_a': row['odds_a'], # 把真实赔率带进来
+        'odds_h': row['odds_h'], 'odds_d': row['odds_d'], 'odds_a': row['odds_a'],
         'date': date, 'home_team': home, 'away_team': away
     })
 
@@ -172,13 +193,11 @@ for i in range(len(test_df)):
     total_p = prob_h + prob_d + prob_a
     prob_h /= total_p; prob_d /= total_p; prob_a /= total_p
     
-    # 🌟 核心修改：读取真实赔率，如果没有真实赔率，就跳过这场
     odds_h = test_df.iloc[i]['odds_h']
     odds_d = test_df.iloc[i]['odds_d']
     odds_a = test_df.iloc[i]['odds_a']
     
     if pd.isna(odds_h) or pd.isna(odds_d) or pd.isna(odds_a):
-        # 没有真实赔率，资金曲线保持平滑
         bankroll_history.append(bankroll)
         continue
 
