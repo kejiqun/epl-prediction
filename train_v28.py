@@ -5,6 +5,9 @@ import lightgbm as lgb
 import joblib
 from sklearn.ensemble import RandomForestRegressor, StackingRegressor
 from sklearn.neural_network import MLPRegressor
+from sklearn.isotonic import IsotonicRegression
+from sklearn.model_selection import train_test_split
+from scipy.stats import poisson
 import os
 import warnings
 warnings.filterwarnings('ignore')
@@ -31,7 +34,7 @@ def translate_team_name(name):
         return team_mapping.get(name.replace(" and ", " & ").strip(), name)
     return name
 
-print("⏳ V28 炼丹炉启动，准备融合真实 xG 数据...")
+print("⏳ V28 炼丹炉启动，准备拟合概率校准器...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 
@@ -40,10 +43,8 @@ try:
     df_xg['date'] = pd.to_datetime(df_xg['date'])
     df_xg['home_team_cn'] = df_xg['home_team'].apply(translate_team_name)
     df_xg['away_team_cn'] = df_xg['away_team'].apply(translate_team_name)
-    print("✅ 成功加载 xG 数据，将使用真实预期进球作为特征。")
     use_xg = True
 except:
-    print("⚠️ 无法加载 xG 数据，将降级使用传统进球数据。")
     use_xg = False
 
 df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
@@ -86,13 +87,11 @@ for idx, row in df_hist.iterrows():
     a_avg_xg = np.mean(team_stats[away]['scored_xg'][-5:]) if len(team_stats[away]['scored_xg']) > 0 else league_avg_goals
     a_avg_conceded = np.mean(team_stats[away]['conceded_xg'][-5:]) if len(team_stats[away]['conceded_xg']) > 0 else league_avg_goals
 
-    # 基础攻击防守
     h_attack = h_avg_xg / league_avg_goals
     h_defense = h_avg_conceded / league_avg_goals
     a_attack = a_avg_xg / league_avg_goals
     a_defense = a_avg_conceded / league_avg_goals
 
-    # 🌟 补齐：主客场特异性
     h_home_scored = np.mean(team_stats[home]['home_scored'][-3:]) if len(team_stats[home]['home_scored']) > 0 else league_avg_goals
     h_home_conceded = np.mean(team_stats[home]['home_conceded'][-3:]) if len(team_stats[home]['home_conceded']) > 0 else league_avg_goals
     a_away_scored = np.mean(team_stats[away]['away_scored'][-3:]) if len(team_stats[away]['away_scored']) > 0 else league_avg_goals
@@ -107,7 +106,7 @@ for idx, row in df_hist.iterrows():
     features_list.append({
         'attack': h_attack, 'defense': h_defense, 'opp_attack': a_attack, 'opp_defense': a_defense,
         'home_attack_spec': h_home_attack, 'home_defense_spec': h_home_defense, 
-        'away_attack_spec': a_away_attack, 'away_defense_spec': a_away_defense, # 🌟 补上这四个特征
+        'away_attack_spec': a_away_attack, 'away_defense_spec': a_away_defense,
         'win_rate': h_win_rate, 'opp_win_rate': a_win_rate, 'win_rate_diff': h_win_rate - a_win_rate,
         'rest_days': h_rest, 'opp_rest_days': a_rest, 'is_home': 1, 
         'home_rank': team_rank_dict.get(home, 15), 'away_rank': team_rank_dict.get(away, 15),
@@ -129,7 +128,6 @@ for idx, row in df_hist.iterrows():
 
 df_model = pd.DataFrame(features_list).dropna(subset=['home_goals', 'away_goals'])
 
-# 🌟 核心修复：将主客场特异性特征加入最终训练列表
 feature_cols = [
     'attack', 'defense', 'opp_attack', 'opp_defense', 
     'home_attack_spec', 'home_defense_spec', 'away_attack_spec', 'away_defense_spec',
@@ -150,12 +148,68 @@ estimators = [
 ]
 final_estimator = xgb.XGBRegressor(n_estimators=50, max_depth=3, random_state=42)
 
+# 切分 20% 数据用于校准
+X_train, X_calib, y_home_train, y_home_calib, y_away_train, y_away_calib = train_test_split(
+    X, y_home, y_away, test_size=0.2, random_state=42, shuffle=False
+)
+
 model_home_v28 = StackingRegressor(estimators=estimators, final_estimator=final_estimator, cv=3)
 model_away_v28 = StackingRegressor(estimators=estimators, final_estimator=final_estimator, cv=3)
 
+print("⏳ 训练基础模型...")
+model_home_v28.fit(X_train, y_home_train)
+model_away_v28.fit(X_train, y_away_train)
+
+# 在验证集上计算原始概率
+print("⏳ 计算原始概率并拟合 Isotonic 校准器...")
+calib_home_xg = model_home_v28.predict(X_calib)
+calib_away_xg = model_away_v28.predict(X_calib)
+
+raw_prob_h, raw_prob_d, raw_prob_a = [], [], []
+true_res = []
+
+for i in range(len(X_calib)):
+    hg_exp, ag_exp = max(0.1, calib_home_xg[i]), max(0.1, calib_away_xg[i])
+    max_goals = 5
+    prob_matrix = np.zeros((max_goals+1, max_goals+1))
+    for hg in range(max_goals+1):
+        for ag in range(max_goals+1):
+            prob_matrix[hg][ag] = poisson.pmf(hg, hg_exp) * poisson.pmf(ag, ag_exp)
+            
+    p_h = np.sum(np.tril(prob_matrix, -1))
+    p_d = np.sum(np.diag(prob_matrix))
+    p_a = np.sum(np.triu(prob_matrix, 1))
+    total = p_h + p_d + p_a
+    
+    raw_prob_h.append(p_h / total)
+    raw_prob_d.append(p_d / total)
+    raw_prob_a.append(p_a / total)
+    
+    hg_real, ag_real = y_home_calib.iloc[i], y_away_calib.iloc[i]
+    true_res.append(2 if hg_real > ag_real else (1 if hg_real == ag_real else 0))
+
+# 拟合三个校准器
+calibrator_h = IsotonicRegression(out_of_bounds='clip')
+calibrator_d = IsotonicRegression(out_of_bounds='clip')
+calibrator_a = IsotonicRegression(out_of_bounds='clip')
+
+y_h_bin = [1 if r == 2 else 0 for r in true_res]
+y_d_bin = [1 if r == 1 else 0 for r in true_res]
+y_a_bin = [1 if r == 0 else 0 for r in true_res]
+
+calibrator_h.fit(raw_prob_h, y_h_bin)
+calibrator_d.fit(raw_prob_d, y_d_bin)
+calibrator_a.fit(raw_prob_a, y_a_bin)
+
+joblib.dump(calibrator_h, 'calibrator_h.pkl')
+joblib.dump(calibrator_d, 'calibrator_d.pkl')
+joblib.dump(calibrator_a, 'calibrator_a.pkl')
+
+# 重新用全量数据训练最终模型
+print("⏳ 使用全量数据训练最终模型...")
 model_home_v28.fit(X, y_home)
 model_away_v28.fit(X, y_away)
 
 joblib.dump(model_home_v28, 'epl_v28_home_goals_model.pkl')
 joblib.dump(model_away_v28, 'epl_v28_away_goals_model.pkl')
-print("✅ V28 xG 融合模型训练完毕并保存！")
+print("✅ V28 校准版融合模型训练完毕！")
