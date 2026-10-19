@@ -56,13 +56,12 @@ def fuzzy_match(team_a, team_b):
     if not isinstance(team_a, str) or not isinstance(team_b, str): return False
     return (team_a.lower() in team_b.lower()) or (team_b.lower() in team_a.lower())
 
-# 安全提取字符串
 def safe_str(val, default="未知"):
     if pd.isna(val) or val is None or str(val).strip().lower() in ['nan', 'none', '']:
         return default
     return str(val)
 
-print("⏳ 正在抓取真实赛果，进行 V27 深度微观复盘...")
+print("⏳ 正在抓取真实赛果，进行 V28 深度微观复盘...")
 try:
     finished_matches = []
     seven_days_ago = datetime.now() - timedelta(days=10)
@@ -137,13 +136,14 @@ try:
                     a_inj_val = safe_str(p.get('away_injuries'), '无')
                     ref_val = safe_str(p.get('referee'), '官方未公布')
 
-                    # 🌟 核心修复：彻底解决“未知天”的排版
-                    h_rest_str = f"{h_rest_val}天" if h_rest_val != '未知' else '未知休息'
-                    a_rest_str = f"{a_rest_val}天" if a_rest_val != '未知' else '未知休息'
+                    # 🌟 核心修复：排版美化，消灭“未知休息 vs 未知休息”
+                    h_rest_str = f"{h_rest_val}天" if h_rest_val != '未知' else '未知'
+                    a_rest_str = f"{a_rest_val}天" if a_rest_val != '未知' else '未知'
+                    rest_info = f"休息[{h_rest_str} vs {a_rest_str}]" if h_rest_val != '未知' or a_rest_val != '未知' else "休息[数据缺失]"
 
                     match_details_text += f"【{row['home_team']} vs {row['away_team']}】\n"
                     match_details_text += f"  - 赛前模型预测: {p['predicted_result']} (比分 {p['predicted_score']})\n"
-                    match_details_text += f"  - 赛前多维情报: 天气[{weather_val}], 休息[{h_rest_str} vs {a_rest_str}], {row['home_team']}伤停[{h_inj_val}], {row['away_team']}伤停[{a_inj_val}], 裁判[{ref_val}]\n"
+                    match_details_text += f"  - 赛前多维情报: 天气[{weather_val}], {rest_info}, {row['home_team']}伤停[{h_inj_val}], {row['away_team']}伤停[{a_inj_val}], 裁判[{ref_val}]\n"
                     match_details_text += f"  - 实际赛果: {row['home_goals']}-{row['away_goals']} ({actual_res})\n"
                     
                     if bet_amount > 0:
@@ -181,7 +181,7 @@ try:
         review_comment = response.choices[0].message.content.strip()
         
         print("\n" + "="*60)
-        print(f"🧠 DeepSeek V27 深度复盘：\n{review_comment}")
+        print(f"🧠 DeepSeek V28 深度复盘：\n{review_comment}")
         print(f"💰 虚拟资金盈亏：{weekly_pnl:.2f} | 当前总资金：{balance:.2f}")
         print("="*60)
         
@@ -191,7 +191,7 @@ try:
                 f.write(f"- [{datetime.now().strftime('%Y-%m-%d')}] {new_knowledge}\n")
             print(f"✅ 已将新教训写入 knowledge.txt，下次预测将强制参考！")
         
-        send_email("近期英超 V27 深度复盘与资金报表", review_text + "\n" + match_details_text + "\n" + review_comment)
+        send_email("近期英超 V28 深度复盘与资金报表", review_text + "\n" + match_details_text + "\n" + review_comment)
         
         print("\n⏳ 正在将新赛果追加到历史数据库...")
         try:
