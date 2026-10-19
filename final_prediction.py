@@ -22,6 +22,7 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei', 'Arial Unico
 plt.rcParams['axes.unicode_minus'] = False
 warnings.filterwarnings('ignore')
 
+# ==================== 密钥配置 ====================
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -45,6 +46,7 @@ def send_rich_email(subject, html_content, img_buffers, receiver="308730509@qq.c
         print("✅ 图文邮件发送成功！")
     except Exception as e: print(f"❌ 邮件发送失败: {e}")
 
+# 字典省略（保持原有）
 team_mapping = {
     'Arsenal FC': '阿森纳', 'Arsenal': '阿森纳', 'Aston Villa FC': '阿斯顿维拉', 'Aston Villa': '阿斯顿维拉',
     'AFC Bournemouth': '伯恩茅斯', 'Bournemouth': '伯恩茅斯', 'Brentford FC': '布伦特福德', 'Brentford': '布伦特福德',
@@ -92,7 +94,6 @@ def get_match_weather(home_team, date_str):
     except: pass
     return "获取失败"
 
-# Dixon-Coles 修正函数（针对低比分）
 def dixon_coles_tau(h, a, home_xg, away_xg, rho=-0.1):
     if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
     elif h == 0 and a == 1: return 1 + home_xg * rho
@@ -118,11 +119,16 @@ for i in range(10):
                         home_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'home'), None)
                         away_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'away'), None)
                         
+                        # 🌟 容错修复：防止 officials 为空导致报错，找不到就默认“官方未公布”
                         officials = competitions[0].get('officials', [])
-                        referee = "未知"
+                        referee = "官方未公布"
                         if officials:
-                            ref_obj = next((o for o in officials if o.get('position', {}).get('displayName') == 'Referee'), officials[0])
-                            referee = ref_obj.get('displayName', "未知")
+                            for o in officials:
+                                if 'Referee' in o.get('position', {}).get('displayName', '') or 'Referee' in o.get('position', {}).get('name', ''):
+                                    referee = o.get('displayName', "官方未公布")
+                                    break
+                            if referee == "官方未公布":
+                                referee = officials[0].get('displayName', "官方未公布")
                             
                         if home_team and away_team:
                             upcoming.append({
@@ -196,7 +202,7 @@ try:
                 injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})" if news else f"{player_name}({status_cn})")
 except: pass
 
-print("⏳ 正在加载 V24 融合模型并计算特征...")
+print("⏳ 正在加载 V24 模型并计算特征...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist = df_hist.sort_values('date').reset_index(drop=True)
@@ -237,7 +243,7 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-html_report = "<html><body><h2>⚽ 英超全自动预测系统 V24 - 图文战报</h2>"
+html_report = "<html><body><h2>⚽ 英超全自动预测系统 V25 - 图文战报</h2>"
 prediction_logs = []
 img_buffers = []
 odds_history_list = []
@@ -284,8 +290,6 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
         'prob_h_odds': match['主胜概率'], 'prob_d_odds': match['平局概率'], 'prob_a_odds': match['客胜概率']
     }
     X_pred = pd.DataFrame([feature_dict])
-    
-    # V24 模型预测期望进球
     home_xg, away_xg = max(0.1, model_home_goals.predict(X_pred)[0]), max(0.1, model_away_goals.predict(X_pred)[0])
     
     max_goals = 5
@@ -293,7 +297,6 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     for hg in range(max_goals+1):
         for ag in range(max_goals+1):
             base_prob = poisson.pmf(hg, home_xg) * poisson.pmf(ag, away_xg)
-            # 🌟 V24 核心：加入 Dixon-Coles 修正
             tau = dixon_coles_tau(hg, ag, home_xg, away_xg)
             prob_matrix[hg][ag] = base_prob * tau
             
@@ -439,4 +442,4 @@ history_df.to_csv('odds_history.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("本周末英超 V24 终极融合预测报告", html_report, img_buffers)
+send_rich_email("本周末英超 V25 终极修复与升维战报", html_report, img_buffers)
