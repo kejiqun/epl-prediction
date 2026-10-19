@@ -9,3 +9,4 @@ xgboost
 lightgbm
 espn-sports-api
 optuna
+matplotlib
