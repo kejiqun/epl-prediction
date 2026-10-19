@@ -35,12 +35,26 @@ def translate_team_name(name):
     if isinstance(name, str): return team_mapping.get(name.replace(" and ", " & ").strip(), name)
     return name
 
-print("⏳ 正在启动时光机，加载历史数据...")
+print("⏳ 正在启动时光机 V3.0，加载历史数据与真实赔率...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist = df_hist.sort_values('date').reset_index(drop=True)
 df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
 df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
+
+# 🌟 尝试加载真实赔率文件
+try:
+    df_odds = pd.read_csv('epl_matches_odds.csv')
+    df_odds['date'] = pd.to_datetime(df_odds['date'])
+    # 假设赔率文件里有 home_team, away_team, odds_h, odds_d, odds_a
+    # 如果表头不一样，这里可能会报错，但我们加个容错
+    df_hist = pd.merge(df_hist, df_odds[['date', 'home_team_cn', 'away_team_cn', 'odds_h', 'odds_d', 'odds_a']], on=['date', 'home_team_cn', 'away_team_cn'], how='left')
+    print("✅ 成功合并真实赔率数据！")
+except Exception as e:
+    print(f"⚠️ 无法加载 epl_matches_odds.csv，继续使用虚拟赔率。(报错: {e})")
+    df_hist['odds_h'] = np.nan
+    df_hist['odds_d'] = np.nan
+    df_hist['odds_a'] = np.nan
 
 league_avg_goals = (df_hist['home_goals'].mean() + df_hist['away_goals'].mean()) / 2
 team_stats = {}; last_match_date = {}; features_list = []
@@ -87,7 +101,8 @@ for idx, row in df_hist.iterrows():
         'h_form_trend': h_form_trend, 'a_form_trend': a_form_trend,
         'prob_h_odds': 0.33, 'prob_d_odds': 0.33, 'prob_a_odds': 0.33,
         'home_goals': row['home_goals'], 'away_goals': row['away_goals'],
-        'date': date
+        'odds_h': row['odds_h'], 'odds_d': row['odds_d'], 'odds_a': row['odds_a'], # 把真实赔率带进来
+        'date': date, 'home_team': home, 'away_team': away
     })
 
     team_stats[home]['scored'].append(row['home_goals']); team_stats[home]['conceded'].append(row['away_goals'])
@@ -136,7 +151,6 @@ X_test = test_df[feature_cols].fillna(0.33)
 test_home_xg = model_home.predict(X_test)
 test_away_xg = model_away.predict(X_test)
 
-ODDS_H, ODDS_D, ODDS_A = 2.0, 3.3, 3.5
 initial_bankroll = 1000.0
 bankroll = initial_bankroll
 bankroll_history = [bankroll]
@@ -158,9 +172,19 @@ for i in range(len(test_df)):
     total_p = prob_h + prob_d + prob_a
     prob_h /= total_p; prob_d /= total_p; prob_a /= total_p
     
-    kelly_h = max(0, (prob_h * ODDS_H - 1) / (ODDS_H - 1))
-    kelly_d = max(0, (prob_d * ODDS_D - 1) / (ODDS_D - 1))
-    kelly_a = max(0, (prob_a * ODDS_A - 1) / (ODDS_A - 1))
+    # 🌟 核心修改：读取真实赔率，如果没有真实赔率，就跳过这场
+    odds_h = test_df.iloc[i]['odds_h']
+    odds_d = test_df.iloc[i]['odds_d']
+    odds_a = test_df.iloc[i]['odds_a']
+    
+    if pd.isna(odds_h) or pd.isna(odds_d) or pd.isna(odds_a):
+        # 没有真实赔率，资金曲线保持平滑
+        bankroll_history.append(bankroll)
+        continue
+
+    kelly_h = max(0, (prob_h * odds_h - 1) / (odds_h - 1))
+    kelly_d = max(0, (prob_d * odds_d - 1) / (odds_d - 1))
+    kelly_a = max(0, (prob_a * odds_a - 1) / (odds_a - 1))
     
     best_kelly, best_choice = 0, None
     if kelly_h > best_kelly: best_kelly, best_choice = kelly_h, 'H'
@@ -169,7 +193,6 @@ for i in range(len(test_df)):
     
     bet_amount = 0
     if best_kelly > 0.02:
-        # 🛠️ 核心修改：平注+最高限额！每次最多下注资金的 2%（防止复利爆炸）
         bet_amount = initial_bankroll * 0.02 
         bets_placed += 1
         
@@ -179,15 +202,14 @@ for i in range(len(test_df)):
         real_res = 'H' if hg_real > ag_real else ('D' if hg_real == ag_real else 'A')
         
         if best_choice == real_res:
-            if best_choice == 'H': bankroll += bet_amount * (ODDS_H - 1)
-            elif best_choice == 'D': bankroll += bet_amount * (ODDS_D - 1)
-            else: bankroll += bet_amount * (ODDS_A - 1)
+            if best_choice == 'H': bankroll += bet_amount * (odds_h - 1)
+            elif best_choice == 'D': bankroll += bet_amount * (odds_d - 1)
+            else: bankroll += bet_amount * (odds_a - 1)
             bets_won += 1
         else:
             bankroll -= bet_amount
             
     bankroll_history.append(bankroll)
-    # 计算最大回撤
     if bankroll > max_bankroll: max_bankroll = bankroll
     drawdown = (max_bankroll - bankroll) / max_bankroll * 100
     if drawdown > max_drawdown: max_drawdown = drawdown
@@ -195,7 +217,7 @@ for i in range(len(test_df)):
 plt.figure(figsize=(10, 5))
 plt.plot(bankroll_history, label='资金曲线 (Bankroll)', color='green', linewidth=2)
 plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金 (1000)')
-plt.title('时光机回测：V31 模型历史资金曲线 (严格平注限额版)')
+plt.title('时光机回测：V31 模型历史资金曲线 (真实赔率版 V3.0)')
 plt.xlabel('下注场次')
 plt.ylabel('资金余额')
 plt.legend()
@@ -208,10 +230,10 @@ win_rate = (bets_won / bets_placed * 100) if bets_placed > 0 else 0
 
 report = f"""
 ====================================
-⚽ 时光机回测报告 (严格限额版 V2.0)
+⚽ 时光机回测报告 (真实赔率版 V3.0)
 ====================================
 回测比赛总数: {len(test_df)} 场
-实际下注场次: {bets_placed} 场
+实际下注场次: {bets_placed} 场 (已过滤无赔率比赛)
 命中场次: {bets_won} 场
 下注胜率: {win_rate:.2f}%
 初始资金: {initial_bankroll:.2f}
