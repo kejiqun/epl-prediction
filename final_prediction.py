@@ -200,7 +200,7 @@ try:
                     injury_impact[team_name_cn] += (element['total_points'] / team_avg_points.get(team_id, 1)) * 0.05
 except: pass
 
-print("⏳ 正在加载 V28 xG 模型并计算特征...")
+print("⏳ 正在加载 V28 xG 模型及校准器...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist = df_hist.sort_values('date').reset_index(drop=True)
@@ -209,6 +209,17 @@ df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
 
 model_home_goals = joblib.load('epl_v28_home_goals_model.pkl')
 model_away_goals = joblib.load('epl_v28_away_goals_model.pkl')
+
+# 🌟 加载校准器
+try:
+    calibrator_h = joblib.load('calibrator_h.pkl')
+    calibrator_d = joblib.load('calibrator_d.pkl')
+    calibrator_a = joblib.load('calibrator_a.pkl')
+    use_calibration = True
+    print("✅ 成功加载 Isotonic 概率校准器！")
+except:
+    use_calibration = False
+    print("⚠️ 未找到校准器文件，将使用未校准的原始概率。")
 
 league_avg_goals = (df_hist['home_goals'].mean() + df_hist['away_goals'].mean()) / 2
 team_stats = {}; last_match_date = {}; h2h_stats = {}
@@ -241,7 +252,7 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-html_report = "<html><body><h2>⚽ 英超全自动预测系统 V28 - 图文战报</h2>"
+html_report = "<html><body><h2>⚽ 英超全自动预测系统 V29 - 图文战报</h2>"
 prediction_logs = []
 img_buffers = []
 odds_history_list = []
@@ -305,11 +316,24 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
             tau = dixon_coles_tau(hg, ag, home_xg, away_xg)
             prob_matrix[hg][ag] = base_prob * tau
             
-    prob_home_win = np.sum(np.tril(prob_matrix, -1))
-    prob_draw = np.sum(np.diag(prob_matrix))
-    prob_away_win = np.sum(np.triu(prob_matrix, 1))
-    total_p = prob_home_win + prob_draw + prob_away_win
-    prob_home_win /= total_p; prob_draw /= total_p; prob_away_win /= total_p
+    raw_prob_home_win = np.sum(np.tril(prob_matrix, -1))
+    raw_prob_draw = np.sum(np.diag(prob_matrix))
+    raw_prob_away_win = np.sum(np.triu(prob_matrix, 1))
+    total_p = raw_prob_home_win + raw_prob_draw + raw_prob_away_win
+    raw_prob_home_win /= total_p; raw_prob_draw /= total_p; raw_prob_away_win /= total_p
+    
+    # 🌟 核心校准逻辑：对原始概率进行校准
+    if use_calibration:
+        prob_home_win = calibrator_h.predict([raw_prob_home_win])[0]
+        prob_draw = calibrator_d.predict([raw_prob_draw])[0]
+        prob_away_win = calibrator_a.predict([raw_prob_away_win])[0]
+        # 确保概率归一化
+        cal_total = prob_home_win + prob_draw + prob_away_win
+        prob_home_win /= cal_total; prob_draw /= cal_total; prob_away_win /= cal_total
+    else:
+        prob_home_win = raw_prob_home_win
+        prob_draw = raw_prob_draw
+        prob_away_win = raw_prob_away_win
     
     probs = [prob_away_win, prob_draw, prob_home_win]
     pred_result = np.argmax(probs)
@@ -364,7 +388,6 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     h_rot = f"{home_cn}休息{h_rest}天。" + ("赛程密集!" if h_rest <= 3 else "")
     a_rot = f"{away_cn}休息{a_rest}天。" + ("赛程密集!" if a_rest <= 3 else "")
 
-    # 🌟 核心修复：给 AI 戴上紧箍咒，让它的点评与模型预测（recommend）保持一致
     prompt = f"""你是一位精通英超的资深数据分析专家，同时也是盘口大师。请基于以下数据，写一段精炼、口语化的赛前点评（不超过180字）：
     比赛：{home_cn} vs {away_cn}
     当前模型综合推荐：{recommend}
@@ -377,9 +400,9 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     {kelly_msg}
     伤停：{home_cn} [{home_injuries_str}]；{away_cn} [{away_injuries_str}]。
     
-    **任务**：请结合阵型克制关系，重点从“机构诱盘心理”角度分析。**极其重要：你的分析必须支撑模型得出的“{recommend}”结论。**你可以提示该结论的风险（例如防冷），但你的结论必须与模型一致，不要给出与“{recommend}”相违背的推荐。
+    **任务**：请结合阵型克制关系，重点从“机构诱盘心理”角度分析。**极其重要：你的分析必须支撑模型得出的“{recommend}”结论。**你可以提示该结论的风险（例如防冷），但你的结论必须与模型一致。
     **历史经验库**：{knowledge_base}
-    请综合以上信息分析，并以“推荐关注：XXX”结尾（XXX必须与模型综合推荐一致，或基于该推荐附加防冷说明）。"""
+    请综合以上信息分析，并以“推荐关注：XXX”结尾（XXX必须与模型综合推荐一致）。"""
     
     try:
         response = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False)
@@ -401,14 +424,13 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
         'referee': referee
     })
 
-    # ==================== 中文化图表 ====================
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
     labels = ['主胜', '平局', '客胜']
     model_probs = [prob_home_win, prob_draw, prob_away_win]
     market_probs = [market_h, market_d, market_a]
     x = np.arange(len(labels))
     width = 0.35
-    ax1.bar(x - width/2, model_probs, width, label='V28 融合模型', color='royalblue')
+    ax1.bar(x - width/2, model_probs, width, label='V29 校准模型', color='royalblue')
     ax1.bar(x + width/2, market_probs, width, label='市场平均', color='gray', alpha=0.7)
     ax1.set_xticks(x); ax1.set_xticklabels(labels)
     ax1.set_ylabel('概率')
@@ -457,4 +479,4 @@ history_df.to_csv('odds_history.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("本周末英超 V28 终极融合预测报告", html_report, img_buffers)
+send_rich_email("本周末英超 V29 终极校准预测报告", html_report, img_buffers)
