@@ -117,7 +117,6 @@ for i in range(10):
                         competitors = competitions[0].get('competitors', [])
                         home_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'home'), None)
                         away_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'away'), None)
-                        
                         officials = competitions[0].get('officials', [])
                         referee = "官方未公布"
                         if officials:
@@ -127,14 +126,8 @@ for i in range(10):
                                     break
                             if referee == "官方未公布":
                                 referee = officials[0].get('displayName', "官方未公布")
-                            
                         if home_team and away_team:
-                            upcoming.append({
-                                'datetime': event['date'], 
-                                'home_team': home_team, 
-                                'away_team': away_team,
-                                'referee': referee
-                            })
+                            upcoming.append({'datetime': event['date'], 'home_team': home_team, 'away_team': away_team, 'referee': referee})
     except: continue
 
 if len(upcoming) == 0:
@@ -186,18 +179,32 @@ try:
 except: team_rank_dict = {}
 
 injury_dict = {}
+injury_impact = {} # 🌟 新增：伤病战力折损指数
 try:
     fpl_resp = requests.get("https://fantasy.premierleague.com/api/bootstrap-static/", timeout=15)
     if fpl_resp.status_code == 200:
         fpl_data = fpl_resp.json()
         teams_map = {t['id']: t['name'] for t in fpl_data['teams']}
+        
+        # 计算每队的平均分
+        team_avg_points = {}
+        for t in fpl_data['teams']:
+            team_avg_points[t['id']] = t['strength_attack_home'] + t['strength_defence_home']
+            
         for element in fpl_data['elements']:
+            team_id = element['team']
+            team_name_cn = translate_team_name(teams_map.get(team_id))
+            player_name = element['web_name']; news = element['news']
+            
             if element['status'] in ['d', 'i', 's', 'u']:
-                team_name_cn = translate_team_name(teams_map.get(element['team']))
-                player_name = element['web_name']; news = element['news']
                 status_cn = {"d": "出战成疑", "i": "受伤", "s": "停赛", "u": "不可用"}.get(element['status'], "未知")
                 if team_name_cn not in injury_dict: injury_dict[team_name_cn] = []
                 injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})" if news else f"{player_name}({status_cn})")
+                
+                # 计算折损：如果球员分高，折损大
+                if element['total_points'] > 30: # 仅统计主力
+                    if team_name_cn not in injury_impact: injury_impact[team_name_cn] = 0
+                    injury_impact[team_name_cn] += (element['total_points'] / team_avg_points.get(team_id, 1)) * 0.05
 except: pass
 
 print("⏳ 正在加载 V24 融合模型并计算特征...")
@@ -241,7 +248,7 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-html_report = "<html><body><h2>⚽ 英超全自动预测系统 V26 - 图文战报</h2>"
+html_report = "<html><body><h2>⚽ 英超全自动预测系统 V27 - 图文战报</h2>"
 prediction_logs = []
 img_buffers = []
 odds_history_list = []
@@ -279,20 +286,25 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     h_win_rate = np.mean(h['points'][-5:]) if h['points'] else 0.5
     a_win_rate = np.mean(a['points'][-5:]) if a['points'] else 0.5
 
-    # 🌟 核心优化：将双方近期胜率差加入特征池，提升强队客场韧性的评估
-    win_rate_diff = h_win_rate - a_win_rate
+    # 🌟 核心修复：引入伤病折损因子
+    h_inj_factor = 1 - injury_impact.get(home_cn, 0)
+    a_inj_factor = 1 - injury_impact.get(away_cn, 0)
 
     feature_dict = {
         'attack': h_attack, 'defense': h_defense, 'opp_attack': a_attack, 'opp_defense': a_defense,
         'home_attack_spec': h_home_attack, 'home_defense_spec': h_home_defense, 
         'away_attack_spec': a_away_attack, 'away_defense_spec': a_away_defense,
-        'win_rate': h_win_rate, 'opp_win_rate': a_win_rate, 'win_rate_diff': win_rate_diff, # 🌟 新增特征
+        'win_rate': h_win_rate, 'opp_win_rate': a_win_rate, 'win_rate_diff': h_win_rate - a_win_rate,
         'rest_days': h_rest, 'opp_rest_days': a_rest, 'is_home': 1,
         'home_rank': team_rank_dict.get(home_cn, 15), 'away_rank': team_rank_dict.get(away_cn, 15),
         'prob_h_odds': match['主胜概率'], 'prob_d_odds': match['平局概率'], 'prob_a_odds': match['客胜概率']
     }
     X_pred = pd.DataFrame([feature_dict])
     home_xg, away_xg = max(0.1, model_home_goals.predict(X_pred)[0]), max(0.1, model_away_goals.predict(X_pred)[0])
+    
+    # 应用伤病折损（对 xG 产生影响）
+    home_xg = home_xg * h_inj_factor
+    away_xg = away_xg * a_inj_factor
     
     max_goals = 5
     prob_matrix = np.zeros((max_goals+1, max_goals+1))
@@ -312,9 +324,18 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     pred_result = np.argmax(probs)
     recommend = "主胜" if pred_result == 2 else ("平局" if pred_result == 1 else "客胜")
     
-    score_probs = [(f"{hg}-{ag}", prob_matrix[hg][ag]) for hg in range(max_goals+1) for ag in range(max_goals+1)]
-    score_probs.sort(key=lambda x: x[1], reverse=True)
-    top3 = score_probs[:3]
+    # 🌟 核心修复：比分推荐必须与胜平负保持一致！
+    all_scores = [(f"{hg}-{ag}", prob_matrix[hg][ag]) for hg in range(max_goals+1) for ag in range(max_goals+1)]
+    if recommend == "主胜":
+        valid_scores = [s for s in all_scores if int(s[0].split('-')[0]) > int(s[0].split('-')[1])]
+    elif recommend == "客胜":
+        valid_scores = [s for s in all_scores if int(s[0].split('-')[0]) < int(s[0].split('-')[1])]
+    else:
+        valid_scores = [s for s in all_scores if int(s[0].split('-')[0]) == int(s[0].split('-')[1])]
+        
+    valid_scores.sort(key=lambda x: x[1], reverse=True)
+    top3 = valid_scores[:3]
+    
     prob_over_2_5 = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + ag > 2.5)
     over_under_msg = f"大2.5球" if prob_over_2_5 > 0.5 else f"小2.5球"
 
@@ -444,4 +465,4 @@ history_df.to_csv('odds_history.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("本周末英超 V26 升级版预测报告", html_report, img_buffers)
+send_rich_email("本周末英超 V27 终极预测报告", html_report, img_buffers)
