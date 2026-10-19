@@ -11,7 +11,6 @@ from email.header import Header
 
 warnings.filterwarnings('ignore')
 
-# ==================== 密钥配置 ====================
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
 EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
@@ -57,13 +56,13 @@ def fuzzy_match(team_a, team_b):
     if not isinstance(team_a, str) or not isinstance(team_b, str): return False
     return (team_a.lower() in team_b.lower()) or (team_b.lower() in team_a.lower())
 
-# 🌟 核心新增：安全提取字符串函数，彻底消灭 nan
+# 安全提取字符串
 def safe_str(val, default="未知"):
     if pd.isna(val) or val is None or str(val).strip().lower() in ['nan', 'none', '']:
         return default
     return str(val)
 
-print("⏳ 正在抓取真实赛果，进行 V26 深度微观复盘...")
+print("⏳ 正在抓取真实赛果，进行 V27 深度微观复盘...")
 try:
     finished_matches = []
     seven_days_ago = datetime.now() - timedelta(days=10)
@@ -95,7 +94,6 @@ try:
     if not df_finished.empty:
         match_details_text = ""
         
-        # ==================== 虚拟资金追踪 ====================
         bankroll_file = 'bankroll.csv'
         if not os.path.exists(bankroll_file):
             pd.DataFrame([{'date': '2026-01-01', 'balance': 10000.0, 'pnl': 0.0, 'bet_count': 0}]).to_csv(bankroll_file, index=False)
@@ -132,7 +130,6 @@ try:
                         bet_amount = balance * max(0, bet_pct) * 0.1
                         if actual_res == '客胜': payout = bet_amount * odds_a
                         
-                    # 🌟 使用 safe_str 提取，彻底杜绝 nan
                     weather_val = safe_str(p.get('weather'))
                     h_rest_val = safe_str(p.get('home_rest'), '未知')
                     a_rest_val = safe_str(p.get('away_rest'), '未知')
@@ -140,9 +137,13 @@ try:
                     a_inj_val = safe_str(p.get('away_injuries'), '无')
                     ref_val = safe_str(p.get('referee'), '官方未公布')
 
+                    # 🌟 核心修复：彻底解决“未知天”的排版
+                    h_rest_str = f"{h_rest_val}天" if h_rest_val != '未知' else '未知休息'
+                    a_rest_str = f"{a_rest_val}天" if a_rest_val != '未知' else '未知休息'
+
                     match_details_text += f"【{row['home_team']} vs {row['away_team']}】\n"
                     match_details_text += f"  - 赛前模型预测: {p['predicted_result']} (比分 {p['predicted_score']})\n"
-                    match_details_text += f"  - 赛前多维情报: 天气[{weather_val}], 休息[{h_rest_val}天 vs {a_rest_val}天], {row['home_team']}伤停[{h_inj_val}], {row['away_team']}伤停[{a_inj_val}], 裁判[{ref_val}]\n"
+                    match_details_text += f"  - 赛前多维情报: 天气[{weather_val}], 休息[{h_rest_str} vs {a_rest_str}], {row['home_team']}伤停[{h_inj_val}], {row['away_team']}伤停[{a_inj_val}], 裁判[{ref_val}]\n"
                     match_details_text += f"  - 实际赛果: {row['home_goals']}-{row['away_goals']} ({actual_res})\n"
                     
                     if bet_amount > 0:
@@ -172,7 +173,7 @@ try:
 
 请完成以下任务：
 1. **微观归因（多维分析）**：针对预测错误的比赛，深度分析原因。请结合赛前情报进行综合分析（比如：是不是下雨限制了传控？是不是核心球员伤停导致进攻拉胯？是不是赛程密集导致体能崩盘？或者是当值主裁的判罚尺度直接改变了比赛走势？又或者是阵型被克制？）。针对预测正确的比赛，总结赢在哪。字数不超过200字。
-2. **吸取教训**：提炼一条能直接写入下一版模型特征的优化经验，用“经验：”开头。（例如：“当强队核心缺阵、遭遇雨战且裁判执法严厉时，应大幅下调其控球率和进球期望值”）。
+2. **吸取教训**：提炼一条能直接写入下一版模型特征的优化经验，用“经验：”开头。
 
 """
         
@@ -180,7 +181,7 @@ try:
         review_comment = response.choices[0].message.content.strip()
         
         print("\n" + "="*60)
-        print(f"🧠 DeepSeek V26 深度复盘：\n{review_comment}")
+        print(f"🧠 DeepSeek V27 深度复盘：\n{review_comment}")
         print(f"💰 虚拟资金盈亏：{weekly_pnl:.2f} | 当前总资金：{balance:.2f}")
         print("="*60)
         
@@ -190,7 +191,7 @@ try:
                 f.write(f"- [{datetime.now().strftime('%Y-%m-%d')}] {new_knowledge}\n")
             print(f"✅ 已将新教训写入 knowledge.txt，下次预测将强制参考！")
         
-        send_email("近期英超 V26 深度复盘与资金报表", review_text + "\n" + match_details_text + "\n" + review_comment)
+        send_email("近期英超 V27 深度复盘与资金报表", review_text + "\n" + match_details_text + "\n" + review_comment)
         
         print("\n⏳ 正在将新赛果追加到历史数据库...")
         try:
