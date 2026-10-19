@@ -11,6 +11,7 @@ from email.header import Header
 
 warnings.filterwarnings('ignore')
 
+# ==================== 密钥配置 ====================
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
 EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
@@ -20,13 +21,17 @@ llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com
 def send_email(subject, content, receiver="308730509@qq.com"):
     if not EMAIL_SENDER or not EMAIL_PASSWORD: return
     message = MIMEText(content, 'plain', 'utf-8')
-    message['From'] = EMAIL_SENDER; message['To'] = receiver; message['Subject'] = Header(subject, 'utf-8')
+    message['From'] = EMAIL_SENDER
+    message['To'] = receiver
+    message['Subject'] = Header(subject, 'utf-8')
     try:
         smtpObj = smtplib.SMTP_SSL('smtp.qq.com', 465)
         smtpObj.login(EMAIL_SENDER, EMAIL_PASSWORD)
         smtpObj.sendmail(EMAIL_SENDER, [receiver], message.as_string())
-    except Exception as e: print(f"❌ 复盘邮件发送失败: {e}")
+    except Exception as e: 
+        print(f"❌ 复盘邮件发送失败: {e}")
 
+# 中英文球队对照字典
 team_mapping = {
     'Arsenal FC': '阿森纳', 'Arsenal': '阿森纳', 'Aston Villa FC': '阿斯顿维拉', 'Aston Villa': '阿斯顿维拉',
     'AFC Bournemouth': '伯恩茅斯', 'Bournemouth': '伯恩茅斯', 'Brentford FC': '布伦特福德', 'Brentford': '布伦特福德',
@@ -43,6 +48,7 @@ team_mapping = {
     'Leeds United FC': '利兹联', 'Leeds United': '利兹联', 'Sunderland AFC': '桑德兰', 'Sunderland': '桑德兰',
     'Hull City AFC': '赫尔城', 'Hull City': '赫尔城', 'Coventry City FC': '考文垂', 'Coventry City': '考文垂'
 }
+
 def translate_team_name(name):
     if isinstance(name, str): 
         return team_mapping.get(name.replace(" and ", " & ").strip(), name)
@@ -52,7 +58,7 @@ def fuzzy_match(team_a, team_b):
     if not isinstance(team_a, str) or not isinstance(team_b, str): return False
     return (team_a.lower() in team_b.lower()) or (team_b.lower() in team_a.lower())
 
-print("⏳ 正在抓取真实赛果，进行 V21 深度微观复盘...")
+print("⏳ 正在抓取真实赛果，进行 V23 深度微观复盘...")
 try:
     finished_matches = []
     seven_days_ago = datetime.now() - timedelta(days=10)
@@ -125,10 +131,11 @@ try:
                         weekly_pnl += (payout - bet_amount)
                         bet_count += 1
 
-                    # 🌟 核心修复：把赛前多维情报全部拉出来，交给 AI 复盘
+                    # 🌟 核心修复：加入裁判因素复盘维度
                     match_details_text += f"【{row['home_team']} vs {row['away_team']}】\n"
                     match_details_text += f"  - 赛前模型预测: {p['predicted_result']} (比分 {p['predicted_score']})\n"
-                    match_details_text += f"  - 赛前情报: 天气[{p.get('weather', '未知')}], 休息[{p.get('home_rest', '?')}天 vs {p.get('away_rest', '?')}天], {row['home_team']}伤停[{p.get('home_injuries', '无')}], {row['away_team']}伤停[{p.get('away_injuries', '无')}]\n"
+                    match_details_text += f"  - 赛前多维情报: 天气[{p.get('weather', '未知')}], 休息[{p.get('home_rest', '?')}天 vs {p.get('away_rest', '?')}天], {row['home_team']}伤停[{p.get('home_injuries', '无')}], {row['away_team']}伤停[{p.get('away_injuries', '无')}]\n"
+                    match_details_text += f"  - 当值主裁: {p.get('referee', '未知')}\n"
                     match_details_text += f"  - 实际赛果: {row['home_goals']}-{row['away_goals']} ({actual_res})\n"
                     
                     if p['predicted_result'] == actual_res:
@@ -151,8 +158,8 @@ try:
 {match_details_text if match_details_text else "无可匹配的预测记录。"}
 
 请完成以下任务：
-1. **微观归因（多维分析）**：针对预测错误的比赛，深度分析原因。你可以结合赛前情报（比如是不是下雨限制了传控？是不是核心球员伤停导致进攻拉胯？是不是赛程密集导致体能崩盘？又或者是阵型被克制？）。针对预测正确的比赛，总结赢在哪。不要超过200字。
-2. **吸取教训**：提炼一条能直接写入下一版模型特征的优化经验，用“经验：”开头。（例如：“当强队核心缺阵且伴随雨战，应大幅下调其控球率和进球期望值”）。
+1. **微观归因（多维分析）**：针对预测错误的比赛，深度分析原因。请结合赛前情报进行综合分析（比如：是不是下雨限制了传控？是不是核心球员伤停导致进攻拉胯？是不是赛程密集导致体能崩盘？**或者是当值主裁的判罚尺度（如出牌过多、判罚点球）直接改变了比赛走势？** 又或者是阵型被克制？）。针对预测正确的比赛，总结赢在哪。字数不超过200字。
+2. **吸取教训**：提炼一条能直接写入下一版模型特征的优化经验，用“经验：”开头。（例如：“当强队核心缺阵、遭遇雨战且裁判执法严厉时，应大幅下调其控球率和进球期望值”）。
 
 """
         
@@ -160,17 +167,18 @@ try:
         review_comment = response.choices[0].message.content.strip()
         
         print("\n" + "="*60)
-        print(f"🧠 DeepSeek V21 深度复盘：\n{review_comment}")
+        print(f"🧠 DeepSeek V23 深度复盘：\n{review_comment}")
         print(f"💰 虚拟资金盈亏：{weekly_pnl:.2f} | 当前总资金：{balance:.2f}")
         print("="*60)
         
+        # 更新知识库
         if "经验：" in review_comment:
             new_knowledge = review_comment.split("经验：")[-1].strip()
             with open('knowledge.txt', 'a', encoding='utf-8') as f:
                 f.write(f"- [{datetime.now().strftime('%Y-%m-%d')}] {new_knowledge}\n")
             print(f"✅ 已将新教训写入 knowledge.txt，下次预测将强制参考！")
         
-        send_email("近期英超 V21 深度复盘与资金报表", review_text + "\n" + review_comment)
+        send_email("近期英超 V23 深度复盘与资金报表", review_text + "\n" + review_comment)
         
         # ==================== 更新历史数据库 ====================
         print("\n⏳ 正在将新赛果追加到历史数据库...")
