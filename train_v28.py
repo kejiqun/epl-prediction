@@ -35,7 +35,6 @@ print("⏳ V28 炼丹炉启动，准备融合真实 xG 数据...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 
-# 尝试加载 xG 数据，如果抓取失败，则优雅降级
 try:
     df_xg = pd.read_csv('epl_xg_data.csv')
     df_xg['date'] = pd.to_datetime(df_xg['date'])
@@ -49,6 +48,7 @@ except:
 
 df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
 df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
+df_hist = df_hist.sort_values('date').reset_index(drop=True)
 
 try:
     df_standings = pd.read_csv('epl_standings.csv')
@@ -65,14 +65,13 @@ for idx, row in df_hist.iterrows():
     home, away, date = row['home_team_cn'], row['away_team_cn'], row['date']
     for t in [home, away]:
         if t not in team_stats: 
-            team_stats[t] = {'scored_xg':[], 'conceded_xg':[], 'points':[]}
+            team_stats[t] = {'scored_xg':[], 'conceded_xg':[], 'points':[], 'home_scored':[], 'home_conceded':[], 'away_scored':[], 'away_conceded':[]}
         if t not in last_match_date: 
             last_match_date[t] = None
 
     h_rest = min(max((date - last_match_date[home]).days if last_match_date[home] else 7, 2), 14)
     a_rest = min(max((date - last_match_date[away]).days if last_match_date[away] else 7, 2), 14)
     
-    # 提取 xG 或者降级使用进球
     h_match_xg = row['home_goals']
     a_match_xg = row['away_goals']
     
@@ -87,16 +86,28 @@ for idx, row in df_hist.iterrows():
     a_avg_xg = np.mean(team_stats[away]['scored_xg'][-5:]) if len(team_stats[away]['scored_xg']) > 0 else league_avg_goals
     a_avg_conceded = np.mean(team_stats[away]['conceded_xg'][-5:]) if len(team_stats[away]['conceded_xg']) > 0 else league_avg_goals
 
+    # 基础攻击防守
     h_attack = h_avg_xg / league_avg_goals
     h_defense = h_avg_conceded / league_avg_goals
     a_attack = a_avg_xg / league_avg_goals
     a_defense = a_avg_conceded / league_avg_goals
+
+    # 🌟 补齐：主客场特异性
+    h_home_scored = np.mean(team_stats[home]['home_scored'][-3:]) if len(team_stats[home]['home_scored']) > 0 else league_avg_goals
+    h_home_conceded = np.mean(team_stats[home]['home_conceded'][-3:]) if len(team_stats[home]['home_conceded']) > 0 else league_avg_goals
+    a_away_scored = np.mean(team_stats[away]['away_scored'][-3:]) if len(team_stats[away]['away_scored']) > 0 else league_avg_goals
+    a_away_conceded = np.mean(team_stats[away]['away_conceded'][-3:]) if len(team_stats[away]['away_conceded']) > 0 else league_avg_goals
+
+    h_home_attack, h_home_defense = h_home_scored / league_avg_goals, h_home_conceded / league_avg_goals
+    a_away_attack, a_away_defense = a_away_scored / league_avg_goals, a_away_conceded / league_avg_goals
     
     h_win_rate = np.mean(team_stats[home]['points'][-5:]) if len(team_stats[home]['points']) > 0 else 0.5
     a_win_rate = np.mean(team_stats[away]['points'][-5:]) if len(team_stats[away]['points']) > 0 else 0.5
 
     features_list.append({
         'attack': h_attack, 'defense': h_defense, 'opp_attack': a_attack, 'opp_defense': a_defense,
+        'home_attack_spec': h_home_attack, 'home_defense_spec': h_home_defense, 
+        'away_attack_spec': a_away_attack, 'away_defense_spec': a_away_defense, # 🌟 补上这四个特征
         'win_rate': h_win_rate, 'opp_win_rate': a_win_rate, 'win_rate_diff': h_win_rate - a_win_rate,
         'rest_days': h_rest, 'opp_rest_days': a_rest, 'is_home': 1, 
         'home_rank': team_rank_dict.get(home, 15), 'away_rank': team_rank_dict.get(away, 15),
@@ -105,17 +116,27 @@ for idx, row in df_hist.iterrows():
     })
     
     team_stats[home]['scored_xg'].append(h_match_xg); team_stats[home]['conceded_xg'].append(a_match_xg)
+    team_stats[home]['home_scored'].append(row['home_goals']); team_stats[home]['home_conceded'].append(row['away_goals'])
     h_pts = 3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0)
     team_stats[home]['points'].append(h_pts)
     
     team_stats[away]['scored_xg'].append(a_match_xg); team_stats[away]['conceded_xg'].append(h_match_xg)
+    team_stats[away]['away_scored'].append(row['away_goals']); team_stats[away]['away_conceded'].append(row['home_goals'])
     a_pts = 3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0)
     team_stats[away]['points'].append(a_pts)
     
     last_match_date[home] = date; last_match_date[away] = date
 
 df_model = pd.DataFrame(features_list).dropna(subset=['home_goals', 'away_goals'])
-feature_cols = ['attack', 'defense', 'opp_attack', 'opp_defense', 'win_rate', 'opp_win_rate', 'win_rate_diff', 'rest_days', 'opp_rest_days', 'is_home', 'home_rank', 'away_rank', 'prob_h_odds', 'prob_d_odds', 'prob_a_odds']
+
+# 🌟 核心修复：将主客场特异性特征加入最终训练列表
+feature_cols = [
+    'attack', 'defense', 'opp_attack', 'opp_defense', 
+    'home_attack_spec', 'home_defense_spec', 'away_attack_spec', 'away_defense_spec',
+    'win_rate', 'opp_win_rate', 'win_rate_diff', 'rest_days', 'opp_rest_days', 
+    'is_home', 'home_rank', 'away_rank', 'prob_h_odds', 'prob_d_odds', 'prob_a_odds'
+]
+
 X = df_model[feature_cols].fillna(0.33)
 y_home = df_model['home_goals'].astype(int)
 y_away = df_model['away_goals'].astype(int)
