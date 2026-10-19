@@ -4,19 +4,24 @@ import requests
 import joblib
 import os
 import json
+import io
+import base64
 from scipy.stats import poisson
 from datetime import datetime, timedelta
 import warnings
 from openai import OpenAI
 import smtplib
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 from email.header import Header
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 warnings.filterwarnings('ignore')
-pd.set_option('display.unicode.ambiguous_as_wide', True)
-pd.set_option('display.unicode.east_asian_width', True)
-pd.set_option('display.width', 1000)
 
+# ==================== 密钥配置 ====================
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -25,17 +30,31 @@ EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 
 llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
-def send_email(subject, content, receiver="308730509@qq.com"):
+# ==================== 富文本带图邮件发送 ====================
+def send_rich_email(subject, html_content, img_buffers, receiver="308730509@qq.com"):
     if not EMAIL_SENDER or not EMAIL_PASSWORD: return
-    message = MIMEText(content, 'plain', 'utf-8')
-    message['From'] = EMAIL_SENDER
-    message['To'] = receiver
-    message['Subject'] = Header(subject, 'utf-8')
+    msg = MIMEMultipart('related')
+    msg['From'] = EMAIL_SENDER
+    msg['To'] = receiver
+    msg['Subject'] = Header(subject, 'utf-8')
+    
+    msg_alt = MIMEMultipart('alternative')
+    msg.attach(msg_alt)
+    
+    html_part = MIMEText(html_content, 'html', 'utf-8')
+    msg_alt.attach(html_part)
+    
+    # 附加图片
+    for i, buf in enumerate(img_buffers):
+        img = MIMEImage(buf.getvalue())
+        img.add_header('Content-ID', f'<chart_{i}>')
+        msg.attach(img)
+        
     try:
         smtpObj = smtplib.SMTP_SSL('smtp.qq.com', 465)
         smtpObj.login(EMAIL_SENDER, EMAIL_PASSWORD)
-        smtpObj.sendmail(EMAIL_SENDER, [receiver], message.as_string())
-        print("✅ 邮件发送成功！")
+        smtpObj.sendmail(EMAIL_SENDER, [receiver], msg.as_string())
+        print("✅ 图文邮件发送成功！")
     except Exception as e:
         print(f"❌ 邮件发送失败: {e}")
 
@@ -215,10 +234,11 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-report_content = "【英超全自动预测系统 V15 - 深度主客场画像与资金管理】\n\n"
+html_report = "<html><body><h2>⚽ 英超全自动预测系统 V16 - 图文战报</h2>"
 prediction_logs = []
+img_buffers = []
 
-for _, match in df_merged.iterrows():
+for idx, (_, match) in enumerate(df_merged.iterrows()):
     home_cn, away_cn = match['主队'], match['客队']
     match_time = pd.to_datetime(match['datetime_parsed']).strftime('%Y-%m-%d %H:%M')
     match_date_only = pd.to_datetime(match['datetime_parsed']).date()
@@ -321,32 +341,57 @@ for _, match in df_merged.iterrows():
         'predicted_result': recommend,
         'pred_prob_h': round(prob_home_win, 4), 'pred_prob_d': round(prob_draw, 4), 'pred_prob_a': round(prob_away_win, 4),
         'predicted_score': top3[0][0],
-        'odds_h': odds_h, 'odds_d': odds_d, 'odds_a': odds_a # 🌟 V15新增强：记录赔率快照
+        'odds_h': odds_h, 'odds_d': odds_d, 'odds_a': odds_a
     })
 
-    report_line = f"\n{'='*60}\n"
-    report_line += f"【比赛时间】{match_time}\n【对阵双方】{home_cn} vs {away_cn}\n{'='*60}\n"
-    report_line += f"\n📊 球队数据对比：\n   {home_cn}：排名 {team_rank_dict.get(home_cn, 15)} | 近5场进 {h_avg_scored:.2f} 失 {h_avg_conceded:.2f} | 休息 {h_rest} 天\n   {away_cn}：排名 {team_rank_dict.get(away_cn, 15)} | 近5场进 {a_avg_scored:.2f} 失 {a_avg_conceded:.2f} | 休息 {a_rest} 天\n"
-    report_line += f"   🏠 主场龙/客场虫画像：{home_cn} 主场进 {h_home_scored:.2f} 失 {h_home_conceded:.2f} | {away_cn} 客场进 {a_away_scored:.2f} 失 {a_away_conceded:.2f}\n"
-    if isinstance(weather, dict): report_line += f"\n🌤️ 比赛日天气：{weather['天气']} | 温度 {weather['温度']}°C\n"
-    report_line += f"\n📈 赔率市场分析：主胜 {market_h*100:.1f}% | 平局 {market_d*100:.1f}% | 客胜 {market_a*100:.1f}%\n"
-    report_line += f"\n💰 {kelly_msg}\n"
-    report_line += f"\n🎯 V15模型综合预测：主胜 {prob_home_win*100:.1f}% | 平局 {prob_draw*100:.1f}% | 客胜 {prob_away_win*100:.1f}%\n"
-    report_line += f"   最可能比分：{top3[0][0]} | {top3[1][0]} | {top3[2][0]}\n"
-    report_line += f"   进球数预测：{over_under_msg}\n"
-    report_line += f"\n🧠 DeepSeek 专家深度点评：\n   {expert_comment}\n"
-    report_line += f"\n💡 综合推荐：{recommend}\n{'='*60}\n"
+    # ==================== 云端生成图表 ====================
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+    
+    # 图1：胜平负概率对比
+    labels = ['Home Win', 'Draw', 'Away Win']
+    model_probs = [prob_home_win, prob_draw, prob_away_win]
+    market_probs = [market_h, market_d, market_a]
+    x = np.arange(len(labels))
+    width = 0.35
+    ax1.bar(x - width/2, model_probs, width, label='V15 Model', color='royalblue')
+    ax1.bar(x + width/2, market_probs, width, label='Market', color='gray', alpha=0.7)
+    ax1.set_xticks(x); ax1.set_xticklabels(labels)
+    ax1.set_ylabel('Probability')
+    ax1.set_title(f"{home_cn} vs {away_cn} - Probabilities")
+    ax1.legend()
+    
+    # 图2：凯利指数推荐
+    kelly_vals = [max(0, kelly_h), max(0, kelly_d), max(0, kelly_a)]
+    ax2.bar(labels, kelly_vals, color=['green', 'orange', 'red'])
+    ax2.set_ylabel('Recommended Bet %')
+    ax2.set_title(f"Kelly Criterion")
+    
+    plt.tight_layout()
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=100)
+    buf.seek(0)
+    img_buffers.append(buf)
+    plt.close(fig)
 
-    print(report_line)
-    report_content += report_line
+    # ==================== 拼接 HTML 邮件内容 ====================
+    html_report += f"<hr><h3>{match_time} - {home_cn} vs {away_cn}</h3>"
+    html_report += f"<img src='cid:chart_{idx}' width='600'><br>"
+    html_report += f"<p><b>📊 核心数据：</b>{home_cn} 近5场 {h_avg_scored:.2f}进/{h_avg_conceded:.2f}失 | {away_cn} 近5场 {a_avg_scored:.2f}进/{a_avg_conceded:.2f}失</p>"
+    html_report += f"<p><b>💰 凯利建议：</b>{kelly_msg}</p>"
+    html_report += f"<p><b>🎯 模型预测：</b>主胜 {prob_home_win*100:.1f}% | 平局 {prob_draw*100:.1f}% | 客胜 {prob_away_win*100:.1f}% (比分推荐: {top3[0][0]})</p>"
+    html_report += f"<p><b>🧠 AI点评：</b>{expert_comment}</p>"
+    html_report += f"<p><b>💡 综合推荐：</b>{recommend}</p>"
 
+html_report += "</body></html>"
+
+# 保存日志
 log_df = pd.DataFrame(prediction_logs)
 if os.path.exists('predictions_log.csv'):
     old_log = pd.read_csv('predictions_log.csv')
-    # 确保合并时不报错
     for col in ['odds_h', 'odds_d', 'odds_a']:
         if col not in old_log.columns: old_log[col] = 0.0
     log_df = pd.concat([old_log, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
-send_email("本周末英超 V15 深度主客场预测报告", report_content)
+# 发送带图的邮件
+send_rich_email("本周末英超 V16 图文预测报告", html_report, img_buffers)
