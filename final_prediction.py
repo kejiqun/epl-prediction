@@ -17,11 +17,13 @@ from email.header import Header
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from sklearn.neural_network import MLPRegressor
 
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei', 'Arial Unicode MS']
 plt.rcParams['axes.unicode_minus'] = False
 warnings.filterwarnings('ignore')
 
+# ==================== 密钥配置 ====================
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -33,17 +35,11 @@ llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com
 def send_rich_email(subject, html_content, img_buffers, receiver="308730509@qq.com"):
     if not EMAIL_SENDER or not EMAIL_PASSWORD: return
     msg = MIMEMultipart('related')
-    msg['From'] = EMAIL_SENDER
-    msg['To'] = receiver
-    msg['Subject'] = Header(subject, 'utf-8')
-    msg_alt = MIMEMultipart('alternative')
-    msg.attach(msg_alt)
-    html_part = MIMEText(html_content, 'html', 'utf-8')
-    msg_alt.attach(html_part)
+    msg['From'] = EMAIL_SENDER; msg['To'] = receiver; msg['Subject'] = Header(subject, 'utf-8')
+    msg_alt = MIMEMultipart('alternative'); msg.attach(msg_alt)
+    msg_alt.attach(MIMEText(html_content, 'html', 'utf-8'))
     for i, buf in enumerate(img_buffers):
-        img = MIMEImage(buf.getvalue())
-        img.add_header('Content-ID', f'<chart_{i}>')
-        msg.attach(img)
+        img = MIMEImage(buf.getvalue()); img.add_header('Content-ID', f'<chart_{i}>'); msg.attach(img)
     try:
         smtpObj = smtplib.SMTP_SSL('smtp.qq.com', 465)
         smtpObj.login(EMAIL_SENDER, EMAIL_PASSWORD)
@@ -182,7 +178,7 @@ try:
                 injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})" if news else f"{player_name}({status_cn})")
 except: pass
 
-print("⏳ 正在加载 V15 进球模型并计算历史交锋(H2H)...")
+print("⏳ 正在加载 V15 模型与神经网络集成模型...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist = df_hist.sort_values('date').reset_index(drop=True)
@@ -214,13 +210,11 @@ for idx, row in df_hist.iterrows():
     team_stats[away]['points'].append(a_pts)
     
     h2h_stats[(home, away)].append((row['home_goals'], row['away_goals']))
-    
     last_match_date[home] = match_date; last_match_date[away] = match_date
 
 knowledge_base = ""
 if os.path.exists('knowledge.txt'):
-    with open('knowledge.txt', 'r', encoding='utf-8') as f:
-        knowledge_base = f.read()
+    with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
 df_next_round['主队'] = df_next_round['home_team'].apply(translate_team_name)
 df_next_round['客队'] = df_next_round['away_team'].apply(translate_team_name)
@@ -229,7 +223,7 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-html_report = "<html><body><h2>⚽ 英超全自动预测系统 V21 - 图文战报</h2>"
+html_report = "<html><body><h2>⚽ 英超全自动预测系统 V22 - 图文战报</h2>"
 prediction_logs = []
 img_buffers = []
 odds_history_list = []
@@ -327,7 +321,6 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
                 
     odds_history_list.append({'date': match_date_only.strftime('%Y-%m-%d'), '主队': home_cn, '客队': away_cn, 'odds_h': odds_h, 'odds_d': odds_d, 'odds_a': odds_a})
 
-    # 提取完整情报字符串
     home_injuries_str = '，'.join(injury_dict.get(home_cn, ["无"]))
     away_injuries_str = '，'.join(injury_dict.get(away_cn, ["无"]))
     weather_str = weather['天气'] if isinstance(weather, dict) else weather
@@ -354,7 +347,6 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
         expert_comment = response.choices[0].message.content.strip()
     except: expert_comment = "【AI深度分析暂时不可用】"
     
-    # 🌟 核心：保存完整的上下文情报进日志，供复盘使用
     prediction_logs.append({
         'date': match_date_only.strftime('%Y-%m-%d'),
         'home_team': home_cn, 'away_team': away_cn,
@@ -376,7 +368,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     market_probs = [market_h, market_d, market_a]
     x = np.arange(len(labels))
     width = 0.35
-    ax1.bar(x - width/2, model_probs, width, label='V15 模型', color='royalblue')
+    ax1.bar(x - width/2, model_probs, width, label='V22 模型', color='royalblue')
     ax1.bar(x + width/2, market_probs, width, label='市场平均', color='gray', alpha=0.7)
     ax1.set_xticks(x); ax1.set_xticklabels(labels)
     ax1.set_ylabel('概率')
@@ -424,4 +416,4 @@ history_df.to_csv('odds_history.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("本周末英超 V21 图文预测报告", html_report, img_buffers)
+send_rich_email("本周末英超 V22 图文预测报告", html_report, img_buffers)
