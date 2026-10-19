@@ -22,6 +22,7 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei', 'Arial Unico
 plt.rcParams['axes.unicode_minus'] = False
 warnings.filterwarnings('ignore')
 
+# ==================== 密钥配置 ====================
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -45,7 +46,6 @@ def send_rich_email(subject, html_content, img_buffers, receiver="308730509@qq.c
         print("✅ 图文邮件发送成功！")
     except Exception as e: print(f"❌ 邮件发送失败: {e}")
 
-# 字典省略（保持原样）
 team_mapping = {
     'Arsenal FC': '阿森纳', 'Arsenal': '阿森纳', 'Aston Villa FC': '阿斯顿维拉', 'Aston Villa': '阿斯顿维拉',
     'AFC Bournemouth': '伯恩茅斯', 'Bournemouth': '伯恩茅斯', 'Brentford FC': '布伦特福德', 'Brentford': '布伦特福德',
@@ -179,14 +179,13 @@ try:
 except: team_rank_dict = {}
 
 injury_dict = {}
-injury_impact = {} # 🌟 新增：伤病战力折损指数
+injury_impact = {}
 try:
     fpl_resp = requests.get("https://fantasy.premierleague.com/api/bootstrap-static/", timeout=15)
     if fpl_resp.status_code == 200:
         fpl_data = fpl_resp.json()
         teams_map = {t['id']: t['name'] for t in fpl_data['teams']}
         
-        # 计算每队的平均分
         team_avg_points = {}
         for t in fpl_data['teams']:
             team_avg_points[t['id']] = t['strength_attack_home'] + t['strength_defence_home']
@@ -201,21 +200,21 @@ try:
                 if team_name_cn not in injury_dict: injury_dict[team_name_cn] = []
                 injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})" if news else f"{player_name}({status_cn})")
                 
-                # 计算折损：如果球员分高，折损大
-                if element['total_points'] > 30: # 仅统计主力
+                if element['total_points'] > 30:
                     if team_name_cn not in injury_impact: injury_impact[team_name_cn] = 0
                     injury_impact[team_name_cn] += (element['total_points'] / team_avg_points.get(team_id, 1)) * 0.05
 except: pass
 
-print("⏳ 正在加载 V24 融合模型并计算特征...")
+print("⏳ 正在加载 V28 xG 模型并计算特征...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist = df_hist.sort_values('date').reset_index(drop=True)
 df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
 df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
 
-model_home_goals = joblib.load('epl_v24_home_goals_model.pkl')
-model_away_goals = joblib.load('epl_v24_away_goals_model.pkl')
+# 🌟 加载 V28 最新模型
+model_home_goals = joblib.load('epl_v28_home_goals_model.pkl')
+model_away_goals = joblib.load('epl_v28_away_goals_model.pkl')
 
 league_avg_goals = (df_hist['home_goals'].mean() + df_hist['away_goals'].mean()) / 2
 team_stats = {}; last_match_date = {}; h2h_stats = {}
@@ -248,7 +247,7 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-html_report = "<html><body><h2>⚽ 英超全自动预测系统 V27 - 图文战报</h2>"
+html_report = "<html><body><h2>⚽ 英超全自动预测系统 V28 - 图文战报</h2>"
 prediction_logs = []
 img_buffers = []
 odds_history_list = []
@@ -286,7 +285,6 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     h_win_rate = np.mean(h['points'][-5:]) if h['points'] else 0.5
     a_win_rate = np.mean(a['points'][-5:]) if a['points'] else 0.5
 
-    # 🌟 核心修复：引入伤病折损因子
     h_inj_factor = 1 - injury_impact.get(home_cn, 0)
     a_inj_factor = 1 - injury_impact.get(away_cn, 0)
 
@@ -302,7 +300,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     X_pred = pd.DataFrame([feature_dict])
     home_xg, away_xg = max(0.1, model_home_goals.predict(X_pred)[0]), max(0.1, model_away_goals.predict(X_pred)[0])
     
-    # 应用伤病折损（对 xG 产生影响）
+    # 应用伤病折损
     home_xg = home_xg * h_inj_factor
     away_xg = away_xg * a_inj_factor
     
@@ -324,7 +322,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     pred_result = np.argmax(probs)
     recommend = "主胜" if pred_result == 2 else ("平局" if pred_result == 1 else "客胜")
     
-    # 🌟 核心修复：比分推荐必须与胜平负保持一致！
+    # 🌟 比分强约束逻辑
     all_scores = [(f"{hg}-{ag}", prob_matrix[hg][ag]) for hg in range(max_goals+1) for ag in range(max_goals+1)]
     if recommend == "主胜":
         valid_scores = [s for s in all_scores if int(s[0].split('-')[0]) > int(s[0].split('-')[1])]
@@ -416,7 +414,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     market_probs = [market_h, market_d, market_a]
     x = np.arange(len(labels))
     width = 0.35
-    ax1.bar(x - width/2, model_probs, width, label='V24 融合模型', color='royalblue')
+    ax1.bar(x - width/2, model_probs, width, label='V28 xG 模型', color='royalblue')
     ax1.bar(x + width/2, market_probs, width, label='市场平均', color='gray', alpha=0.7)
     ax1.set_xticks(x); ax1.set_xticklabels(labels)
     ax1.set_ylabel('概率')
@@ -465,4 +463,4 @@ history_df.to_csv('odds_history.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("本周末英超 V27 终极预测报告", html_report, img_buffers)
+send_rich_email("本周末英超 V28 xG终极预测报告", html_report, img_buffers)
