@@ -22,7 +22,6 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei', 'Arial Unico
 plt.rcParams['axes.unicode_minus'] = False
 warnings.filterwarnings('ignore')
 
-# ==================== 密钥配置 ====================
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -93,6 +92,14 @@ def get_match_weather(home_team, date_str):
     except: pass
     return "获取失败"
 
+# Dixon-Coles 修正函数（针对低比分）
+def dixon_coles_tau(h, a, home_xg, away_xg, rho=-0.1):
+    if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
+    elif h == 0 and a == 1: return 1 + home_xg * rho
+    elif h == 1 and a == 0: return 1 + away_xg * rho
+    elif h == 1 and a == 1: return 1 - rho
+    else: return 1.0
+
 print("⏳ 正在从 ESPN 获取未来赛程（含裁判信息）...")
 upcoming = []
 today = datetime.now()
@@ -111,7 +118,6 @@ for i in range(10):
                         home_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'home'), None)
                         away_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'away'), None)
                         
-                        # 🌟 核心挖掘：抓取裁判信息
                         officials = competitions[0].get('officials', [])
                         referee = "未知"
                         if officials:
@@ -190,15 +196,15 @@ try:
                 injury_dict[team_name_cn].append(f"{player_name}({status_cn}: {news})" if news else f"{player_name}({status_cn})")
 except: pass
 
-print("⏳ 正在加载 V15 模型并计算特征...")
+print("⏳ 正在加载 V24 融合模型并计算特征...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist = df_hist.sort_values('date').reset_index(drop=True)
 df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
 df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
 
-model_home_goals = joblib.load('epl_v15_home_goals_model.pkl')
-model_away_goals = joblib.load('epl_v15_away_goals_model.pkl')
+model_home_goals = joblib.load('epl_v24_home_goals_model.pkl')
+model_away_goals = joblib.load('epl_v24_away_goals_model.pkl')
 
 league_avg_goals = (df_hist['home_goals'].mean() + df_hist['away_goals'].mean()) / 2
 team_stats = {}; last_match_date = {}; h2h_stats = {}
@@ -231,7 +237,7 @@ for col in ['主胜概率', '平局概率', '客胜概率']:
     if col not in df_merged.columns: df_merged[col] = 0.33
     else: df_merged[col] = df_merged[col].fillna(0.33)
 
-html_report = "<html><body><h2>⚽ 英超全自动预测系统 V23 - 图文战报</h2>"
+html_report = "<html><body><h2>⚽ 英超全自动预测系统 V24 - 图文战报</h2>"
 prediction_logs = []
 img_buffers = []
 odds_history_list = []
@@ -278,13 +284,18 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
         'prob_h_odds': match['主胜概率'], 'prob_d_odds': match['平局概率'], 'prob_a_odds': match['客胜概率']
     }
     X_pred = pd.DataFrame([feature_dict])
+    
+    # V24 模型预测期望进球
     home_xg, away_xg = max(0.1, model_home_goals.predict(X_pred)[0]), max(0.1, model_away_goals.predict(X_pred)[0])
     
     max_goals = 5
     prob_matrix = np.zeros((max_goals+1, max_goals+1))
     for hg in range(max_goals+1):
         for ag in range(max_goals+1):
-            prob_matrix[hg][ag] = poisson.pmf(hg, home_xg) * poisson.pmf(ag, away_xg)
+            base_prob = poisson.pmf(hg, home_xg) * poisson.pmf(ag, away_xg)
+            # 🌟 V24 核心：加入 Dixon-Coles 修正
+            tau = dixon_coles_tau(hg, ag, home_xg, away_xg)
+            prob_matrix[hg][ag] = base_prob * tau
             
     prob_home_win = np.sum(np.tril(prob_matrix, -1))
     prob_draw = np.sum(np.diag(prob_matrix))
@@ -337,8 +348,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     h_rot = f"{home_cn}休息{h_rest}天。" + ("赛程密集!" if h_rest <= 3 else "")
     a_rot = f"{away_cn}休息{a_rest}天。" + ("赛程密集!" if a_rest <= 3 else "")
 
-    # 🌟 将裁判信息加入 Prompt
-    prompt = f"""你是一位精通英超的资深数据分析专家，同时也是战术大师。请基于以下数据，结合历史经验，写一段精炼、口语化的赛前点评（不超过180字）：
+    prompt = f"""你是一位精通英超的资深数据分析专家，同时也是盘口大师。请基于以下数据，结合历史经验，写一段精炼、口语化的赛前点评（不超过180字）：
     比赛：{home_cn} vs {away_cn}
     当值主裁：{referee}
     赛程密度：{h_rot} {a_rot}
@@ -349,7 +359,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     赔率异动：{odds_drift_msg}
     {kelly_msg}
     伤停：{home_cn} [{home_injuries_str}]；{away_cn} [{away_injuries_str}]。
-    **任务**：请务必结合两队大概率使用的阵型分析战术克制关系，并简要评价一下当值主裁的执法风格（若了解）。
+    **任务**：请结合阵型克制关系，并重点从“机构诱盘心理”角度分析（比如赔率是否在诱导某一方）。最后请结合当值主裁的执法尺度判断比赛流畅度。
     **历史经验库**：{knowledge_base}
     请综合以上信息分析，并以“推荐关注：XXX”结尾。"""
     
@@ -370,7 +380,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
         'away_injuries': away_injuries_str,
         'home_rest': h_rest,
         'away_rest': a_rest,
-        'referee': referee # 🌟 存入日志
+        'referee': referee
     })
 
     # ==================== 中文化图表 ====================
@@ -380,7 +390,7 @@ for idx, (_, match) in enumerate(df_merged.iterrows()):
     market_probs = [market_h, market_d, market_a]
     x = np.arange(len(labels))
     width = 0.35
-    ax1.bar(x - width/2, model_probs, width, label='V23 模型', color='royalblue')
+    ax1.bar(x - width/2, model_probs, width, label='V24 融合模型', color='royalblue')
     ax1.bar(x + width/2, market_probs, width, label='市场平均', color='gray', alpha=0.7)
     ax1.set_xticks(x); ax1.set_xticklabels(labels)
     ax1.set_ylabel('概率')
@@ -429,4 +439,4 @@ history_df.to_csv('odds_history.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("本周末英超 V23 图文预测报告（含裁判情报）", html_report, img_buffers)
+send_rich_email("本周末英超 V24 终极融合预测报告", html_report, img_buffers)
