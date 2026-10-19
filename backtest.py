@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
 
-# 解决中文显示
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei', 'Arial Unicode MS']
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -84,9 +83,9 @@ for idx, row in df_hist.iterrows():
         'away_attack_spec': a_away_attack, 'away_defense_spec': a_away_defense,
         'win_rate': h_win_rate, 'opp_win_rate': a_win_rate, 'win_rate_diff': h_win_rate - a_win_rate,
         'rest_days': h_rest, 'opp_rest_days': a_rest, 'is_home': 1,
-        'home_rank': 15, 'away_rank': 15, # 回测里简化排名
+        'home_rank': 15, 'away_rank': 15,
         'h_form_trend': h_form_trend, 'a_form_trend': a_form_trend,
-        'prob_h_odds': 0.33, 'prob_d_odds': 0.33, 'prob_a_odds': 0.33, # 历史无赔率，用默认
+        'prob_h_odds': 0.33, 'prob_d_odds': 0.33, 'prob_a_odds': 0.33,
         'home_goals': row['home_goals'], 'away_goals': row['away_goals'],
         'date': date
     })
@@ -112,7 +111,6 @@ feature_cols = [
     'prob_h_odds', 'prob_d_odds', 'prob_a_odds'
 ]
 
-# 时间序列切分：前 80% 训练，后 20% 回测（模拟真实情况）
 split_idx = int(len(df_model) * 0.8)
 train_df = df_model.iloc[:split_idx]
 test_df = df_model.iloc[split_idx:]
@@ -138,13 +136,14 @@ X_test = test_df[feature_cols].fillna(0.33)
 test_home_xg = model_home.predict(X_test)
 test_away_xg = model_away.predict(X_test)
 
-# 虚拟赔率（无真实历史赔率时的假设，偏保守）
 ODDS_H, ODDS_D, ODDS_A = 2.0, 3.3, 3.5
 initial_bankroll = 1000.0
 bankroll = initial_bankroll
-bankroll_history = []
+bankroll_history = [bankroll]
 bets_placed = 0
 bets_won = 0
+max_bankroll = bankroll
+max_drawdown = 0.0
 
 for i in range(len(test_df)):
     hg_exp, ag_exp = max(0.1, test_home_xg[i]), max(0.1, test_away_xg[i])
@@ -159,12 +158,10 @@ for i in range(len(test_df)):
     total_p = prob_h + prob_d + prob_a
     prob_h /= total_p; prob_d /= total_p; prob_a /= total_p
     
-    # 凯利公式计算下注比例 (安全起见使用 0.25 凯利，最多下注 5%)
-    kelly_h = max(0, (prob_h * ODDS_H - 1) / (ODDS_H - 1)) * 0.25
-    kelly_d = max(0, (prob_d * ODDS_D - 1) / (ODDS_D - 1)) * 0.25
-    kelly_a = max(0, (prob_a * ODDS_A - 1) / (ODDS_A - 1)) * 0.25
+    kelly_h = max(0, (prob_h * ODDS_H - 1) / (ODDS_H - 1))
+    kelly_d = max(0, (prob_d * ODDS_D - 1) / (ODDS_D - 1))
+    kelly_a = max(0, (prob_a * ODDS_A - 1) / (ODDS_A - 1))
     
-    # 选择预期收益率最高的选项，且必须 > 2% 才下注
     best_kelly, best_choice = 0, None
     if kelly_h > best_kelly: best_kelly, best_choice = kelly_h, 'H'
     if kelly_d > best_kelly: best_kelly, best_choice = kelly_d, 'D'
@@ -172,7 +169,8 @@ for i in range(len(test_df)):
     
     bet_amount = 0
     if best_kelly > 0.02:
-        bet_amount = bankroll * min(best_kelly, 0.05) # 限制单场最多下 5%
+        # 🛠️ 核心修改：平注+最高限额！每次最多下注资金的 2%（防止复利爆炸）
+        bet_amount = initial_bankroll * 0.02 
         bets_placed += 1
         
     if bet_amount > 0:
@@ -189,12 +187,15 @@ for i in range(len(test_df)):
             bankroll -= bet_amount
             
     bankroll_history.append(bankroll)
+    # 计算最大回撤
+    if bankroll > max_bankroll: max_bankroll = bankroll
+    drawdown = (max_bankroll - bankroll) / max_bankroll * 100
+    if drawdown > max_drawdown: max_drawdown = drawdown
 
-# 绘制 ROI 曲线
 plt.figure(figsize=(10, 5))
 plt.plot(bankroll_history, label='资金曲线 (Bankroll)', color='green', linewidth=2)
 plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金 (1000)')
-plt.title('时光机回测：V31 模型历史资金曲线')
+plt.title('时光机回测：V31 模型历史资金曲线 (严格平注限额版)')
 plt.xlabel('下注场次')
 plt.ylabel('资金余额')
 plt.legend()
@@ -207,7 +208,7 @@ win_rate = (bets_won / bets_placed * 100) if bets_placed > 0 else 0
 
 report = f"""
 ====================================
-⚽ 时光机回测报告 (V31)
+⚽ 时光机回测报告 (严格限额版 V2.0)
 ====================================
 回测比赛总数: {len(test_df)} 场
 实际下注场次: {bets_placed} 场
@@ -216,6 +217,7 @@ report = f"""
 初始资金: {initial_bankroll:.2f}
 最终资金: {bankroll:.2f}
 总收益率 (ROI): {roi:+.2f}%
+最大回撤 (Max Drawdown): -{max_drawdown:.2f}%
 ====================================
 """
 print(report)
