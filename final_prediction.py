@@ -1,3 +1,4 @@
+# （头部 import 和基础配置保持不变，直接复制之前的，或者使用这份精简版）
 import pandas as pd
 import numpy as np
 import requests
@@ -84,7 +85,6 @@ print("⏳ 读取每日多联赛赛程...")
 if not os.path.exists('daily_matches.csv'): exit()
 
 df_next_round = pd.read_csv('daily_matches.csv')
-# 🌟 适配中文列名过滤
 df_next_round = df_next_round[(df_next_round['主胜赔率'] > 1) & (df_next_round['平局赔率'] > 1) & (df_next_round['客胜赔率'] > 1)].copy()
 df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间']).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
 
@@ -163,7 +163,7 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V8.2</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V8.4</h2>"
 prediction_logs = []; img_buffers = []
 
 for league_name in df_next_round['联赛'].unique():
@@ -182,7 +182,6 @@ for league_name in df_next_round['联赛'].unique():
         h_avg_conceded = np.mean(h['conceded'][-5:]) if h['conceded'] else league_avg_goals
         a_avg_scored = np.mean(a['scored'][-5:]) if a['scored'] else league_avg_goals
         a_avg_conceded = np.mean(a['conceded'][-5:]) if a['conceded'] else league_avg_goals
-
         h_home_scored = np.mean(h['home_scored'][-3:]) if h['home_scored'] else league_avg_goals
         h_home_conceded = np.mean(h['home_conceded'][-3:]) if h['home_conceded'] else league_avg_goals
         a_away_scored = np.mean(a['away_scored'][-3:]) if a['away_scored'] else league_avg_goals
@@ -245,23 +244,34 @@ for league_name in df_next_round['联赛'].unique():
         else:
             prob_home_win = raw_prob_home_win; prob_draw = raw_prob_draw; prob_away_win = raw_prob_away_win
         
+        # 🌟 解决“精神分裂”：统一下注建议与预测
         probs = [prob_away_win, prob_draw, prob_home_win]
-        pred_result = np.argmax(probs)
-        recommend = "主胜" if pred_result == 2 else ("平局" if pred_result == 1 else "客胜")
+        pred_result_idx = np.argmax(probs)
+        predict_choice = "主胜" if pred_result_idx == 2 else ("平局" if pred_result_idx == 1 else "客胜")
         
-        all_scores = [(f"{hg}-{ag}", prob_matrix[hg][ag]) for hg in range(max_goals+1) for ag in range(max_goals+1)]
-        if recommend == "主胜": valid_scores = [s for s in all_scores if int(s[0].split('-')[0]) > int(s[0].split('-')[1])]
-        elif recommend == "客胜": valid_scores = [s for s in all_scores if int(s[0].split('-')[0]) < int(s[0].split('-')[1])]
-        else: valid_scores = [s for s in all_scores if int(s[0].split('-')[0]) == int(s[0].split('-')[1])]
-        valid_scores.sort(key=lambda x: x[1], reverse=True)
-        top3 = valid_scores[:3]
-
         odds_h = match['主胜赔率']; odds_d = match['平局赔率']; odds_a = match['客胜赔率']
-        
         kelly_h = (prob_home_win * odds_h - 1) / (odds_h - 1) if odds_h > 1.0 else 0.0
         kelly_d = (prob_draw * odds_d - 1) / (odds_d - 1) if odds_d > 1.0 else 0.0
         kelly_a = (prob_away_win * odds_a - 1) / (odds_a - 1) if odds_a > 1.0 else 0.0
-        kelly_msg = f"最优下注比例：主胜 {max(0, kelly_h)*100:.1f}% | 平局 {max(0, kelly_d)*100:.1f}% | 客胜 {max(0, kelly_a)*100:.1f}%"
+        
+        # 找到凯利最高的下注方向
+        max_kelly = max(kelly_h, kelly_d, kelly_a)
+        if max_kelly == kelly_h: bet_choice = "主胜"
+        elif max_kelly == kelly_d: bet_choice = "平局"
+        else: bet_choice = "客胜"
+        
+        final_recommend = predict_choice
+        split_logic = ""
+        if bet_choice != predict_choice and max_kelly > 0:
+            final_recommend = bet_choice
+            split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但 <b>{bet_choice}</b> 的赔率提供了极高的价值（凯利指数{max_kelly*100:.1f}%），综合推荐去买 <b>{bet_choice}</b>。"
+
+        # 比分 Top 3
+        all_scores = [(f"{hg}-{ag}", prob_matrix[hg][ag]) for hg in range(max_goals+1) for ag in range(max_goals+1)]
+        all_scores.sort(key=lambda x: x[1], reverse=True)
+        top3_scores_str = ", ".join([f"{s[0]}({s[1]*100:.1f}%)" for s in all_scores[:3]])
+        
+        kelly_msg = f"主胜 {max(0, kelly_h)*100:.1f}% | 平局 {max(0, kelly_d)*100:.1f}% | 客胜 {max(0, kelly_a)*100:.1f}%"
 
         handicap = match.get('让球盘口', 0.0)
         model_net_xg = home_xg - away_xg
@@ -278,8 +288,8 @@ for league_name in df_next_round['联赛'].unique():
         model_total_xg = home_xg + away_xg
         if pd.notna(total_line) and total_line > 0:
             total_gap = model_total_xg - total_line
-            if total_gap > 0.4: total_msg = f"大小球盘口{total_line}，模型预期总进球{model_total_xg:.2f}，模型看大球（价值差{total_gap:+.2f}）。"
-            elif total_gap < -0.4: total_msg = f"大小球盘口{total_line}，模型预期总进球{model_total_xg:.2f}，模型看小球（价值差{total_gap:+.2f}）。"
+            if total_gap > 0.4: total_msg = f"大小球盘口{total_line}，模型预期总进球{model_total_xg:.2f}，看大球（价值差{total_gap:+.2f}）。"
+            elif total_gap < -0.4: total_msg = f"大小球盘口{total_line}，模型预期总进球{model_total_xg:.2f}，看小球（价值差{total_gap:+.2f}）。"
             else: total_msg = f"大小球盘口{total_line}，模型预期总进球{model_total_xg:.2f}，双方基本一致。"
         else:
             total_msg = "暂无大小球盘口数据。"
@@ -292,16 +302,16 @@ for league_name in df_next_round['联赛'].unique():
 
         prompt = f"""你是一位精通全球足球的资深数据分析专家，同时也是盘口大师。请基于以下数据，写一段精炼、口语化的赛前点评（不超过150字）：
         比赛：{home_cn} vs {away_cn} ({league_name})
-        当前模型综合推荐：{recommend}
+        模型赛果倾向：{predict_choice}
+        最终推荐下注：{final_recommend}
+        {split_logic}
         历史交锋：近3次交手主队胜率 {h2h_home_win_rate*100:.1f}%
         进球期望：主队 {home_xg:.2f}，客队 {away_xg:.2f}。
         亚盘解析：{handicap_msg}
-        大小球：{total_msg}
         伤停：{home_cn} [{home_injuries_str}]；{away_cn} [{away_injuries_str}]。
         
-        **任务**：请结合阵型克制关系，重点从“机构诱盘心理”角度分析。**极其重要：你的分析必须支撑模型得出的“{recommend}”结论。**
-        **历史经验库**：{knowledge_base}
-        请综合以上信息分析，并以“推荐关注：XXX”结尾（XXX必须与模型综合推荐一致）。"""
+        **任务**：请结合阵型克制关系，重点从“机构诱盘心理”和“价值投注”角度分析。**极其重要：你的分析必须支撑最终推荐下注的“{final_recommend}”结论。** 如果你建议博冷，请说明价值所在。
+        请综合以上信息分析，并以“推荐关注：{final_recommend}”结尾。"""
         
         try:
             response = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False)
@@ -311,15 +321,14 @@ for league_name in df_next_round['联赛'].unique():
         prediction_logs.append({
             'date': match_date_only.strftime('%Y-%m-%d'), 'league': league_name,
             'home_team': home_cn, 'away_team': away_cn,
-            'predicted_result': recommend,
+            'predicted_result': final_recommend, # 这里直接记录最终推荐
             'pred_prob_h': round(prob_home_win, 4), 'pred_prob_d': round(prob_draw, 4), 'pred_prob_a': round(prob_away_win, 4),
-            'predicted_score': top3[0][0],
+            'predicted_score': all_scores[0][0],
             'model_home_xg': round(home_xg, 3), 'model_away_xg': round(away_xg, 3),
             'model_net_xg': round(model_net_xg, 3), 'model_total_xg': round(model_total_xg, 3),
             'handicap': handicap, 'total_line': total_line,
             'odds_h': odds_h, 'odds_d': odds_d, 'odds_a': odds_a,
-            'weather': weather_str, 'home_injuries': home_injuries_str, 'away_injuries': away_injuries_str,
-            'referee': "暂无"
+            'weather': weather_str, 'home_injuries': home_injuries_str, 'away_injuries': away_injuries_str
         })
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
@@ -340,14 +349,15 @@ for league_name in df_next_round['联赛'].unique():
 
         html_report += f"<hr><h3>{match_time} - {home_cn} vs {away_cn} [{league_name}]</h3>"
         html_report += f"<img src='cid:chart_{len(img_buffers)-1}' width='600'><br>"
-        html_report += f"<p><b>⚠️ 天气：</b>{weather_str}</p>"
         html_report += f"<p><b>⚖️ 亚盘让球：</b>{handicap_msg}</p>"
         html_report += f"<p><b>⚖️ 大小球：</b>{total_msg}</p>"
         html_report += f"<p><b>⚔️ 历史交锋：</b>近3次交手，主队胜率 {h2h_home_win_rate*100:.1f}%</p>"
         html_report += f"<p><b>💰 凯利建议：</b>{kelly_msg}</p>"
-        html_report += f"<p><b>🎯 模型预测：</b>主胜 {prob_home_win*100:.1f}% | 平局 {prob_draw*100:.1f}% | 客胜 {prob_away_win*100:.1f}% (比分推荐: {top3[0][0]})</p>"
+        html_report += f"<p><b>🎯 模型预测：</b>主胜 {prob_home_win*100:.1f}% | 平局 {prob_draw*100:.1f}% | 客胜 {prob_away_win*100:.1f}%</p>"
+        html_report += f"<p><b>🔮 比分推荐 (Top 3)：</b>{top3_scores_str}</p>"
+        if split_logic: html_report += f"<p style='color:red;'>{split_logic}</p>"
         html_report += f"<p><b>🧠 AI战术点评：</b>{expert_comment}</p>"
-        html_report += f"<p><b>💡 综合推荐：</b>{recommend}</p>"
+        html_report += f"<p><b>💡 综合推荐：</b><span style='font-size:18px;color:red;font-weight:bold;'>{final_recommend}</span></p>"
 
 html_report += "</body></html>"
 
@@ -362,4 +372,4 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V8.2 每日战报", html_report, img_buffers)
+send_rich_email("全球多联赛 V8.4 每日战报", html_report, img_buffers)
