@@ -1,0 +1,77 @@
+﻿league,datetime,home_team,away_team,odds_h,odds_d,odds_a
+英超,2026-10-23T19:00Z,伊普斯维奇,诺丁汉森林,3.0,3.6,2.25
+英超,2026-10-24T11:30Z,阿斯顿维拉,曼城,4.2,3.95,1.7
+英超,2026-10-24T14:00Z,阿森纳,埃弗顿,1.4,4.6,8.5
+英超,2026-10-24T14:00Z,Coventry City,富勒姆,2.8,3.4,2.38
+英超,2026-10-24T16:30Z,切尔西,托特纳姆热刺,1.68,4.1,4.3
+英超,2026-10-25T14:00Z,水晶宫,纽卡斯尔联,2.75,3.75,2.38
+英超,2026-10-25T14:00Z,Hull City,布伦特福德,4.33,4.0,1.73
+英超,2026-10-25T14:00Z,利物浦,布莱顿,2.15,3.7,3.1
+英超,2026-10-25T14:00Z,曼联,伯恩茅斯,1.9,3.75,3.75
+英超,2026-10-25T16:30Z,Sunderland,Leeds United,2.8,3.2,2.5
+西甲,2026-10-21T18:00Z,Levante,Athletic Club,0.0,0.0,0.0
+西甲,2026-10-23T19:00Z,Alavés,Málaga,1.78,3.6,4.6
+西甲,2026-10-24T12:00Z,Rayo Vallecano,Elche,0.0,0.0,0.0
+西甲,2026-10-24T14:15Z,Racing Santander,Espanyol,0.0,0.0,0.0
+西甲,2026-10-24T16:30Z,Valencia,Villarreal,3.1,3.5,2.2
+西甲,2026-10-24T19:00Z,Atlético Madrid,Deportivo,0.0,0.0,0.0
+西甲,2026-10-25T13:00Z,Athletic Club,Getafe,0.0,0.0,0.0
+西甲,2026-10-25T15:15Z,Celta Vigo,Real Betis,2.7,3.4,2.45
+西甲,2026-10-25T17:30Z,Real Sociedad,Levante,1.7,4.0,4.3
+西甲,2026-10-25T20:00Z,巴塞罗那,皇家马德里,1.55,5.0,4.33
+西甲,2026-10-26T20:00Z,Sevilla,Osasuna,0.0,0.0,0.0
+德甲,2026-10-23T18:30Z,VfB Stuttgart,Borussia Mönchengladbach,0.0,0.0,0.0
+德甲,2026-10-24T13:30Z,FC Augsburg,1. FC Union Berlin,0.0,0.0,0.0
+德甲,2026-10-24T13:30Z,FC Cologne,Schalke 04,0.0,0.0,0.0
+德甲,2026-10-24T13:30Z,Mainz,Werder Bremen,0.0,0.0,0.0
+德甲,2026-10-24T13:30Z,莱比锡红牛,SV Elversberg,0.0,0.0,0.0
+德甲,2026-10-24T13:30Z,SC Paderborn 07,Hamburg SV,0.0,0.0,0.0
+德甲,2026-10-24T16:30Z,多特蒙德,Eintracht Frankfurt,1.44,5.0,6.5
+德甲,2026-10-25T14:30Z,TSG Hoffenheim,勒沃库森,2.62,4.0,2.38
+德甲,2026-10-25T16:30Z,SC Freiburg,拜仁慕尼黑,7.0,6.0,1.33
+意甲,2026-10-23T18:45Z,Torino,Monza,2.22,3.45,3.55
+意甲,2026-10-24T13:00Z,Cagliari,Bologna,3.0,3.1,2.5
+意甲,2026-10-24T13:00Z,Como,Sassuolo,1.44,4.6,6.5
+意甲,2026-10-24T16:00Z,那不勒斯,AS Roma,2.7,3.35,2.45
+意甲,2026-10-24T18:45Z,Lazio,Parma,1.44,4.33,6.5
+意甲,2026-10-25T11:30Z,Internazionale,Fiorentina,0.0,0.0,0.0
+意甲,2026-10-25T14:00Z,Atalanta,Frosinone,0.0,0.0,0.0
+意甲,2026-10-25T14:00Z,Genoa,Venezia,2.08,3.4,3.35
+意甲,2026-10-25T17:00Z,Lecce,尤文图斯,7.0,4.2,1.43
+意甲,2026-10-25T19:45Z,Udinese,AC米兰,5.0,4.0,1.57
+欧冠,2026-10-20T16:45Z,Fenerbahce,Slavia Prague,0.0,0.0,0.0
+欧冠,2026-10-20T16:45Z,Sabah FK,多特蒙德,8.0,5.75,1.3
+欧冠,2026-10-20T19:00Z,AS Roma,Slovan Bratislava,0.0,0.0,0.0
+欧冠,2026-10-20T19:00Z,FC Porto,PSV Eindhoven,0.0,0.0,0.0
+欧冠,2026-10-20T19:00Z,利物浦,Villarreal,1.5,4.6,6.0
+欧冠,2026-10-20T19:00Z,曼城,AEK Athens,1.1,10.0,21.0
+欧冠,2026-10-20T19:00Z,那不勒斯,Bodo/Glimt,0.0,0.0,0.0
+欧冠,2026-10-20T19:00Z,Paris Saint-Germain,巴塞罗那,0.0,0.0,0.0
+欧冠,2026-10-20T19:00Z,VfB Stuttgart,Atlético Madrid,3.4,3.9,2.14
+欧冠,2026-10-21T16:45Z,Como,曼联,2.25,3.75,2.88
+欧冠,2026-10-21T16:45Z,Lille,Galatasaray,2.2,3.75,3.0
+欧冠,2026-10-21T19:00Z,阿斯顿维拉,Viking FK,1.22,7.0,11.0
+欧冠,2026-10-21T19:00Z,拜仁慕尼黑,阿森纳,2.05,3.75,3.25
+欧冠,2026-10-21T19:00Z,Club Brugge,Lens,0.0,0.0,0.0
+欧冠,2026-10-21T19:00Z,Internazionale,Shakhtar Donetsk,0.0,0.0,0.0
+欧冠,2026-10-21T19:00Z,Real Betis,Feyenoord Rotterdam,0.0,0.0,0.0
+欧冠,2026-10-21T19:00Z,皇家马德里,莱比锡红牛,1.28,7.6,10.5
+欧冠,2026-10-21T19:00Z,Sporting CP,LASK Linz,0.0,0.0,0.0
+欧联,2026-10-22T16:45Z,Ararat-Armenia,AZ Alkmaar,0.0,0.0,0.0
+欧联,2026-10-22T16:45Z,Dinamo Zagreb,NEC Nijmegen,1.72,4.3,4.8
+欧联,2026-10-22T16:45Z,Ferencvaros,Torreense,0.0,0.0,0.0
+欧联,2026-10-22T16:45Z,尤文图斯,Stade Rennais,0.0,0.0,0.0
+欧联,2026-10-22T16:45Z,Lech Poznan,Sunderland,0.0,0.0,0.0
+欧联,2026-10-22T16:45Z,OFI Crete,勒沃库森,13.5,7.0,1.26
+欧联,2026-10-22T16:45Z,SK Sturm Graz,Marseille,3.3,3.75,2.05
+欧联,2026-10-22T16:45Z,Union St.-Gilloise,Hapoel Be'er,0.0,0.0,0.0
+欧联,2026-10-22T19:00Z,伯恩茅斯,AC米兰,2.2,3.6,3.1
+欧联,2026-10-22T19:00Z,Besiktas,水晶宫,0.0,0.0,0.0
+欧联,2026-10-22T19:00Z,Celtic,Celta Vigo,2.76,3.6,2.68
+欧联,2026-10-22T19:00Z,Jagiellonia Bialystok,Anderlecht,0.0,0.0,0.0
+欧联,2026-10-22T19:00Z,Lillestrom,Real Sociedad,6.0,4.5,1.5
+欧联,2026-10-22T19:00Z,NK Celje,RB Salzburg,0.0,0.0,0.0
+欧联,2026-10-22T19:00Z,Olympiacos,Sparta Prague,0.0,0.0,0.0
+欧联,2026-10-22T19:00Z,Omonia Nicosia,Benfica,0.0,0.0,0.0
+欧联,2026-10-22T19:00Z,TSG Hoffenheim,Lyon,2.02,3.75,3.15
+欧联,2026-10-22T19:00Z,Viktoria Plzen,Levski Sofia,0.0,0.0,0.0
