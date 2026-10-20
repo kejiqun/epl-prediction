@@ -35,14 +35,13 @@ def translate_team_name(name):
     if isinstance(name, str): return team_mapping.get(name.replace(" and ", " & ").strip(), name)
     return name
 
-print("⏳ 正在启动时光机 V4.1，加载历史数据与真实赔率...")
+print("⏳ 正在启动时光机 V5.0 (价值发现版)，加载数据...")
 df_hist = pd.read_csv('epl_matches_10y.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist = df_hist.sort_values('date').reset_index(drop=True)
 df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
 df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
 
-# 🌟 核心修改：只合并数字，合并后直接重算概率，避免名字冲突
 try:
     df_odds = pd.read_csv('epl_matches_odds.csv')
     rename_dict = {
@@ -52,19 +51,15 @@ try:
     df_odds = df_odds.rename(columns=rename_dict)
     df_odds['date'] = pd.to_datetime(df_odds['date'], errors='coerce')
     df_odds = df_odds.dropna(subset=['date', 'odds_h', 'odds_d', 'odds_a'])
-    
     df_odds['home_team_cn'] = df_odds['home_team'].apply(translate_team_name)
     df_odds['away_team_cn'] = df_odds['away_team'].apply(translate_team_name)
     
-    # 只合并赔率数字
     df_hist = pd.merge(df_hist, df_odds[['date', 'home_team_cn', 'away_team_cn', 'odds_h', 'odds_d', 'odds_a']], 
                        on=['date', 'home_team_cn', 'away_team_cn'], how='left')
     
-    # 在 df_hist 里强制重新计算，覆盖可能存在的旧列
     df_hist['prob_h_odds'] = (1 / df_hist['odds_h']) / (1/df_hist['odds_h'] + 1/df_hist['odds_d'] + 1/df_hist['odds_a'])
     df_hist['prob_d_odds'] = (1 / df_hist['odds_d']) / (1/df_hist['odds_h'] + 1/df_hist['odds_d'] + 1/df_hist['odds_a'])
     df_hist['prob_a_odds'] = (1 / df_hist['odds_a']) / (1/df_hist['odds_h'] + 1/df_hist['odds_d'] + 1/df_hist['odds_a'])
-    
     print(f"✅ 成功合并真实赔率数据！找到 {df_hist['odds_h'].notna().sum()} 场有赔率的比赛。")
 except Exception as e:
     print(f"⚠️ 无法加载赔率文件。(报错: {e})")
@@ -162,7 +157,7 @@ model_away = StackingRegressor(estimators=estimators, final_estimator=final_esti
 model_home.fit(X_train, y_home_train)
 model_away.fit(X_train, y_away_train)
 
-print(f"⏳ 开始在测试集上模拟下注 (共 {len(test_df)} 场)...")
+print(f"⏳ 开始在测试集上寻找价值下注机会 (共 {len(test_df)} 场)...")
 X_test = test_df[feature_cols].fillna(0.33)
 test_home_xg = model_home.predict(X_test)
 test_away_xg = model_away.predict(X_test)
@@ -175,6 +170,8 @@ bets_won = 0
 max_bankroll = bankroll
 max_drawdown = 0.0
 
+# 🌟 核心策略：价值发现（Value Betting）
+# 只有在模型预测概率大于市场隐含概率，且期望值极高时才下注
 for i in range(len(test_df)):
     if bankroll < initial_bankroll * 0.5:
         print(f"🛑 触发止损熔断！资金跌破 50%，停止下注。当前场次: {i}")
@@ -201,17 +198,23 @@ for i in range(len(test_df)):
         bankroll_history.append(bankroll)
         continue
 
-    kelly_h = max(0, (prob_h * odds_h - 1) / (odds_h - 1))
-    kelly_d = max(0, (prob_d * odds_d - 1) / (odds_d - 1))
-    kelly_a = max(0, (prob_a * odds_a - 1) / (odds_a - 1))
+    # 计算期望值 EV = 模型概率 * 赔率
+    ev_h = prob_h * odds_h
+    ev_d = prob_d * odds_d
+    ev_a = prob_a * odds_a
     
-    best_kelly, best_choice = 0, None
-    if kelly_h > best_kelly: best_kelly, best_choice = kelly_h, 'H'
-    if kelly_d > best_kelly: best_kelly, best_choice = kelly_d, 'D'
-    if kelly_a > best_kelly: best_kelly, best_choice = kelly_a, 'A'
+    best_ev, best_choice = 0, None
+    if ev_h > best_ev: best_ev, best_choice = ev_h, 'H'
+    if ev_d > best_ev: best_ev, best_choice = ev_d, 'D'
+    if ev_a > best_ev: best_ev, best_choice = ev_a, 'A'
     
+    # 🌟 极度苛刻的下注条件：期望值必须大于 1.05（即预期收益 5% 以上）
+    # 并且概率必须超过一定阈值（比如 20%，防极小概率事件）
+    prob_threshold = 0.20
     bet_amount = 0
-    if best_kelly > 0.02: 
+    current_prob = prob_h if best_choice == 'H' else (prob_d if best_choice == 'D' else prob_a)
+    
+    if best_ev > 1.05 and current_prob > prob_threshold:
         bet_amount = initial_bankroll * 0.02 
         bets_placed += 1
         
@@ -236,7 +239,7 @@ for i in range(len(test_df)):
 plt.figure(figsize=(10, 5))
 plt.plot(bankroll_history, label='资金曲线 (Bankroll)', color='green', linewidth=2)
 plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金 (1000)')
-plt.title('时光机回测：V31 模型历史资金曲线 (真实赔率特征防爆版 V4.1)')
+plt.title('时光机回测：V31 模型历史资金曲线 (价值发现版 V5.0)')
 plt.xlabel('下注场次')
 plt.ylabel('资金余额')
 plt.legend()
@@ -249,10 +252,10 @@ win_rate = (bets_won / bets_placed * 100) if bets_placed > 0 else 0
 
 report = f"""
 ====================================
-⚽ 时光机回测报告 (真实赔率特征防爆版 V4.1)
+⚽ 时光机回测报告 (价值发现版 V5.0)
 ====================================
 回测比赛总数: {len(test_df)} 场
-实际下注场次: {bets_placed} 场 (已过滤无赔率比赛)
+实际下注场次: {bets_placed} 场 (严选高期望值)
 命中场次: {bets_won} 场
 下注胜率: {win_rate:.2f}%
 初始资金: {initial_bankroll:.2f}
