@@ -171,7 +171,7 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V12.2 (强制输出盘口版)</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V13.0 (严格风控版)</h2>"
 prediction_logs = []; img_buffers = []
 
 for league_name in df_next_round['联赛'].unique():
@@ -262,11 +262,16 @@ for league_name in df_next_round['联赛'].unique():
         kelly_d = (prob_draw * odds_d - 1) / (odds_d - 1) if odds_d > 1.0 else 0.0
         kelly_a = (prob_away_win * odds_a - 1) / (odds_a - 1) if odds_a > 1.0 else 0.0
         
-        max_kelly = max(kelly_h, kelly_d, kelly_a)
-        if max_kelly == kelly_h: bet_choice = "主胜"
-        elif max_kelly == kelly_d: bet_choice = "平局"
-        else: bet_choice = "客胜"
-        
+        # 🌟 严格风控：过滤掉极低概率的博冷
+        max_kelly = 0
+        bet_choice = ""
+        if kelly_h > 0.02 and prob_home_win > 0.25:
+            max_kelly = kelly_h; bet_choice = "主胜"
+        if kelly_d > max_kelly and prob_draw > 0.25:
+            max_kelly = kelly_d; bet_choice = "平局"
+        if kelly_a > max_kelly and prob_away_win > 0.25:
+            max_kelly = kelly_a; bet_choice = "客胜"
+            
         final_recommend = predict_choice
         split_logic = ""
         bet_amount = 0.0
@@ -279,9 +284,13 @@ for league_name in df_next_round['联赛'].unique():
             bet_info_msg = f"推荐下注 <b>{bet_amount:.2f}</b> 元 (占总资金 {safe_kelly*100:.1f}%)"
             
             if bet_choice != predict_choice:
-                split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但 <b>{bet_choice}</b> 的赔率提供了极高的价值（凯利指数{max_kelly*100:.1f}%），综合推荐去买 <b>{bet_choice}</b>。"
+                split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但 <b>{bet_choice}</b> 的赔率提供了极高的价值，综合推荐去买 <b>{bet_choice}</b>。"
         else:
-            split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但赔率过低/无价值，建议观望。"
+            # 如果最高凯利对应的概率低于25%，直接提示禁手
+            if (kelly_a > 0.02 and prob_away_win <= 0.25) or (kelly_d > 0.02 and prob_draw <= 0.25) or (kelly_h > 0.02 and prob_home_win <= 0.25):
+                split_logic = f"🛑 <b>风控警告：</b>虽然某项赔率极高（凯利为正），但发生概率低于25%，属于“买彩票”行为，系统直接禁手，建议观望。"
+            else:
+                split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但赔率过低/无价值，建议观望。"
 
         all_scores = [(f"{hg}-{ag}", prob_matrix[hg][ag]) for hg in range(max_goals+1) for ag in range(max_goals+1)]
         all_scores.sort(key=lambda x: x[1], reverse=True)
@@ -289,7 +298,6 @@ for league_name in df_next_round['联赛'].unique():
         
         kelly_msg = f"主胜 {max(0, kelly_h)*100:.1f}% | 平局 {max(0, kelly_d)*100:.1f}% | 客胜 {max(0, kelly_a)*100:.1f}%"
 
-        # 🌟 核心升级：大小球与亚盘量化（带强制默认水位）
         handicap = match.get('让球盘口', 0.0)
         h_handicap_odd = match.get('主让胜赔率', 0.0)
         a_handicap_odd = match.get('客受让胜赔率', 0.0)
@@ -298,7 +306,6 @@ for league_name in df_next_round['联赛'].unique():
         over_odd = match.get('大球赔率', 0.0)
         under_odd = match.get('小球赔率', 0.0)
         
-        # 如果 API 没给赔率，强制按标准水位 1.90 计算价值！
         if h_handicap_odd <= 1: h_handicap_odd = 1.90
         if a_handicap_odd <= 1: a_handicap_odd = 1.90
         if over_odd <= 1: over_odd = 1.90
@@ -424,4 +431,4 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V12.2 每日战报 (强制输出盘口版)", html_report, img_buffers)
+send_rich_email("全球多联赛 V13.0 每日战报 (严格风控版)", html_report, img_buffers)
