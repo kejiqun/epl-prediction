@@ -31,10 +31,56 @@ def send_email(subject, html_content, receiver="308730509@qq.com"):
         smtpObj = smtplib.SMTP_SSL('smtp.qq.com', 465)
         smtpObj.login(EMAIL_SENDER, EMAIL_PASSWORD)
         smtpObj.sendmail(EMAIL_SENDER, [receiver], msg.as_string())
-        print("✅ 复盘邮件发送成功！")
+        print("✅ 邮件发送成功！")
     except Exception as e: print(f"❌ 邮件发送失败: {e}")
 
-print("⏳ 正在启动多联赛深度复盘引擎 (V10.0 资金结算+提纯版)...")
+# ================= 核心：强制知识库提纯函数 =================
+def distill_knowledge_base():
+    if not os.path.exists('knowledge.txt'):
+        return False
+    
+    with open('knowledge.txt', 'r', encoding='utf-8') as f:
+        current_knowledge = f.read()
+        
+    if len(current_knowledge) < 500:
+        print("✅ 知识库很小，无需提纯。")
+        return False
+        
+    print(f"⏳ 触发大脑提纯！当前字数: {len(current_knowledge)}，正在压缩...")
+    
+    distill_prompt = f"""你是一位顶级的足球量化风控总监。现在你需要提取你大脑中的经验，请将以下冗长的历史经验库，提炼成不超过 8 条核心铁律。
+要求：
+1. 分类清晰（如：情报缺失类、赔率异常类、联赛风格类）。
+2. 语言极其精炼，直击要害。
+3. 直接输出提炼后的结果，不要任何废话。
+经验内容：
+{current_knowledge[:8000]}"""
+
+    try:
+        dist_resp = llm_client.chat.completions.create(
+            model="deepseek-chat", messages=[{"role": "user", "content": distill_prompt}], stream=False
+        )
+        distilled_text = dist_resp.choices[0].message.content.strip()
+        
+        # 备份旧文件
+        backup_name = f'knowledge_backup_{datetime.now().strftime("%Y%m%d_%H%M")}.txt'
+        os.rename('knowledge.txt', backup_name)
+        
+        # 写入新文件
+        with open('knowledge.txt', 'w', encoding='utf-8') as f:
+            f.write(f"--- 知识库提纯于 {datetime.now().strftime('%Y-%m-%d')} ---\n")
+            f.write(distilled_text)
+        print(f"✅ 提纯完成！已生成备份: {backup_name}")
+        return True
+    except Exception as e:
+        print(f"⚠️ 提纯失败，保留原文件: {e}")
+        return False
+# ========================================================
+
+print("⏳ 正在启动多联赛深度复盘引擎...")
+
+# 每次运行，先强制执行一次知识库提纯检查（不管有没有比赛）
+distill_knowledge_base()
 
 if not os.path.exists('predictions_log.csv'):
     print("⚠️ 找不到 predictions_log.csv，跳过复盘。")
@@ -45,7 +91,6 @@ df_log['date'] = pd.to_datetime(df_log['date'])
 today = datetime.now()
 past_3_days = today - timedelta(days=3)
 
-# 确保列存在
 if 'actual_score' not in df_log.columns: df_log['actual_score'] = ""
 if 'actual_result' not in df_log.columns: df_log['actual_result'] = ""
 if 'is_win' not in df_log.columns: df_log['is_win'] = ""
@@ -54,15 +99,15 @@ if 'profit' not in df_log.columns: df_log['profit'] = 0.0
 
 pending_review = df_log[(df_log['date'] >= past_3_days) & (df_log['actual_score'].isna() | (df_log['actual_score'] == ""))].copy()
 
-# ================= 1. 如果没比赛，发空邮件并退出 =================
 if pending_review.empty:
     print("✅ 最近 3 天没有需要复盘的新比赛。")
     html_report = f"""
     <html><body><div style="text-align: center; padding: 50px;">
         <h2 style="color: #2c3e50;">💡 今日复盘完成</h2>
-        <p style="color: #666; font-size: 16px;">最近 3 天内没有需要复盘的新比赛，或者比赛尚未结束。系统正在静候下一轮战报。</p>
+        <p style="color: #666; font-size: 16px;">最近 3 天内没有需要复盘的新比赛，或者比赛尚未结束。</p>
+        <p style="color: #27ae60; font-weight: bold;">（已触发日常知识库清理）</p>
     </div></body></html>"""
-    send_email("💡 多联赛 V10.0 深度复盘报告", html_report)
+    send_email("💡 多联赛每日复盘报告", html_report)
     exit()
 
 print(f"⏳ 找到 {len(pending_review)} 场待复盘比赛，正在抓取赛果...")
@@ -92,7 +137,6 @@ for league_name, config in LEAGUES.items():
                                 actual_results[(match_date_str, h_name, a_name)] = (h_score, a_score)
         except: continue
 
-# ================= 2. 资金结算与赛果匹配 =================
 bankroll = 10000.0
 if os.path.exists('bankroll.csv'):
     try:
@@ -150,7 +194,6 @@ if total_count == 0:
 bankroll += total_profit
 win_rate = (correct_count / total_count) * 100
 
-# ================= 3. AI 结构化复盘 =================
 print("⏳ 正在呼叫 DeepSeek 进行多维度结构化复盘...")
 knowledge_base = ""
 if os.path.exists('knowledge.txt'):
@@ -167,11 +210,7 @@ prompt = f"""你是一位顶级的足球量化风控总监。今天我们进行�
 必须严格包含以下三个模块，多写短句，少写长段，直接输出 Markdown 格式：
 
 ### 📊 一、 战场速览
-（用一段话总结本轮表现，点出红黑榜）
-
 ### 🚨 二、 典型错题本
-（挑出 1-2 场最有代表性的错局，指出是阵型克制？情报缺失？还是模型盲区？）
-
 ### 💡 三、 经验入库
 - [规则1] ...
 - [规则2] ...
@@ -188,43 +227,19 @@ try:
 except Exception as e:
     review_report_md = f"AI复盘暂时不可用，报错: {e}"
 
-# ================= 4. 写入经验并“自动提纯” =================
 exp_matches = re.search(r'###\s*💡\s*三、\s*经验入库.*?\n(.*?)(?:\n###|\Z)', review_report_md, re.DOTALL)
 if exp_matches:
     clean_exp = exp_matches.group(1).strip()
     with open('knowledge.txt', 'a', encoding='utf-8') as f:
-        f.write(f"\n\n--- {datetime.now().strftime('%Y-%m-%d')} 复盘经验 ---\n")
+        f.write(f"\n\n--- {datetime.now().strftime('%Y-%m-%d')} 新增经验 ---\n")
         f.write(clean_exp)
 else:
     with open('knowledge.txt', 'a', encoding='utf-8') as f:
-        f.write(f"\n\n--- {datetime.now().strftime('%Y-%m-%d')} 复盘经验 ---\n{review_report_md}")
+        f.write(f"\n\n--- {datetime.now().strftime('%Y-%m-%d')} 新增经验 ---\n{review_report_md}")
 
-# 🌟 核心点：自动检查知识库大小，如果臃肿就提纯
-if os.path.exists('knowledge.txt'):
-    with open('knowledge.txt', 'r', encoding='utf-8') as f: current_knowledge = f.read()
-    
-    if len(current_knowledge) > 3000: # 超过3000字触发提纯
-        print("⏳ 知识库已超载，正在自动进行大脑提纯...")
-        distill_prompt = f"""你是一位顶级风控总监。请将以下冗长的经验库，压缩提炼为不超过8条的核心铁律。
-要求：分类清晰，语言精炼，直击要害。
-经验内容：
-{current_knowledge[:8000]}"""
-        try:
-            dist_resp = llm_client.chat.completions.create(
-                model="deepseek-chat", messages=[{"role": "user", "content": distill_prompt}], stream=False
-            )
-            distilled_text = dist_resp.choices[0].message.content.strip()
-            
-            # 备份并覆盖
-            os.rename('knowledge.txt', f'knowledge_backup_{datetime.now().strftime("%Y%m%d_%H%M")}.txt')
-            with open('knowledge.txt', 'w', encoding='utf-8') as f:
-                f.write(f"--- 知识库提纯于 {datetime.now().strftime('%Y-%m-%d')} ---\n")
-                f.write(distilled_text)
-            print("✅ 大脑提纯完成！")
-        except Exception as e:
-            print(f"⚠️ 提纯失败，保留原文件: {e}")
+# 复盘完后，如果新增了经验，再次检查是否需要提纯
+distill_knowledge_base()
 
-# ================= 5. 保存结果并发送邮件 =================
 df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 new_bankroll_row = pd.DataFrame([{'日期': today.strftime('%Y-%m-%d'), '当前资金': round(bankroll, 2), '盈亏': round(total_profit, 2)}])
@@ -285,5 +300,5 @@ html_report = f"""
 </html>
 """
 
-send_email("💡 多联赛 V10.0 极简深度复盘报告", html_report)
+send_email("💡 多联赛深度复盘报告 (提纯完成)", html_report)
 print("✅ 复盘与提纯检查完毕！")
