@@ -56,6 +56,7 @@ def fetch_schedule_and_odds():
             resp = requests.get("https://api.the-odds-api.com/v4/sports/" + config['odds_api_code'] + "/odds", 
                                 params={'apiKey': ODDS_API_KEY, 'regions': 'uk', 'markets': 'h2h,spreads,totals', 'oddsFormat': 'decimal'}, timeout=20)
             odds_data = resp.json() if resp.status_code == 200 else []
+            
             for match in odds_data:
                 h_cn = smart_translate(match['home_team'])
                 a_cn = smart_translate(match['away_team'])
@@ -65,31 +66,33 @@ def fetch_schedule_and_odds():
                 total_line, over_odd, under_odd = 0.0, 0.0, 0.0
                 
                 if match.get('bookmakers'):
-                    b = match['bookmakers'][0] # 取第一家（如 Bet365）
-                    for market in b['markets']:
-                        if market['key'] == 'h2h':
-                            for o in market['outcomes']:
-                                if o['name'] == match['home_team']: h_odd = o['price']
-                                elif o['name'] == match['away_team']: a_odd = o['price']
-                                elif o['name'] == 'Draw': d_odd = o['price']
-                        elif market['key'] == 'spreads':
-                            for o in market['outcomes']:
-                                if o['name'] == match['home_team']: 
-                                    handicap = o['point']
-                                    h_handicap_odd = o['price']
-                                elif o['name'] == match['away_team']:
-                                    a_handicap_odd = o['price']
-                        elif market['key'] == 'totals':
-                            for o in market['outcomes']:
-                                if o['name'] == 'Over': 
-                                    total_line = o['point']
-                                    over_odd = o['price']
-                                elif o['name'] == 'Under':
-                                    under_odd = o['price']
+                    # 🌟 核心修改：遍历所有博彩公司，只要有一家提供了盘口就抓取！
+                    for b in match['bookmakers']:
+                        for market in b['markets']:
+                            if market['key'] == 'h2h' and h_odd == 0:
+                                for o in market['outcomes']:
+                                    if o['name'] == match['home_team']: h_odd = o['price']
+                                    elif o['name'] == match['away_team']: a_odd = o['price']
+                                    elif o['name'] == 'Draw': d_odd = o['price']
+                            elif market['key'] == 'spreads' and handicap == 0.0:
+                                for o in market['outcomes']:
+                                    if o['name'] == match['home_team']: 
+                                        handicap = o['point']
+                                        h_handicap_odd = o['price']
+                                    elif o['name'] == match['away_team']:
+                                        a_handicap_odd = o['price']
+                            elif market['key'] == 'totals' and total_line == 0.0:
+                                for o in market['outcomes']:
+                                    if o['name'] == 'Over': 
+                                        total_line = o['point']
+                                        over_odd = o['price']
+                                    elif o['name'] == 'Under':
+                                        under_odd = o['price']
                                 
                 if h_odd > 1:
                     odds_dict[(h_cn, a_cn)] = (h_odd, d_odd, a_odd, handicap, h_handicap_odd, a_handicap_odd, total_line, over_odd, under_odd)
-        except: pass
+        except Exception as e: 
+            print(f"⚠️ 获取赔率出错: {e}")
         
         for m in upcoming:
             h_cn = smart_translate(m['home_team'])
