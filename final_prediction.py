@@ -84,10 +84,10 @@ print("⏳ 读取每日多联赛赛程...")
 if not os.path.exists('daily_matches.csv'): exit()
 
 df_next_round = pd.read_csv('daily_matches.csv')
-# 过滤无赔率比赛
-df_next_round = df_next_round[(df_next_round['odds_h'] > 1) & (df_next_round['odds_d'] > 1) & (df_next_round['odds_a'] > 1)].copy()
-# 🌟 过滤时间：只预测未来 48 小时内的比赛
-df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['datetime']).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
+# 🌟 适配中文列名过滤
+df_next_round = df_next_round[(df_next_round['主胜赔率'] > 1) & (df_next_round['平局赔率'] > 1) & (df_next_round['客胜赔率'] > 1)].copy()
+df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间']).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
+
 now_ts = pd.Timestamp.now()
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= now_ts) & (df_next_round['datetime_parsed'] <= now_ts + pd.Timedelta(hours=48))]
 
@@ -100,7 +100,6 @@ try:
 except: team_rank_dict = {}
 
 injury_dict = {}; injury_impact = {}
-# (伤停抓取代码保持不变...)
 try:
     fpl_resp = requests.get("https://fantasy.premierleague.com/api/bootstrap-static/", timeout=15)
     if fpl_resp.status_code == 200:
@@ -164,15 +163,15 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V8.1</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V8.2</h2>"
 prediction_logs = []; img_buffers = []
 
-for league_name in df_next_round['league'].unique():
-    league_df = df_next_round[df_next_round['league'] == league_name]
+for league_name in df_next_round['联赛'].unique():
+    league_df = df_next_round[df_next_round['联赛'] == league_name]
     html_report += f"<h2 style='color:blue;'>🏆 {league_name}</h2>"
     
     for idx, (_, match) in enumerate(league_df.iterrows()):
-        home_cn, away_cn = match['home_team'], match['away_team']
+        home_cn, away_cn = match['主队'], match['客队']
         match_time = pd.to_datetime(match['datetime_parsed']).strftime('%Y-%m-%d %H:%M')
         match_date_only = pd.to_datetime(match['datetime_parsed']).date()
         
@@ -202,11 +201,10 @@ for league_name in df_next_round['league'].unique():
         h_inj_factor = 1 - injury_impact.get(home_cn, 0)
         a_inj_factor = 1 - injury_impact.get(away_cn, 0)
         
-        # 历史交锋
         past_h2h = h2h_stats.get((home_cn, away_cn), [])[-3:]
         h2h_home_win_rate = sum(1 for hg, ag in past_h2h if hg > ag) / len(past_h2h) if past_h2h else 0.5
 
-        imp_h = 1 / match['odds_h']; imp_d = 1 / match['odds_d']; imp_a = 1 / match['odds_a']
+        imp_h = 1 / match['主胜赔率']; imp_d = 1 / match['平局赔率']; imp_a = 1 / match['客胜赔率']
         total_imp = imp_h + imp_d + imp_a
         market_h, market_d, market_a = imp_h/total_imp, imp_d/total_imp, imp_a/total_imp
 
@@ -258,15 +256,14 @@ for league_name in df_next_round['league'].unique():
         valid_scores.sort(key=lambda x: x[1], reverse=True)
         top3 = valid_scores[:3]
 
-        odds_h = match['odds_h']; odds_d = match['odds_d']; odds_a = match['odds_a']
+        odds_h = match['主胜赔率']; odds_d = match['平局赔率']; odds_a = match['客胜赔率']
         
         kelly_h = (prob_home_win * odds_h - 1) / (odds_h - 1) if odds_h > 1.0 else 0.0
         kelly_d = (prob_draw * odds_d - 1) / (odds_d - 1) if odds_d > 1.0 else 0.0
         kelly_a = (prob_away_win * odds_a - 1) / (odds_a - 1) if odds_a > 1.0 else 0.0
         kelly_msg = f"最优下注比例：主胜 {max(0, kelly_h)*100:.1f}% | 平局 {max(0, kelly_d)*100:.1f}% | 客胜 {max(0, kelly_a)*100:.1f}%"
 
-        # 亚盘解析
-        handicap = match.get('handicap', 0.0)
+        handicap = match.get('让球盘口', 0.0)
         model_net_xg = home_xg - away_xg
         if pd.notna(handicap) and handicap != 0:
             handicap_implied = -handicap
@@ -277,8 +274,7 @@ for league_name in df_next_round['league'].unique():
         else:
             handicap_msg = "暂无亚盘让球盘口数据。"
 
-        # 大小球解析
-        total_line = match.get('total_line', 2.5)
+        total_line = match.get('大小球盘口', 2.5)
         model_total_xg = home_xg + away_xg
         if pd.notna(total_line) and total_line > 0:
             total_gap = model_total_xg - total_line
@@ -366,4 +362,4 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V8.1 每日战报", html_report, img_buffers)
+send_rich_email("全球多联赛 V8.2 每日战报", html_report, img_buffers)
