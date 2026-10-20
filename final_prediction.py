@@ -1,4 +1,3 @@
-# （头部 import 和基础配置保持不变，直接复制之前的，或者使用这份精简版）
 import pandas as pd
 import numpy as np
 import requests
@@ -80,6 +79,16 @@ def dixon_coles_tau(h, a, home_xg, away_xg, rho=-0.1):
     elif h == 1 and a == 0: return 1 + away_xg * rho
     elif h == 1 and a == 1: return 1 - rho
     else: return 1.0
+
+# ================= 读取当前虚拟资金 =================
+print("⏳ 正在读取虚拟资金账户...")
+bankroll = 10000.0
+if os.path.exists('bankroll.csv'):
+    try:
+        df_b = pd.read_csv('bankroll.csv')
+        if not df_b.empty: bankroll = df_b.iloc[-1]['当前资金']
+    except: pass
+print(f"💰 当前账户资金: {bankroll:.2f} 元")
 
 print("⏳ 读取每日多联赛赛程...")
 if not os.path.exists('daily_matches.csv'): exit()
@@ -163,7 +172,7 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V8.4</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V9.0 (资金管理版)</h2>"
 prediction_logs = []; img_buffers = []
 
 for league_name in df_next_round['联赛'].unique():
@@ -182,6 +191,7 @@ for league_name in df_next_round['联赛'].unique():
         h_avg_conceded = np.mean(h['conceded'][-5:]) if h['conceded'] else league_avg_goals
         a_avg_scored = np.mean(a['scored'][-5:]) if a['scored'] else league_avg_goals
         a_avg_conceded = np.mean(a['conceded'][-5:]) if a['conceded'] else league_avg_goals
+        
         h_home_scored = np.mean(h['home_scored'][-3:]) if h['home_scored'] else league_avg_goals
         h_home_conceded = np.mean(h['home_conceded'][-3:]) if h['home_conceded'] else league_avg_goals
         a_away_scored = np.mean(a['away_scored'][-3:]) if a['away_scored'] else league_avg_goals
@@ -244,7 +254,7 @@ for league_name in df_next_round['联赛'].unique():
         else:
             prob_home_win = raw_prob_home_win; prob_draw = raw_prob_draw; prob_away_win = raw_prob_away_win
         
-        # 🌟 解决“精神分裂”：统一下注建议与预测
+        # 赛果预测
         probs = [prob_away_win, prob_draw, prob_home_win]
         pred_result_idx = np.argmax(probs)
         predict_choice = "主胜" if pred_result_idx == 2 else ("平局" if pred_result_idx == 1 else "客胜")
@@ -254,17 +264,28 @@ for league_name in df_next_round['联赛'].unique():
         kelly_d = (prob_draw * odds_d - 1) / (odds_d - 1) if odds_d > 1.0 else 0.0
         kelly_a = (prob_away_win * odds_a - 1) / (odds_a - 1) if odds_a > 1.0 else 0.0
         
-        # 找到凯利最高的下注方向
+        # 凯利下注方向
         max_kelly = max(kelly_h, kelly_d, kelly_a)
         if max_kelly == kelly_h: bet_choice = "主胜"
         elif max_kelly == kelly_d: bet_choice = "平局"
         else: bet_choice = "客胜"
         
+        # 🌟 资金管理与下注逻辑
         final_recommend = predict_choice
         split_logic = ""
-        if bet_choice != predict_choice and max_kelly > 0:
+        bet_amount = 0.0
+        
+        if max_kelly > 0.02:  # 只有凯利大于 2% 才下注
+            safe_kelly = min(max_kelly * 0.5, 0.05) # 使用半凯利，最高下注5%
+            bet_amount = bankroll * safe_kelly
             final_recommend = bet_choice
-            split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但 <b>{bet_choice}</b> 的赔率提供了极高的价值（凯利指数{max_kelly*100:.1f}%），综合推荐去买 <b>{bet_choice}</b>。"
+            bet_info_msg = f"推荐下注 <b>{bet_amount:.2f}</b> 元 (占总资金 {safe_kelly*100:.1f}%)"
+            
+            if bet_choice != predict_choice:
+                split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但 <b>{bet_choice}</b> 的赔率提供了极高的价值（凯利指数{max_kelly*100:.1f}%），综合推荐去买 <b>{bet_choice}</b>。"
+        else:
+            bet_info_msg = "模型认为无价值，建议空仓观望"
+            split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但赔率过低/无价值，建议观望。"
 
         # 比分 Top 3
         all_scores = [(f"{hg}-{ag}", prob_matrix[hg][ag]) for hg in range(max_goals+1) for ag in range(max_goals+1)]
@@ -310,7 +331,7 @@ for league_name in df_next_round['联赛'].unique():
         亚盘解析：{handicap_msg}
         伤停：{home_cn} [{home_injuries_str}]；{away_cn} [{away_injuries_str}]。
         
-        **任务**：请结合阵型克制关系，重点从“机构诱盘心理”和“价值投注”角度分析。**极其重要：你的分析必须支撑最终推荐下注的“{final_recommend}”结论。** 如果你建议博冷，请说明价值所在。
+        **任务**：请结合阵型克制关系，重点从“机构诱盘心理”和“价值投注”角度分析。**极其重要：你的分析必须支撑最终推荐下注的“{final_recommend}”结论。** 如果你建议博冷或空仓，请说明原因。
         请综合以上信息分析，并以“推荐关注：{final_recommend}”结尾。"""
         
         try:
@@ -321,7 +342,8 @@ for league_name in df_next_round['联赛'].unique():
         prediction_logs.append({
             'date': match_date_only.strftime('%Y-%m-%d'), 'league': league_name,
             'home_team': home_cn, 'away_team': away_cn,
-            'predicted_result': final_recommend, # 这里直接记录最终推荐
+            'predicted_result': final_recommend,
+            'bet_amount': round(bet_amount, 2),
             'pred_prob_h': round(prob_home_win, 4), 'pred_prob_d': round(prob_draw, 4), 'pred_prob_a': round(prob_away_win, 4),
             'predicted_score': all_scores[0][0],
             'model_home_xg': round(home_xg, 3), 'model_away_xg': round(away_xg, 3),
@@ -352,7 +374,7 @@ for league_name in df_next_round['联赛'].unique():
         html_report += f"<p><b>⚖️ 亚盘让球：</b>{handicap_msg}</p>"
         html_report += f"<p><b>⚖️ 大小球：</b>{total_msg}</p>"
         html_report += f"<p><b>⚔️ 历史交锋：</b>近3次交手，主队胜率 {h2h_home_win_rate*100:.1f}%</p>"
-        html_report += f"<p><b>💰 凯利建议：</b>{kelly_msg}</p>"
+        html_report += f"<p><b>💰 凯利建议：</b>{kelly_msg} | {bet_info_msg}</p>"
         html_report += f"<p><b>🎯 模型预测：</b>主胜 {prob_home_win*100:.1f}% | 平局 {prob_draw*100:.1f}% | 客胜 {prob_away_win*100:.1f}%</p>"
         html_report += f"<p><b>🔮 比分推荐 (Top 3)：</b>{top3_scores_str}</p>"
         if split_logic: html_report += f"<p style='color:red;'>{split_logic}</p>"
@@ -372,4 +394,4 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V8.4 每日战报", html_report, img_buffers)
+send_rich_email("全球多联赛 V9.0 每日战报 (资金分配版)", html_report, img_buffers)
