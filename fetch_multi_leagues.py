@@ -7,33 +7,18 @@ from team_mapping import translate_team_name
 
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 
-# 🌟 补充冷门欧战球队字典 (如果不在这里面，且 team_mapping.py 也没有，就会保留英文)
 EXTRA_MAPPING = {
-    'Sabah FK': '萨巴巴库', 'Sabah': '萨巴巴库',
-    'Slovan Bratislava': '布拉迪斯拉发',
-    'FC Porto': '波尔图',
-    'Qarabag FK': '卡拉巴赫', 'Qarabag': '卡拉巴赫',
-    'Sporting Braga': '布拉加',
-    'FC Copenhagen': '哥本哈根',
-    'PSV Eindhoven': '埃因霍温',
-    'Feyenoord': '费耶诺德',
-    'Young Boys': '伯尔尼年轻人',
-    'Red Star Belgrade': '贝尔格莱德红星',
-    'FC Salzburg': '萨尔茨堡红牛',
-    'Dinamo Zagreb': '萨格勒布迪纳摩',
-    'Slavia Prague': '布拉格斯拉维亚',
-    'Sturm Graz': '格拉茨风暴',
-    'Sparta Prague': '布拉格斯巴达',
-    'Union St. Gilloise': '圣吉尔联',
-    'Shakhtar Donetsk': '顿涅茨克矿工',
-    'Atalanta': '亚特兰大',
-    'Bayer Leverkusen': '勒沃库森'
+    'Sabah FK': '萨巴巴库', 'Sabah': '萨巴巴库', 'Slovan Bratislava': '布拉迪斯拉发', 'FC Porto': '波尔图',
+    'Qarabag FK': '卡拉巴赫', 'Qarabag': '卡拉巴赫', 'Sporting Braga': '布拉加', 'FC Copenhagen': '哥本哈根',
+    'PSV Eindhoven': '埃因霍温', 'Feyenoord': '费耶诺德', 'Young Boys': '伯尔尼年轻人', 'Red Star Belgrade': '贝尔格莱德红星',
+    'FC Salzburg': '萨尔茨堡红牛', 'Dinamo Zagreb': '萨格勒布迪纳摩', 'Slavia Prague': '布拉格斯拉维亚', 'Sturm Graz': '格拉茨风暴',
+    'Sparta Prague': '布拉格斯巴达', 'Union St. Gilloise': '圣吉尔联', 'Shakhtar Donetsk': '顿涅茨克矿工',
+    'Atalanta': '亚特兰大', 'Bayer Leverkusen': '勒沃库森'
 }
 
 def smart_translate(name):
-    # 先找大全，再找补丁
     translated = translate_team_name(name)
-    if translated == name: # 说明没找到
+    if translated == name:
         return EXTRA_MAPPING.get(name, name)
     return translated
 
@@ -42,7 +27,7 @@ def fetch_schedule_and_odds():
     today = datetime.now()
     
     for league_name, config in LEAGUES.items():
-        print(f"⏳ 正在抓取 {league_name} 赛程与赔率...")
+        print(f"⏳ 正在抓取 {league_name} 赛程与盘口...")
         upcoming = []
         
         for i in range(3): 
@@ -76,10 +61,11 @@ def fetch_schedule_and_odds():
                 a_cn = smart_translate(match['away_team'])
                 
                 h_odd, d_odd, a_odd = 0, 0, 0
-                handicap, total_line = 0.0, 0.0
+                handicap, h_handicap_odd, a_handicap_odd = 0.0, 0.0, 0.0
+                total_line, over_odd, under_odd = 0.0, 0.0, 0.0
                 
                 if match.get('bookmakers'):
-                    b = match['bookmakers'][0]
+                    b = match['bookmakers'][0] # 取第一家（如 Bet365）
                     for market in b['markets']:
                         if market['key'] == 'h2h':
                             for o in market['outcomes']:
@@ -88,24 +74,33 @@ def fetch_schedule_and_odds():
                                 elif o['name'] == 'Draw': d_odd = o['price']
                         elif market['key'] == 'spreads':
                             for o in market['outcomes']:
-                                if o['name'] == match['home_team']: handicap = o['point']
+                                if o['name'] == match['home_team']: 
+                                    handicap = o['point']
+                                    h_handicap_odd = o['price']
+                                elif o['name'] == match['away_team']:
+                                    a_handicap_odd = o['price']
                         elif market['key'] == 'totals':
                             for o in market['outcomes']:
-                                if o['name'] == 'Over': total_line = o['point']
+                                if o['name'] == 'Over': 
+                                    total_line = o['point']
+                                    over_odd = o['price']
+                                elif o['name'] == 'Under':
+                                    under_odd = o['price']
                                 
                 if h_odd > 1:
-                    odds_dict[(h_cn, a_cn)] = (h_odd, d_odd, a_odd, handicap, total_line)
+                    odds_dict[(h_cn, a_cn)] = (h_odd, d_odd, a_odd, handicap, h_handicap_odd, a_handicap_odd, total_line, over_odd, under_odd)
         except: pass
         
         for m in upcoming:
             h_cn = smart_translate(m['home_team'])
             a_cn = smart_translate(m['away_team'])
-            odds = odds_dict.get((h_cn, a_cn), (0, 0, 0, 0.0, 0.0))
+            odds = odds_dict.get((h_cn, a_cn), (0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
             all_matches.append({
                 '联赛': m['league'], '比赛时间': m['datetime'],
                 '主队': h_cn, '客队': a_cn,
                 '主胜赔率': odds[0], '平局赔率': odds[1], '客胜赔率': odds[2],
-                '让球盘口': odds[3], '大小球盘口': odds[4]
+                '让球盘口': odds[3], '主让胜赔率': odds[4], '客受让胜赔率': odds[5],
+                '大小球盘口': odds[6], '大球赔率': odds[7], '小球赔率': odds[8]
             })
             
     df = pd.DataFrame(all_matches)
