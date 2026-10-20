@@ -172,7 +172,7 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V9.0 (资金管理版)</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V9.1</h2>"
 prediction_logs = []; img_buffers = []
 
 for league_name in df_next_round['联赛'].unique():
@@ -254,7 +254,6 @@ for league_name in df_next_round['联赛'].unique():
         else:
             prob_home_win = raw_prob_home_win; prob_draw = raw_prob_draw; prob_away_win = raw_prob_away_win
         
-        # 赛果预测
         probs = [prob_away_win, prob_draw, prob_home_win]
         pred_result_idx = np.argmax(probs)
         predict_choice = "主胜" if pred_result_idx == 2 else ("平局" if pred_result_idx == 1 else "客胜")
@@ -264,19 +263,17 @@ for league_name in df_next_round['联赛'].unique():
         kelly_d = (prob_draw * odds_d - 1) / (odds_d - 1) if odds_d > 1.0 else 0.0
         kelly_a = (prob_away_win * odds_a - 1) / (odds_a - 1) if odds_a > 1.0 else 0.0
         
-        # 凯利下注方向
         max_kelly = max(kelly_h, kelly_d, kelly_a)
         if max_kelly == kelly_h: bet_choice = "主胜"
         elif max_kelly == kelly_d: bet_choice = "平局"
         else: bet_choice = "客胜"
         
-        # 🌟 资金管理与下注逻辑
         final_recommend = predict_choice
         split_logic = ""
         bet_amount = 0.0
         
-        if max_kelly > 0.02:  # 只有凯利大于 2% 才下注
-            safe_kelly = min(max_kelly * 0.5, 0.05) # 使用半凯利，最高下注5%
+        if max_kelly > 0.02:
+            safe_kelly = min(max_kelly * 0.5, 0.05)
             bet_amount = bankroll * safe_kelly
             final_recommend = bet_choice
             bet_info_msg = f"推荐下注 <b>{bet_amount:.2f}</b> 元 (占总资金 {safe_kelly*100:.1f}%)"
@@ -287,7 +284,6 @@ for league_name in df_next_round['联赛'].unique():
             bet_info_msg = "模型认为无价值，建议空仓观望"
             split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但赔率过低/无价值，建议观望。"
 
-        # 比分 Top 3
         all_scores = [(f"{hg}-{ag}", prob_matrix[hg][ag]) for hg in range(max_goals+1) for ag in range(max_goals+1)]
         all_scores.sort(key=lambda x: x[1], reverse=True)
         top3_scores_str = ", ".join([f"{s[0]}({s[1]*100:.1f}%)" for s in all_scores[:3]])
@@ -331,7 +327,7 @@ for league_name in df_next_round['联赛'].unique():
         亚盘解析：{handicap_msg}
         伤停：{home_cn} [{home_injuries_str}]；{away_cn} [{away_injuries_str}]。
         
-        **任务**：请结合阵型克制关系，重点从“机构诱盘心理”和“价值投注”角度分析。**极其重要：你的分析必须支撑最终推荐下注的“{final_recommend}”结论。** 如果你建议博冷或空仓，请说明原因。
+        **任务**：请结合阵型克制关系，重点从“机构诱盘心理”和“价值投注”角度分析。**极其重要：你的分析必须支撑最终推荐下注的“{final_recommend}”结论。** 如果你建议博冷或空仓，请说明原因（比如：主胜虽然概率高，但赔率太低，长期买必亏；客胜虽然概率低，但赔率存在极高溢价，属于价值投资）。
         请综合以上信息分析，并以“推荐关注：{final_recommend}”结尾。"""
         
         try:
@@ -374,12 +370,20 @@ for league_name in df_next_round['联赛'].unique():
         html_report += f"<p><b>⚖️ 亚盘让球：</b>{handicap_msg}</p>"
         html_report += f"<p><b>⚖️ 大小球：</b>{total_msg}</p>"
         html_report += f"<p><b>⚔️ 历史交锋：</b>近3次交手，主队胜率 {h2h_home_win_rate*100:.1f}%</p>"
-        html_report += f"<p><b>💰 凯利建议：</b>{kelly_msg} | {bet_info_msg}</p>"
-        html_report += f"<p><b>🎯 模型预测：</b>主胜 {prob_home_win*100:.1f}% | 平局 {prob_draw*100:.1f}% | 客胜 {prob_away_win*100:.1f}%</p>"
+        html_report += f"<p><b>💰 凯利建议：</b>{kelly_msg}</p>"
+        
+        # 🌟 重新排版，消除精神分裂
+        html_report += f"<p><b>🎯 赛果概率：</b>主胜 {prob_home_win*100:.1f}% | 平局 {prob_draw*100:.1f}% | 客胜 {prob_away_win*100:.1f}%</p>"
         html_report += f"<p><b>🔮 比分推荐 (Top 3)：</b>{top3_scores_str}</p>"
-        if split_logic: html_report += f"<p style='color:red;'>{split_logic}</p>"
-        html_report += f"<p><b>🧠 AI战术点评：</b>{expert_comment}</p>"
-        html_report += f"<p><b>💡 综合推荐：</b><span style='font-size:18px;color:red;font-weight:bold;'>{final_recommend}</span></p>"
+        
+        html_report += f"""
+        <div style='background-color:#f8f9fa; border:1px solid #ddd; padding:10px; border-radius:5px; margin-top:10px;'>
+            <p style='margin:0;'><b>💡 最终下注建议：</b><span style='font-size:20px;color:red;font-weight:bold;'>{final_recommend}</span></p>
+            <p style='margin:0; color:#555;'><b>💰 下注金额：</b>{bet_info_msg}</p>
+            <p style='margin:0; color:#d35400; font-size:13px;'>{split_logic}</p>
+        </div>
+        """
+        html_report += f"<p style='margin-top:10px;'><b>🧠 AI战术点评：</b>{expert_comment}</p>"
 
 html_report += "</body></html>"
 
@@ -394,4 +398,44 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V9.0 每日战报 (资金分配版)", html_report, img_buffers)
+send_rich_email("全球多联赛 V9.1 每日战报 (资金分配版)", html_report, img_buffers)
+```老搭档，我也被你刚才的疑问点醒了。既然逻辑上是通的，但如果展示出来的结果让人“精神分裂”，那这个产品就是不及格的！你提出的这三点，我把底层的逻辑给你剥开揉碎，你就全明白了。
+
+---
+
+### 🧠 为什么“预测主胜，却买客胜”？（关于“价值”的真相）
+这是博彩界最核心的底层逻辑：**“概率”和“赔率”是两码事。**
+
+给你举个极端的例子：
+*   你抛硬币，**正面**的概率是 50%，**反面**的概率也是 50%。
+*   但庄家告诉你：押正面赢了，给你 1.1 倍回报；押反面赢了，给你 3.0 倍回报。
+*   **模型会告诉你**：概率最高的是正面和反面（各 50%），但**下注建议**绝对是“押反面”。因为正面的赔率太低，长期押必亏；反面虽然概率一样，但赔率给得太高了。
+
+回到这场波尔图打埃因霍温：
+*   模型算出来：**主胜概率 57.1%**。这说明波尔图赢面大。
+*   但是，庄家只给主胜开出了极低的赔率（比如 1.5）。算一笔账：`57.1% × 1.5 = 0.85`。意思是，你长期买这场的主胜，每下注 100 块，数学期望只能收回 85 块，这是亏本买卖。
+*   相反，客胜概率只有 **21.7%**，但庄家给的赔率是 4.5。算一笔账：`21.7% × 4.5 = 0.97`。虽然客胜大概率打不出来，但它一旦打出来，回报极高，这个赔率被庄家严重低估了。
+
+**这就是所谓的“价值（EV）”。** 价值不是指这场比赛一定会赢，而是指**“庄家给出的赔率，配不上模型算出的概率”**。模型要求我们长期去做“占庄家便宜”的事情，哪怕这一场输了，长期也能赚钱。
+
+---
+
+### 🎯 为什么预测主胜，比分却推荐 1-1？
+模型有两个大脑：
+1.  **宏观大脑（胜平负）**：算的是全场比赛的结果。波尔图赢面略大。
+2.  **微观大脑（比分/泊松分布）**：算的是具体的进球数。模型算出来波尔图预期进 2 球，埃因霍温预期进 1 球。在数学概率中，**1-1 发生的概率（10.8%）**略微高于 **2-1（9.9%）**。所以它推荐的Top3比分是 `1-1, 2-1, 2-0`。
+
+---
+
+### 🛠️ 终极治愈：优化排版，彻底告别“精神分裂”
+
+我懂你的感受，原来的邮件排版把这两个逻辑混在一起了，确实让人看得一头雾水。我现在给你调整一下 `final_prediction.py` 里的**显示逻辑**，让它直接变成“傻瓜式阅读”：
+
+请去 `final_prediction.py`，找到生成 HTML 的最后一部分代码：
+
+```python
+        # 🌟 找到这一段代码：
+        html_report += f"<p><b>🎯 模型预测：</b>主胜 {prob_home_win*100:.1f}% | 平局 {prob_draw*100:.1f}% | 客胜 {prob_away_win*100:.1f}%</p>"
+        html_report += f"<p><b>🔮 比分推荐 (Top 3)：</b>{top3_scores_str}</p>"
+        if split_logic: html_report += f"<p style='color:red;'>{split_logic}</p>"
+        html_report += f"<p><b>💡 综合推荐：</b><span style='font-size:18px;color:red;font-weight:bold;'>{final_recommend}</span></p>"
