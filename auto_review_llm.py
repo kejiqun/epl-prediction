@@ -9,6 +9,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.header import Header
+import re
 
 from config import LEAGUES
 from team_mapping import translate_team_name
@@ -33,7 +34,7 @@ def send_email(subject, html_content, receiver="308730509@qq.com"):
         print("✅ 复盘邮件发送成功！")
     except Exception as e: print(f"❌ 邮件发送失败: {e}")
 
-print("⏳ 正在启动多联赛深度复盘引擎 (V8.3 量化风控版)...")
+print("⏳ 正在启动多联赛深度复盘引擎 (V8.4)...")
 
 if not os.path.exists('predictions_log.csv'):
     print("⚠️ 找不到 predictions_log.csv，跳过复盘。")
@@ -47,12 +48,18 @@ past_3_days = today - timedelta(days=3)
 if 'actual_score' not in df_log.columns: df_log['actual_score'] = ""
 if 'actual_result' not in df_log.columns: df_log['actual_result'] = ""
 if 'is_win' not in df_log.columns: df_log['is_win'] = ""
-if 'profit' not in df_log.columns: df_log['profit'] = 0.0
 
 pending_review = df_log[(df_log['date'] >= past_3_days) & (df_log['actual_score'].isna() | (df_log['actual_score'] == ""))].copy()
 
 if pending_review.empty:
     print("✅ 最近 3 天没有需要复盘的新比赛。")
+    # 🌟 发一封空邮件，告诉你系统没偷懒
+    html_report = f"""
+    <html><body><div style="text-align: center; padding: 50px;">
+        <h2 style="color: #2c3e50;">💡 今日复盘完成</h2>
+        <p style="color: #666; font-size: 16px;">最近 3 天内没有需要复盘的新比赛，或者比赛尚未结束。系统正在静候下一轮战报。</p>
+    </div></body></html>"""
+    send_email("💡 多联赛 V8.4 极简深度复盘报告", html_report)
     exit()
 
 print(f"⏳ 找到 {len(pending_review)} 场待复盘比赛，正在抓取赛果...")
@@ -82,7 +89,6 @@ for league_name, config in LEAGUES.items():
                                 actual_results[(match_date_str, h_name, a_name)] = (h_score, a_score)
         except: continue
 
-# 🌟 资金管理：读取当前资金，采用平注限额或凯利
 bankroll = 10000.0
 if os.path.exists('bankroll.csv'):
     try:
@@ -107,7 +113,6 @@ for idx, row in pending_review.iterrows():
         actual_res = "主胜" if hg > ag else ("平局" if hg == ag else "客胜")
         is_win = "✅ 命中" if pred_res == actual_res else "❌ 失手"
         
-        # 计算单场盈亏（基于推荐赛果的真实赔率，假设下注资金 2%）
         bet_amount = bankroll * 0.02
         if pred_res == actual_res:
             correct_count += 1
@@ -123,12 +128,10 @@ for idx, row in pending_review.iterrows():
         df_log.at[idx, 'actual_score'] = f"{hg}-{ag}"
         df_log.at[idx, 'actual_result'] = actual_res
         df_log.at[idx, 'is_win'] = is_win
-        df_log.at[idx, 'profit'] = round(profit, 2)
         
-        # 收集用于 AI 分析的数据
         review_data.append({
             "联赛": row['league'], "比赛": f"{h_cn} vs {a_cn}",
-            "预测": pred_res, "实际": actual_res, "比分": f"{hg}-{ag}",
+            "推荐": pred_res, "实际": actual_res, "比分": f"{hg}-{ag}",
             "模型概率": f"主{row['pred_prob_h']*100:.0f}% 平{row['pred_prob_d']*100:.0f}% 客{row['pred_prob_a']*100:.0f}%",
             "赔率": f"主{row['odds_h']} 平{row['odds_d']} 客{row['odds_a']}",
             "结果": is_win
@@ -141,7 +144,6 @@ if total_count == 0:
 bankroll += total_profit
 win_rate = (correct_count / total_count) * 100
 
-# 🌟 重构 Prompt：要求极其结构化、简练、图文并茂
 print("⏳ 正在呼叫 DeepSeek 进行多维度结构化复盘...")
 knowledge_base = ""
 if os.path.exists('knowledge.txt'):
@@ -151,26 +153,21 @@ prompt = f"""你是一位顶级的足球量化风控总监。今天我们进行�
 {review_data}
 
 当前资金：{bankroll:.2f}，本轮胜率：{win_rate:.1f}%。
-【历史经验库】：{knowledge_base[:2000]}... (截取前部以避免超长)
+【历史经验库】：{knowledge_base[:2000]}...
 
 **任务**：
 请生成一份【极简、结构化、神清气爽】的复盘报告。
-必须严格包含以下四个模块，多写短句，少写长段，直接输出 Markdown 格式（我会将其转为图文邮件）：
+必须严格包含以下三个模块，多写短句，少写长段，直接输出 Markdown 格式：
 
 ### 📊 一、 战场速览
-（用一段话总结本轮表现，点出红黑榜：表现最好的联赛 vs 表现最差的联赛）
+（用一段话总结本轮表现，点出红黑榜）
 
-### 🚨 二、 典型错题本（核心）
-（挑出 1-2 场最有代表性的错局，用以下格式）
-* **比赛**：[主队] vs [客队]（[联赛]）
-* **死因**：...（必须精准指出是：阵型克制？情报缺失？还是模型对特定赔率的盲区？）
-* **相似情境防坑指南**：如果未来再出现“类似赔率 + 类似球队状态”，系统应该怎么做？
+### 🚨 二、 典型错题本
+（挑出 1-2 场最有代表性的错局，指出是阵型克制？情报缺失？还是模型盲区？）
 
-### 💡 三、 经验入库（直接写入知识库）
-（请提炼 2 条极其精炼、可以直接作为特征工程或规则过滤的代码级经验。字数不超过 50 字/条，例如：“德甲客队让步大于0.5时，若情报缺失，强制拉高平局概率15%。”）
-
-### 🎯 四、 下一步行动指令
-（给开发者的 1 条修改建议，比如：“下次预测时，重点关注意甲主场龙球队的浅盘”）
+### 💡 三、 经验入库 (将提取并写入知识库)
+- [规则1] ...
+- [规则2] ...
 
 请保持冷酷、专业、直接的风格。"""
 
@@ -184,14 +181,16 @@ try:
 except Exception as e:
     review_report_md = f"AI复盘暂时不可用，报错: {e}"
 
-# 将最精炼的经验写入 knowledge.txt (只提取第三部分)
-with open('knowledge.txt', 'a', encoding='utf-8') as f:
-    f.write(f"\n\n--- {datetime.now().strftime('%Y-%m-%d')} 复盘经验 ---\n")
-    if "### 💡 三、 经验入库" in review_report_md:
-        exp_section = review_report_md.split("### 💡 三、 经验入库")[1].split("###")[0]
-        f.write(exp_section.strip())
-    else:
-        f.write(review_report_md)
+# 🌟 用正则精准提取经验部分写入 knowledge.txt
+exp_matches = re.search(r'###\s*💡\s*三、\s*经验入库.*?\n(.*?)(?:\n###|\Z)', review_report_md, re.DOTALL)
+if exp_matches:
+    clean_exp = exp_matches.group(1).strip()
+    with open('knowledge.txt', 'a', encoding='utf-8') as f:
+        f.write(f"\n\n--- {datetime.now().strftime('%Y-%m-%d')} 复盘经验 ---\n")
+        f.write(clean_exp)
+else:
+    with open('knowledge.txt', 'a', encoding='utf-8') as f:
+        f.write(f"\n\n--- {datetime.now().strftime('%Y-%m-%d')} 复盘经验 ---\n{review_report_md}")
 
 df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
@@ -203,7 +202,9 @@ else:
     df_bank = new_bankroll_row
 df_bank.to_csv('bankroll.csv', index=False, encoding='utf-8-sig')
 
-# 🌟 重构 HTML 邮件：卡片式设计，极其清晰
+# Markdown 简单转 HTML
+html_content = review_report_md.replace('\n', '<br>').replace('###', '<h3 style="color:#2c3e50;border-left:4px solid #3498db;padding-left:10px;">').replace('- ', '• ')
+
 html_report = f"""
 <html>
 <head>
@@ -215,12 +216,7 @@ html_report = f"""
     .stat-item {{ text-align: center; }}
     .stat-value {{ font-size: 24px; font-weight: bold; color: #0056b3; }}
     .stat-label {{ font-size: 14px; color: #666; }}
-    .content h3 {{ color: #2c3e50; border-left: 4px solid #3498db; padding-left: 10px; margin-top: 30px; }}
-    .content p {{ margin-bottom: 10px; }}
-    .content ul, .content ol {{ padding-left: 20px; }}
-    .content li {{ margin-bottom: 8px; }}
-    .content blockquote {{ border-left: 4px solid #e74c3c; background: #fdf2f2; padding: 10px; margin: 0; color: #c0392b; font-weight: bold; }}
-    .footer {{ text-align: center; color: #aaa; font-size: 12px; margin-top: 30px; }}
+    .content {{ padding: 10px; }}
 </style>
 </head>
 <body>
@@ -246,10 +242,10 @@ html_report = f"""
     </div>
 
     <div class="content">
-        {review_report_md.replace(chr(10), '<br>').replace('###', '<h3>').replace('* ', '• ')}
+        {html_content}
     </div>
     
-    <div class="footer">
+    <div class="footer" style="text-align: center; color: #aaa; font-size: 12px; margin-top: 30px;">
         <p>系统自动生成 · 职业量化分析</p>
     </div>
 </div>
@@ -257,5 +253,5 @@ html_report = f"""
 </html>
 """
 
-send_email("💡 多联赛 V8.3 极简深度复盘报告", html_report)
+send_email("💡 多联赛 V8.4 极简深度复盘报告", html_report)
 print("✅ 复盘完毕！已生成图文报告并精简写入 knowledge.txt")
