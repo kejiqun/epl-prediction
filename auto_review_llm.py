@@ -1,13 +1,16 @@
 import pandas as pd
-import numpy as np
 import requests
 import os
 from datetime import datetime, timedelta
-from openai import OpenAI
 import warnings
+from openai import OpenAI
 import smtplib
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.header import Header
+
+from config import LEAGUES
+from team_mapping import translate_team_name
 
 warnings.filterwarnings('ignore')
 
@@ -17,196 +20,163 @@ EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 
 llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
-def send_email(subject, content, receiver="308730509@qq.com"):
+def send_email(subject, html_content, receiver="308730509@qq.com"):
     if not EMAIL_SENDER or not EMAIL_PASSWORD: return
-    message = MIMEText(content, 'plain', 'utf-8')
-    message['From'] = EMAIL_SENDER
-    message['To'] = receiver
-    message['Subject'] = Header(subject, 'utf-8')
+    msg = MIMEMultipart('alternative')
+    msg['From'] = EMAIL_SENDER; msg['To'] = receiver; msg['Subject'] = Header(subject, 'utf-8')
+    msg.attach(MIMEText(html_content, 'html', 'utf-8'))
     try:
         smtpObj = smtplib.SMTP_SSL('smtp.qq.com', 465)
         smtpObj.login(EMAIL_SENDER, EMAIL_PASSWORD)
-        smtpObj.sendmail(EMAIL_SENDER, [receiver], message.as_string())
-    except Exception as e: 
-        print(f"❌ 复盘邮件发送失败: {e}")
+        smtpObj.sendmail(EMAIL_SENDER, [receiver], msg.as_string())
+        print("✅ 复盘邮件发送成功！")
+    except Exception as e: print(f"❌ 邮件发送失败: {e}")
 
-team_mapping = {
-    'Arsenal FC': '阿森纳', 'Arsenal': '阿森纳', 'Aston Villa FC': '阿斯顿维拉', 'Aston Villa': '阿斯顿维拉',
-    'AFC Bournemouth': '伯恩茅斯', 'Bournemouth': '伯恩茅斯', 'Brentford FC': '布伦特福德', 'Brentford': '布伦特福德',
-    'Brighton & Hove Albion FC': '布莱顿', 'Brighton & Hove Albion': '布莱顿', 'Brighton': '布莱顿',
-    'Chelsea FC': '切尔西', 'Chelsea': '切尔西', 'Crystal Palace FC': '水晶宫', 'Crystal Palace': '水晶宫',
-    'Everton FC': '埃弗顿', 'Everton': '埃弗顿', 'Fulham FC': '富勒姆', 'Fulham': '富勒姆',
-    'Ipswich Town FC': '伊普斯维奇', 'Ipswich Town': '伊普斯维奇', 'Leicester City FC': '莱斯特城', 'Leicester City': '莱斯特城',
-    'Liverpool FC': '利物浦', 'Liverpool': '利物浦', 'Manchester City FC': '曼城', 'Manchester City': '曼城', 'Man City': '曼城',
-    'Manchester United FC': '曼联', 'Manchester United': '曼联', 'Man United': '曼联',
-    'Newcastle United FC': '纽卡斯尔联', 'Newcastle United': '纽卡斯尔联', 'Newcastle': '纽卡斯尔联',
-    'Nottingham Forest FC': '诺丁汉森林', 'Nottingham Forest': '诺丁汉森林',
-    'Southampton FC': '南安普顿', 'Southampton': '南安普顿', 'Tottenham Hotspur FC': '托特纳姆热刺', 'Tottenham Hotspur': '托特纳姆热刺', 'Tottenham': '托特纳姆热刺',
-    'West Ham United FC': '西汉姆联', 'West Ham United': '西汉姆联', 'Wolverhampton Wanderers FC': '狼队', 'Wolverhampton Wanderers': '狼队',
-    'Leeds United FC': '利兹联', 'Leeds United': '利兹联', 'Sunderland AFC': '桑德兰', 'Sunderland': '桑德兰',
-    'Hull City AFC': '赫尔城', 'Hull City': '赫尔城', 'Coventry City FC': '考文垂', 'Coventry City': '考文垂'
-}
+print("⏳ 正在启动多联赛深度复盘引擎...")
 
-def translate_team_name(name):
-    if isinstance(name, str): 
-        return team_mapping.get(name.replace(" and ", " & ").strip(), name)
-    return name
+if not os.path.exists('predictions_log.csv'):
+    print("⚠️ 找不到 predictions_log.csv，跳过复盘。")
+    exit()
 
-def fuzzy_match(team_a, team_b):
-    if not isinstance(team_a, str) or not isinstance(team_b, str): return False
-    return (team_a.lower() in team_b.lower()) or (team_b.lower() in team_a.lower())
+# 1. 读取预测日志，找出过去 3 天需要复盘的比赛
+df_log = pd.read_csv('predictions_log.csv')
+df_log['date'] = pd.to_datetime(df_log['date'])
+today = datetime.now()
+past_3_days = today - timedelta(days=3)
 
-def safe_str(val, default="未知"):
-    if pd.isna(val) or val is None or str(val).strip().lower() in ['nan', 'none', '']:
-        return default
-    return str(val)
+# 添加空列用于存放赛果（如果不存在的话）
+if 'actual_score' not in df_log.columns: df_log['actual_score'] = ""
+if 'actual_result' not in df_log.columns: df_log['actual_result'] = ""
+if 'is_win' not in df_log.columns: df_log['is_win'] = ""
 
-print("⏳ 正在抓取真实赛果，进行 V28 深度微观复盘...")
-try:
-    finished_matches = []
-    seven_days_ago = datetime.now() - timedelta(days=10)
-    
-    for i in range(10):
-        date_str = (seven_days_ago + timedelta(days=i)).strftime('%Y%m%d')
-        url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard?dates={date_str}"
-        resp = requests.get(url, timeout=10)
-        if resp.status_code == 200:
-            data = resp.json()
-            for event in data.get('events', []):
-                if event['status']['type']['state'] == 'post':
-                    competitions = event.get('competitions', [])
-                    if competitions:
-                        competitors = competitions[0].get('competitors', [])
-                        home = next((c for c in competitors if c['homeAway'] == 'home'), None)
-                        away = next((c for c in competitors if c['homeAway'] == 'away'), None)
-                        if home and away:
-                            finished_matches.append({
-                                'date': event['date'][:10],
-                                'home_team': translate_team_name(home['team']['name']), 
-                                'away_team': translate_team_name(away['team']['name']),
-                                'home_goals': int(home.get('score', 0)), 
-                                'away_goals': int(away.get('score', 0))
-                            })
-    
-    df_finished = pd.DataFrame(finished_matches)
+# 筛选出最近 3 天且尚未复盘的比赛
+pending_review = df_log[(df_log['date'] >= past_3_days) & (df_log['actual_score'].isna() | (df_log['actual_score'] == ""))].copy()
 
-    if not df_finished.empty:
-        match_details_text = ""
-        
-        bankroll_file = 'bankroll.csv'
-        if not os.path.exists(bankroll_file):
-            pd.DataFrame([{'date': '2026-01-01', 'balance': 10000.0, 'pnl': 0.0, 'bet_count': 0}]).to_csv(bankroll_file, index=False)
-            
-        current_bankroll = pd.read_csv(bankroll_file).iloc[-1]
-        balance = current_bankroll['balance']
-        bet_count = current_bankroll['bet_count']
-        weekly_pnl = 0.0
-        
-        if os.path.exists('predictions_log.csv'):
-            log_df = pd.read_csv('predictions_log.csv')
-            
-            for _, row in df_finished.iterrows():
-                pred_match = log_df[
-                    log_df['home_team'].apply(lambda x: fuzzy_match(x, row['home_team'])) & 
-                    log_df['away_team'].apply(lambda x: fuzzy_match(x, row['away_team']))
-                ]
-                
-                if not pred_match.empty:
-                    p = pred_match.iloc[-1]
-                    actual_res = "主胜" if row['home_goals'] > row['away_goals'] else ("平局" if row['home_goals'] == row['away_goals'] else "客胜")
-                    
-                    odds_h = p.get('odds_h', 2.0)
-                    odds_a = p.get('odds_a', 3.0)
-                    bet_amount = 0
-                    payout = 0
-                    
-                    if p['predicted_result'] == '主胜' and pd.notna(odds_h) and p['pred_prob_h'] > (1/odds_h):
-                        bet_pct = (p['pred_prob_h'] * odds_h - 1) / (odds_h - 1)
-                        bet_amount = balance * max(0, bet_pct) * 0.1
-                        if actual_res == '主胜': payout = bet_amount * odds_h
-                    elif p['predicted_result'] == '客胜' and pd.notna(odds_a) and p['pred_prob_a'] > (1/odds_a):
-                        bet_pct = (p['pred_prob_a'] * odds_a - 1) / (odds_a - 1)
-                        bet_amount = balance * max(0, bet_pct) * 0.1
-                        if actual_res == '客胜': payout = bet_amount * odds_a
-                        
-                    weather_val = safe_str(p.get('weather'))
-                    h_rest_val = safe_str(p.get('home_rest'), '未知')
-                    a_rest_val = safe_str(p.get('away_rest'), '未知')
-                    h_inj_val = safe_str(p.get('home_injuries'), '无')
-                    a_inj_val = safe_str(p.get('away_injuries'), '无')
-                    ref_val = safe_str(p.get('referee'), '官方未公布')
+if pending_review.empty:
+    print("✅ 最近 3 天没有需要复盘的新比赛。")
+    exit()
 
-                    # 🌟 核心修复：排版美化，消灭“未知休息 vs 未知休息”
-                    h_rest_str = f"{h_rest_val}天" if h_rest_val != '未知' else '未知'
-                    a_rest_str = f"{a_rest_val}天" if a_rest_val != '未知' else '未知'
-                    rest_info = f"休息[{h_rest_str} vs {a_rest_str}]" if h_rest_val != '未知' or a_rest_val != '未知' else "休息[数据缺失]"
+print(f"⏳ 找到 {len(pending_review)} 场待复盘比赛，正在抓取赛果...")
 
-                    match_details_text += f"【{row['home_team']} vs {row['away_team']}】\n"
-                    match_details_text += f"  - 赛前模型预测: {p['predicted_result']} (比分 {p['predicted_score']})\n"
-                    match_details_text += f"  - 赛前多维情报: 天气[{weather_val}], {rest_info}, {row['home_team']}伤停[{h_inj_val}], {row['away_team']}伤停[{a_inj_val}], 裁判[{ref_val}]\n"
-                    match_details_text += f"  - 实际赛果: {row['home_goals']}-{row['away_goals']} ({actual_res})\n"
-                    
-                    if bet_amount > 0:
-                        weekly_pnl += (payout - bet_amount)
-                        bet_count += 1
-                        match_details_text += f"  - 资金操作: 触发下注 {bet_amount:.0f}元 | 盈亏: {payout - bet_amount:.0f}元\n"
-                    else:
-                        match_details_text += f"  - 资金操作: 未触发凯利阈值，按兵不动。\n"
-                        
-                    if p['predicted_result'] == actual_res:
-                        match_details_text += f"  - 结论: 预测正确！\n"
-                    else:
-                        match_details_text += f"  - 结论: 预测错误。\n"
+# 2. 循环各大联赛抓取赛果
+actual_results = {} # 存储格式: {(date, home_cn, away_cn): (hg, ag)}
 
-        review_text = f"【近期赛果清单】\n"
-        for _, row in df_finished.iterrows():
-            review_text += f"- {row['date']}：{row['home_team']} {row['home_goals']}-{row['away_goals']} {row['away_team']}\n"
-            
-        prompt = f"""你是一位极其严苛的资深英超数据分析专家（主教练角色）。
-请基于以下真实赛果与我们的预测记录进行复盘。系统不应有"包庇"心态，必须刀刃向内，找出模型到底哪里算漏了。
-
-【真实赛果】：
-{review_text}
-
-【核心复盘对比（预测 vs 实际 + 赛前多维情报）】：
-{match_details_text if match_details_text else "无可匹配的预测记录。"}
-
-请完成以下任务：
-1. **微观归因（多维分析）**：针对预测错误的比赛，深度分析原因。请结合赛前情报进行综合分析（比如：是不是下雨限制了传控？是不是核心球员伤停导致进攻拉胯？是不是赛程密集导致体能崩盘？或者是当值主裁的判罚尺度直接改变了比赛走势？又或者是阵型被克制？）。针对预测正确的比赛，总结赢在哪。字数不超过200字。
-2. **吸取教训**：提炼一条能直接写入下一版模型特征的优化经验，用“经验：”开头。
-
-"""
-        
-        response = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False)
-        review_comment = response.choices[0].message.content.strip()
-        
-        print("\n" + "="*60)
-        print(f"🧠 DeepSeek V28 深度复盘：\n{review_comment}")
-        print(f"💰 虚拟资金盈亏：{weekly_pnl:.2f} | 当前总资金：{balance:.2f}")
-        print("="*60)
-        
-        if "经验：" in review_comment:
-            new_knowledge = review_comment.split("经验：")[-1].strip()
-            with open('knowledge.txt', 'a', encoding='utf-8') as f:
-                f.write(f"- [{datetime.now().strftime('%Y-%m-%d')}] {new_knowledge}\n")
-            print(f"✅ 已将新教训写入 knowledge.txt，下次预测将强制参考！")
-        
-        send_email("近期英超 V28 深度复盘与资金报表", review_text + "\n" + match_details_text + "\n" + review_comment)
-        
-        print("\n⏳ 正在将新赛果追加到历史数据库...")
+for league_name, config in LEAGUES.items():
+    # 抓取过去 3 天的赛果
+    for i in range(1, 4):
+        date_str = (today - timedelta(days=i)).strftime('%Y%m%d')
+        url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{config['espn_code']}/scoreboard?dates={date_str}"
         try:
-            df_hist = pd.read_csv('epl_matches_10y.csv')
-            df_finished['home_team_en'] = df_finished['home_team'].map({v: k for k, v in team_mapping.items()}).fillna(df_finished['home_team'])
-            df_finished['away_team_en'] = df_finished['away_team'].map({v: k for k, v in team_mapping.items()}).fillna(df_finished['away_team'])
-            
-            new_data = df_finished[['date', 'home_team_en', 'away_team_en', 'home_goals', 'away_goals']].copy()
-            new_data.columns = ['date', 'home_team', 'away_team', 'home_goals', 'away_goals']
-            
-            df_updated = pd.concat([df_hist, new_data], ignore_index=True)
-            df_updated.drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last', inplace=True)
-            df_updated.to_csv('epl_matches_10y.csv', index=False, encoding='utf-8-sig')
-            print(f"✅ 数据追加成功！")
-        except Exception as e: print(f"❌ 数据追加失败：{e}")
-            
+            resp = requests.get(url, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                for event in data.get('events', []):
+                    if event['status']['type']['state'] == 'post': # 已经完赛
+                        competitions = event.get('competitions', [])
+                        if competitions:
+                            competitors = competitions[0].get('competitors', [])
+                            home = next((c for c in competitors if c['homeAway'] == 'home'), None)
+                            away = next((c for c in competitors if c['homeAway'] == 'away'), None)
+                            if home and away:
+                                h_name = translate_team_name(home['team']['name'])
+                                a_name = translate_team_name(away['team']['name'])
+                                h_score = int(home.get('score', 0))
+                                a_score = int(away.get('score', 0))
+                                match_date_str = pd.to_datetime(event['date']).tz_convert('Asia/Shanghai').strftime('%Y-%m-%d')
+                                actual_results[(match_date_str, h_name, a_name)] = (h_score, a_score)
+        except: continue
+
+# 3. 匹配赛果并计算对错
+review_text_list = []
+correct_count = 0
+total_count = 0
+
+for idx, row in pending_review.iterrows():
+    m_date = row['date'].strftime('%Y-%m-%d')
+    h_cn = row['home_team']
+    a_cn = row['away_team']
+    pred_res = row['predicted_result']
+    
+    # 查找赛果
+    res = actual_results.get((m_date, h_cn, a_cn))
+    if res:
+        hg, ag = res
+        actual_res = "主胜" if hg > ag else ("平局" if hg == ag else "客胜")
+        is_win = "✅ 命中" if pred_res == actual_res else "❌ 错误"
+        
+        df_log.at[idx, 'actual_score'] = f"{hg}-{ag}"
+        df_log.at[idx, 'actual_result'] = actual_res
+        df_log.at[idx, 'is_win'] = is_win
+        
+        total_count += 1
+        if pred_res == actual_res: correct_count += 1
+        
+        review_text_list.append(f"比赛: {h_cn} vs {a_cn} [{row['league']}] | 预测: {pred_res} | 实际: {actual_res} ({hg}-{ag}) | 结果: {is_win}")
+
+if total_count == 0:
+    print("⚠️ 未能匹配到任何赛果（可能比赛还没踢完）。")
+    exit()
+
+# 4. 更新资金库 (简易版，假设每场按10块钱均注)
+bankroll = 10000.0
+if os.path.exists('bankroll.csv'):
+    try:
+        df_b = pd.read_csv('bankroll.csv')
+        bankroll = df_b.iloc[-1]['当前资金']
+    except: pass
+
+win_rate = (correct_count / total_count) * 100
+profit = (correct_count * 10 * 0.95) - ((total_count - correct_count) * 10) # 假设平均赔率1.95
+bankroll += profit
+
+# 5. AI 多联赛深度复盘
+print("⏳ 正在呼叫 DeepSeek 进行多联赛深度复盘...")
+knowledge_base = ""
+if os.path.exists('knowledge.txt'):
+    with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
+
+prompt = f"""你是一位极其严苛的足球量化风控总监。今天我们跨多个联赛进行了预测，以下是刚刚结束的比赛结果：
+{chr(10).join(review_text_list)}
+
+当前总战绩：{correct_count} 胜 / {total_count} 场，本轮胜率 {win_rate:.1f}%。
+【历史经验库】：
+{knowledge_base}
+
+**任务要求**：
+1. 请分析这些预测错误的原因（特别是不同联赛的球风差异，比如德甲大球、意甲防守）。
+2. 总结出 1-3 条可以直接写入代码或经验库的铁律。
+3. 语气要犀利、专业。直接输出复盘报告，不要废话。"""
+
+try:
+    response = llm_client.chat.completions.create(
+        model="deepseek-chat", 
+        messages=[{"role": "user", "content": prompt}], 
+        stream=False
+    )
+    review_report = response.choices[0].message.content.strip()
 except Exception as e:
-    print(f"⚠️ 获取赛果或复盘失败: {e}")
+    review_report = f"AI复盘暂时不可用，报错: {e}"
+
+# 6. 将新经验写入 knowledge.txt
+with open('knowledge.txt', 'a', encoding='utf-8') as f:
+    f.write(f"\n\n--- {datetime.now().strftime('%Y-%m-%d')} 复盘经验 ---\n")
+    f.write(review_report)
+
+# 7. 更新日志和资金，并发送邮件
+df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
+
+new_bankroll_row = pd.DataFrame([{'日期': today.strftime('%Y-%m-%d'), '当前资金': round(bankroll, 2), '盈亏': round(profit, 2)}])
+if os.path.exists('bankroll.csv'):
+    df_bank = pd.read_csv('bankroll.csv')
+    df_bank = pd.concat([df_bank, new_bankroll_row]).drop_duplicates(subset=['日期'], keep='last')
+else:
+    df_bank = new_bankroll_row
+df_bank.to_csv('bankroll.csv', index=False, encoding='utf-8-sig')
+
+html_report = f"<html><body><h2>💡 多联赛深度复盘报告</h2>"
+html_report += f"<h3>📊 本轮战绩：{correct_count} 胜 / {total_count} 场（胜率 {win_rate:.1f}%）</h3>"
+html_report += f"<h3>💰 虚拟资金盈亏：{profit:+.2f} | 当前总资金：{bankroll:.2f}</h3>"
+html_report += f"<hr><pre style='font-family: inherit; white-space: pre-wrap;'>{review_report}</pre></body></html>"
+
+send_email("多联赛 V8.2 深度复盘报告", html_report)
+print("✅ 复盘完毕！已生成报告并写入 knowledge.txt")
