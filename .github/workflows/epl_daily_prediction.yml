@@ -34,6 +34,10 @@ jobs:
 
       - name: 3.5 云端 V31 融合调参与训练
         run: python train_v31.py
+      - name: 3.8 抓取多联赛赛程与实时赔率
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python fetch_multi_leagues.py
 
       - name: 4. 运行赛前预测
         env:
