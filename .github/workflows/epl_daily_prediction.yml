@@ -30,7 +30,7 @@ jobs:
       - name: 3. 安装依赖
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+          pip install -r requirements.txt --default-timeout=100
 
       - name: 3.5 云端 V31 融合调参与训练
         run: python train_v31.py
