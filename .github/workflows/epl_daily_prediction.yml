@@ -52,18 +52,12 @@ jobs:
       - name: 4.5 运行时光机回测系统
         run: python backtest.py
 
-      - name: 5. 运行赛后复盘 (多联赛结算)
+      - name: 5. 运行赛后复盘 (多联赛结算+知识提纯)
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: python auto_review_llm.py
-
-      # 🌟 新增：大脑提纯机制
-      - name: 5.5 大脑提纯 (压缩知识库)
-        env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        run: python distill_knowledge.py
 
       - name: 6. 自动提交更新的数据与经验
         run: |
