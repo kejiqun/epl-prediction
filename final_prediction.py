@@ -171,7 +171,7 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V12.1 (盘口量化版)</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V12.2 (强制输出盘口版)</h2>"
 prediction_logs = []; img_buffers = []
 
 for league_name in df_next_round['联赛'].unique():
@@ -289,7 +289,7 @@ for league_name in df_next_round['联赛'].unique():
         
         kelly_msg = f"主胜 {max(0, kelly_h)*100:.1f}% | 平局 {max(0, kelly_d)*100:.1f}% | 客胜 {max(0, kelly_a)*100:.1f}%"
 
-        # 🌟 核心升级：大小球与亚盘量化
+        # 🌟 核心升级：大小球与亚盘量化（带强制默认水位）
         handicap = match.get('让球盘口', 0.0)
         h_handicap_odd = match.get('主让胜赔率', 0.0)
         a_handicap_odd = match.get('客受让胜赔率', 0.0)
@@ -297,6 +297,12 @@ for league_name in df_next_round['联赛'].unique():
         total_line = match.get('大小球盘口', 2.5)
         over_odd = match.get('大球赔率', 0.0)
         under_odd = match.get('小球赔率', 0.0)
+        
+        # 如果 API 没给赔率，强制按标准水位 1.90 计算价值！
+        if h_handicap_odd <= 1: h_handicap_odd = 1.90
+        if a_handicap_odd <= 1: a_handicap_odd = 1.90
+        if over_odd <= 1: over_odd = 1.90
+        if under_odd <= 1: under_odd = 1.90
         
         prob_over = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + ag > total_line)
         prob_under = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + ag < total_line)
@@ -306,31 +312,31 @@ for league_name in df_next_round['联赛'].unique():
         
         ou_recommend = "观望"
         ou_msg = "博彩公司暂未对本场开设大小球盘口"
-        if pd.notna(total_line) and over_odd > 1 and under_odd > 1:
+        if pd.notna(total_line) and total_line > 0:
             ev_over = prob_over * over_odd
             ev_under = prob_under * under_odd
             if ev_over > 1.05 and ev_over > ev_under:
                 ou_recommend = "大球"
-                ou_msg = f"盘口{total_line}，大球概率{prob_over*100:.1f}%，赔率{over_odd}，存在极高价值！"
+                ou_msg = f"盘口{total_line}，大球概率{prob_over*100:.1f}%，参考赔率{over_odd:.2f}，价值极高！"
             elif ev_under > 1.05 and ev_under > ev_over:
                 ou_recommend = "小球"
-                ou_msg = f"盘口{total_line}，小球概率{prob_under*100:.1f}%，赔率{under_odd}，存在极高价值！"
+                ou_msg = f"盘口{total_line}，小球概率{prob_under*100:.1f}%，参考赔率{under_odd:.2f}，价值极高！"
             else:
-                ou_msg = f"盘口{total_line}，大球{prob_over*100:.1f}% / 小球{prob_under*100:.1f}%，赔率无优势。"
+                ou_msg = f"盘口{total_line}，大球{prob_over*100:.1f}% / 小球{prob_under*100:.1f}%，模型认为赔率不足以覆盖风险。"
 
         handicap_recommend = "观望"
         handicap_msg = "博彩公司暂未对本场开设让球盘口"
-        if pd.notna(handicap) and h_handicap_odd > 1 and a_handicap_odd > 1:
+        if pd.notna(handicap) and handicap != 0:
             ev_hc_home = prob_handicap_home * h_handicap_odd
             ev_hc_away = prob_handicap_away * a_handicap_odd
             if ev_hc_home > 1.05 and ev_hc_home > ev_hc_away:
                 handicap_recommend = "主队赢盘"
-                handicap_msg = f"主让{handicap}，赢盘概率{prob_handicap_home*100:.1f}%，赔率{h_handicap_odd}，具有价值。"
+                handicap_msg = f"主让{handicap}，赢盘概率{prob_handicap_home*100:.1f}%，参考赔率{h_handicap_odd:.2f}，具有价值。"
             elif ev_hc_away > 1.05 and ev_hc_away > ev_hc_home:
                 handicap_recommend = "客队赢盘"
-                handicap_msg = f"主让{handicap}，客队赢盘概率{prob_handicap_away*100:.1f}%，赔率{a_handicap_odd}，具有价值。"
+                handicap_msg = f"主让{handicap}，客队赢盘概率{prob_handicap_away*100:.1f}%，参考赔率{a_handicap_odd:.2f}，具有价值。"
             else:
-                handicap_msg = f"主让{handicap}，主赢盘{prob_handicap_home*100:.1f}% / 客赢盘{prob_handicap_away*100:.1f}%，赔率无优势。"
+                handicap_msg = f"主让{handicap}，主赢盘{prob_handicap_home*100:.1f}% / 客赢盘{prob_handicap_away*100:.1f}%，模型认为赔率不足以覆盖风险。"
 
         weather = get_match_weather(home_cn, match_time)
         weather_str = weather['天气'] if isinstance(weather, dict) else weather
@@ -418,4 +424,4 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V12.1 每日战报 (盘口量化版)", html_report, img_buffers)
+send_rich_email("全球多联赛 V12.2 每日战报 (强制输出盘口版)", html_report, img_buffers)
