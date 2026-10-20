@@ -171,7 +171,7 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V12.0 (盘口量化版)</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V12.1 (盘口量化版)</h2>"
 prediction_logs = []; img_buffers = []
 
 for league_name in df_next_round['联赛'].unique():
@@ -298,17 +298,14 @@ for league_name in df_next_round['联赛'].unique():
         over_odd = match.get('大球赔率', 0.0)
         under_odd = match.get('小球赔率', 0.0)
         
-        # 1. 大小球概率
         prob_over = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + ag > total_line)
         prob_under = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + ag < total_line)
         
-        # 2. 让球概率
         prob_handicap_home = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + handicap > ag)
         prob_handicap_away = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + handicap < ag)
         
-        # 3. 计算 EV 和 凯利
         ou_recommend = "观望"
-        ou_msg = "暂无数据"
+        ou_msg = "博彩公司暂未对本场开设大小球盘口"
         if pd.notna(total_line) and over_odd > 1 and under_odd > 1:
             ev_over = prob_over * over_odd
             ev_under = prob_under * under_odd
@@ -322,7 +319,7 @@ for league_name in df_next_round['联赛'].unique():
                 ou_msg = f"盘口{total_line}，大球{prob_over*100:.1f}% / 小球{prob_under*100:.1f}%，赔率无优势。"
 
         handicap_recommend = "观望"
-        handicap_msg = "暂无数据"
+        handicap_msg = "博彩公司暂未对本场开设让球盘口"
         if pd.notna(handicap) and h_handicap_odd > 1 and a_handicap_odd > 1:
             ev_hc_home = prob_handicap_home * h_handicap_odd
             ev_hc_away = prob_handicap_away * a_handicap_odd
@@ -421,4 +418,4 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V12.0 每日战报 (盘口量化版)", html_report, img_buffers)
+send_rich_email("全球多联赛 V12.1 每日战报 (盘口量化版)", html_report, img_buffers)
