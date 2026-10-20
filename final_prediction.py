@@ -171,7 +171,7 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V11.0 (双煞版)</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V12.0 (盘口量化版)</h2>"
 prediction_logs = []; img_buffers = []
 
 for league_name in df_next_round['联赛'].unique():
@@ -230,7 +230,7 @@ for league_name in df_next_round['联赛'].unique():
         home_xg, away_xg = max(0.1, model_home_goals.predict(X_pred)[0]), max(0.1, model_away_goals.predict(X_pred)[0])
         home_xg = home_xg * h_inj_factor; away_xg = away_xg * a_inj_factor
         
-        max_goals = 5
+        max_goals = 6
         prob_matrix = np.zeros((max_goals+1, max_goals+1))
         for hg in range(max_goals+1):
             for ag in range(max_goals+1):
@@ -289,33 +289,51 @@ for league_name in df_next_round['联赛'].unique():
         
         kelly_msg = f"主胜 {max(0, kelly_h)*100:.1f}% | 平局 {max(0, kelly_d)*100:.1f}% | 客胜 {max(0, kelly_a)*100:.1f}%"
 
-        # 🌟 大小球与让球盘下注逻辑
+        # 🌟 核心升级：大小球与亚盘量化
         handicap = match.get('让球盘口', 0.0)
-        total_line = match.get('大小球盘口', 2.5)
-        model_net_xg = home_xg - away_xg
-        model_total_xg = home_xg + away_xg
+        h_handicap_odd = match.get('主让胜赔率', 0.0)
+        a_handicap_odd = match.get('客受让胜赔率', 0.0)
         
-        handicap_msg = "暂无数据"
+        total_line = match.get('大小球盘口', 2.5)
+        over_odd = match.get('大球赔率', 0.0)
+        under_odd = match.get('小球赔率', 0.0)
+        
+        # 1. 大小球概率
+        prob_over = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + ag > total_line)
+        prob_under = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + ag < total_line)
+        
+        # 2. 让球概率
+        prob_handicap_home = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + handicap > ag)
+        prob_handicap_away = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + handicap < ag)
+        
+        # 3. 计算 EV 和 凯利
         ou_recommend = "观望"
         ou_msg = "暂无数据"
-        
-        if pd.notna(handicap) and handicap != 0:
-            handicap_implied = -handicap
-            handicap_gap = model_net_xg - handicap_implied
-            if handicap_gap > 0.3: handicap_msg = f"盘口主让{-handicap:+.1f}，模型看好主队赢盘（价值差{handicap_gap:+.2f}）。"
-            elif handicap_gap < -0.3: handicap_msg = f"盘口主让{-handicap:+.1f}，模型看好客队赢盘（价值差{handicap_gap:+.2f}）。"
-            else: handicap_msg = f"盘口主让{-handicap:+.1f}，势均力敌。"
-
-        if pd.notna(total_line) and total_line > 0:
-            total_gap = model_total_xg - total_line
-            if total_gap > 0.4: 
+        if pd.notna(total_line) and over_odd > 1 and under_odd > 1:
+            ev_over = prob_over * over_odd
+            ev_under = prob_under * under_odd
+            if ev_over > 1.05 and ev_over > ev_under:
                 ou_recommend = "大球"
-                ou_msg = f"盘口{total_line}，模型预期{model_total_xg:.2f}，大球概率极高（价值差{total_gap:+.2f}）。"
-            elif total_gap < -0.4: 
+                ou_msg = f"盘口{total_line}，大球概率{prob_over*100:.1f}%，赔率{over_odd}，存在极高价值！"
+            elif ev_under > 1.05 and ev_under > ev_over:
                 ou_recommend = "小球"
-                ou_msg = f"盘口{total_line}，模型预期{model_total_xg:.2f}，小球概率极高（价值差{total_gap:+.2f}）。"
-            else: 
-                ou_msg = f"盘口{total_line}，模型预期{model_total_xg:.2f}，进球数基本吻合。"
+                ou_msg = f"盘口{total_line}，小球概率{prob_under*100:.1f}%，赔率{under_odd}，存在极高价值！"
+            else:
+                ou_msg = f"盘口{total_line}，大球{prob_over*100:.1f}% / 小球{prob_under*100:.1f}%，赔率无优势。"
+
+        handicap_recommend = "观望"
+        handicap_msg = "暂无数据"
+        if pd.notna(handicap) and h_handicap_odd > 1 and a_handicap_odd > 1:
+            ev_hc_home = prob_handicap_home * h_handicap_odd
+            ev_hc_away = prob_handicap_away * a_handicap_odd
+            if ev_hc_home > 1.05 and ev_hc_home > ev_hc_away:
+                handicap_recommend = "主队赢盘"
+                handicap_msg = f"主让{handicap}，赢盘概率{prob_handicap_home*100:.1f}%，赔率{h_handicap_odd}，具有价值。"
+            elif ev_hc_away > 1.05 and ev_hc_away > ev_hc_home:
+                handicap_recommend = "客队赢盘"
+                handicap_msg = f"主让{handicap}，客队赢盘概率{prob_handicap_away*100:.1f}%，赔率{a_handicap_odd}，具有价值。"
+            else:
+                handicap_msg = f"主让{handicap}，主赢盘{prob_handicap_home*100:.1f}% / 客赢盘{prob_handicap_away*100:.1f}%，赔率无优势。"
 
         weather = get_match_weather(home_cn, match_time)
         weather_str = weather['天气'] if isinstance(weather, dict) else weather
@@ -325,16 +343,14 @@ for league_name in df_next_round['联赛'].unique():
 
         prompt = f"""你是一位精通全球足球的资深数据分析专家，同时也是盘口大师。请基于以下数据，写一段精炼、口语化的赛前点评（不超过150字）：
         比赛：{home_cn} vs {away_cn} ({league_name})
-        模型赛果倾向：{predict_choice}
-        最终胜平负下注：{final_recommend}
-        {split_logic}
-        进球期望：主队 {home_xg:.2f}，客队 {away_xg:.2f}。总进球 {model_total_xg:.2f}。
-        大小球推荐：{ou_recommend} ({ou_msg})
-        历史交锋：近3次交手主队胜率 {h2h_home_win_rate*100:.1f}%
+        赛果倾向：{predict_choice}，最终胜平负下注：{final_recommend}
+        进球期望：主队 {home_xg:.2f}，客队 {away_xg:.2f}。
+        大小球解析：{ou_msg} 推荐：{ou_recommend}
+        让球解析：{handicap_msg} 推荐：{handicap_recommend}
         伤停：{home_cn} [{home_injuries_str}]；{away_cn} [{away_injuries_str}]。
         
-        **任务**：请结合阵型克制关系，重点从“机构诱盘心理”和“价值投注”角度分析。必须支撑模型得出的结论。
-        请综合以上信息分析，并以“推荐关注：{final_recommend}，大小球倾向：{ou_recommend}”结尾。"""
+        **任务**：重点从“机构诱盘心理”和“价值投注”角度分析。必须支撑大小球和让球的量化结论。
+        请综合以上信息分析，并以“推荐关注：{final_recommend}，盘口倾向：{ou_recommend}/{handicap_recommend}”结尾。"""
         
         try:
             response = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False)
@@ -349,7 +365,7 @@ for league_name in df_next_round['联赛'].unique():
             'pred_prob_h': round(prob_home_win, 4), 'pred_prob_d': round(prob_draw, 4), 'pred_prob_a': round(prob_away_win, 4),
             'predicted_score': all_scores[0][0],
             'model_home_xg': round(home_xg, 3), 'model_away_xg': round(away_xg, 3),
-            'model_net_xg': round(model_net_xg, 3), 'model_total_xg': round(model_total_xg, 3),
+            'model_net_xg': round(home_xg - away_xg, 3), 'model_total_xg': round(home_xg + away_xg, 3),
             'handicap': handicap, 'total_line': total_line,
             'odds_h': odds_h, 'odds_d': odds_d, 'odds_a': odds_a,
             'weather': weather_str, 'home_injuries': home_injuries_str, 'away_injuries': away_injuries_str
@@ -376,17 +392,18 @@ for league_name in df_next_round['联赛'].unique():
         html_report += f"<p><b>⚖️ 亚盘让球：</b>{handicap_msg}</p>"
         html_report += f"<p><b>⚖️ 大小球：</b>{ou_msg}</p>"
         html_report += f"<p><b>⚔️ 历史交锋：</b>近3次交手，主队胜率 {h2h_home_win_rate*100:.1f}%</p>"
-        html_report += f"<p><b>💰 凯利建议：</b>{kelly_msg}</p>"
-        
+        html_report += f"<p><b>💰 胜平负凯利：</b>{kelly_msg}</p>"
         html_report += f"<p><b>🎯 赛果概率：</b>主胜 {prob_home_win*100:.1f}% | 平局 {prob_draw*100:.1f}% | 客胜 {prob_away_win*100:.1f}%</p>"
         html_report += f"<p><b>🔮 比分推荐 (Top 3)：</b>{top3_scores_str}</p>"
         
         html_report += f"""
         <div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; border-radius:8px; margin-top:15px;'>
-            <p style='margin:0; font-size:16px;'><b>💡 最终下注建议：</b><span style='font-size:22px;color:red;font-weight:bold;'>{final_recommend}</span></p>
+            <p style='margin:0; font-size:16px;'><b>💡 最终胜平负下注：</b><span style='font-size:22px;color:red;font-weight:bold;'>{final_recommend}</span></p>
             <p style='margin:5px 0 0 0; color:#333;'><b>💰 下注金额：</b>{bet_info_msg}</p>
             <p style='margin:5px 0 0 0; color:#d35400; font-size:14px;'>{split_logic}</p>
-            <p style='margin:5px 0 0 0; color:#2c3e50; font-size:14px;'><b>⚽ 大小球建议：</b>{ou_recommend}</p>
+            <hr style='border:0;border-top:1px solid #eee;margin:10px 0;'>
+            <p style='margin:0; font-size:16px;'><b>⚽ 大小球量化建议：</b><span style='font-size:22px;color:blue;font-weight:bold;'>{ou_recommend}</span></p>
+            <p style='margin:0; font-size:16px;'><b>⚖️ 让球盘量化建议：</b><span style='font-size:22px;color:purple;font-weight:bold;'>{handicap_recommend}</span></p>
         </div>
         """
         html_report += f"<p style='margin-top:15px;'><b>🧠 AI战术点评：</b>{expert_comment}</p>"
@@ -404,4 +421,4 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V11.0 每日战报 (盘口双煞版)", html_report, img_buffers)
+send_rich_email("全球多联赛 V12.0 每日战报 (盘口量化版)", html_report, img_buffers)
