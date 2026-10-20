@@ -94,7 +94,9 @@ if not os.path.exists('daily_matches.csv'): exit()
 
 df_next_round = pd.read_csv('daily_matches.csv')
 df_next_round = df_next_round[(df_next_round['主胜赔率'] > 1) & (df_next_round['平局赔率'] > 1) & (df_next_round['客胜赔率'] > 1)].copy()
-df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间']).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
+
+# 🌟 核心修复点：增加 utc=True，强制统一时区，防止报错
+df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
 
 now_ts = pd.Timestamp.now()
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= now_ts) & (df_next_round['datetime_parsed'] <= now_ts + pd.Timedelta(hours=48))]
@@ -171,7 +173,7 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V15.0 (盘口破局版)</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V15.1 (盘口破局版)</h2>"
 prediction_logs = []; img_buffers = []
 
 for league_name in df_next_round['联赛'].unique():
@@ -300,7 +302,6 @@ for league_name in df_next_round['联赛'].unique():
         over_odd = match.get('大球赔率', 0.0)
         under_odd = match.get('小球赔率', 0.0)
         
-        # 🌟 强制托底：如果 API 没给赔率，直接按 1.90 算！
         if h_handicap_odd <= 1: h_handicap_odd = 1.90
         if a_handicap_odd <= 1: a_handicap_odd = 1.90
         if over_odd <= 1: over_odd = 1.90
@@ -312,7 +313,6 @@ for league_name in df_next_round['联赛'].unique():
         prob_handicap_home = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + handicap > ag)
         prob_handicap_away = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + handicap < ag)
         
-        # 大小球下注
         ou_recommend = "观望"
         ou_msg = "博彩公司暂未对本场开设大小球盘口"
         ou_bet_amount = 0.0
@@ -332,7 +332,6 @@ for league_name in df_next_round['联赛'].unique():
             else:
                 ou_msg = f"盘口{total_line}，大球{prob_over*100:.1f}% / 小球{prob_under*100:.1f}%，模型认为赔率不足以覆盖风险。"
 
-        # 让球下注
         handicap_recommend = "观望"
         handicap_msg = "博彩公司暂未对本场开设让球盘口"
         hc_bet_amount = 0.0
@@ -440,4 +439,4 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V15.0 每日战报 (盘口破局版)", html_report, img_buffers)
+send_rich_email("全球多联赛 V15.1 每日战报 (盘口破局版)", html_report, img_buffers)
