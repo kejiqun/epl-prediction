@@ -80,7 +80,6 @@ def dixon_coles_tau(h, a, home_xg, away_xg, rho=-0.1):
     elif h == 1 and a == 1: return 1 - rho
     else: return 1.0
 
-# ================= 读取当前虚拟资金 =================
 print("⏳ 正在读取虚拟资金账户...")
 bankroll = 10000.0
 if os.path.exists('bankroll.csv'):
@@ -172,7 +171,7 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V9.2</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V11.0 (双煞版)</h2>"
 prediction_logs = []; img_buffers = []
 
 for league_name in df_next_round['联赛'].unique():
@@ -290,26 +289,33 @@ for league_name in df_next_round['联赛'].unique():
         
         kelly_msg = f"主胜 {max(0, kelly_h)*100:.1f}% | 平局 {max(0, kelly_d)*100:.1f}% | 客胜 {max(0, kelly_a)*100:.1f}%"
 
+        # 🌟 大小球与让球盘下注逻辑
         handicap = match.get('让球盘口', 0.0)
+        total_line = match.get('大小球盘口', 2.5)
         model_net_xg = home_xg - away_xg
+        model_total_xg = home_xg + away_xg
+        
+        handicap_msg = "暂无数据"
+        ou_recommend = "观望"
+        ou_msg = "暂无数据"
+        
         if pd.notna(handicap) and handicap != 0:
             handicap_implied = -handicap
             handicap_gap = model_net_xg - handicap_implied
-            if handicap_gap > 0.5: handicap_msg = f"盘口主队让{-handicap:+.1f}球，模型显著更看好主队，主队让球有价值（价值差{handicap_gap:+.2f}）。"
-            elif handicap_gap < -0.5: handicap_msg = f"盘口主队让{-handicap:+.1f}球，模型不看好主队让球，客队受让有价值（价值差{handicap_gap:+.2f}）。"
-            else: handicap_msg = f"盘口主队让{-handicap:+.1f}球，双方基本一致（差值{handicap_gap:+.2f}）。"
-        else:
-            handicap_msg = "暂无亚盘让球盘口数据。"
+            if handicap_gap > 0.3: handicap_msg = f"盘口主让{-handicap:+.1f}，模型看好主队赢盘（价值差{handicap_gap:+.2f}）。"
+            elif handicap_gap < -0.3: handicap_msg = f"盘口主让{-handicap:+.1f}，模型看好客队赢盘（价值差{handicap_gap:+.2f}）。"
+            else: handicap_msg = f"盘口主让{-handicap:+.1f}，势均力敌。"
 
-        total_line = match.get('大小球盘口', 2.5)
-        model_total_xg = home_xg + away_xg
         if pd.notna(total_line) and total_line > 0:
             total_gap = model_total_xg - total_line
-            if total_gap > 0.4: total_msg = f"大小球盘口{total_line}，模型预期总进球{model_total_xg:.2f}，看大球（价值差{total_gap:+.2f}）。"
-            elif total_gap < -0.4: total_msg = f"大小球盘口{total_line}，模型预期总进球{model_total_xg:.2f}，看小球（价值差{total_gap:+.2f}）。"
-            else: total_msg = f"大小球盘口{total_line}，模型预期总进球{model_total_xg:.2f}，双方基本一致。"
-        else:
-            total_msg = "暂无大小球盘口数据。"
+            if total_gap > 0.4: 
+                ou_recommend = "大球"
+                ou_msg = f"盘口{total_line}，模型预期{model_total_xg:.2f}，大球概率极高（价值差{total_gap:+.2f}）。"
+            elif total_gap < -0.4: 
+                ou_recommend = "小球"
+                ou_msg = f"盘口{total_line}，模型预期{model_total_xg:.2f}，小球概率极高（价值差{total_gap:+.2f}）。"
+            else: 
+                ou_msg = f"盘口{total_line}，模型预期{model_total_xg:.2f}，进球数基本吻合。"
 
         weather = get_match_weather(home_cn, match_time)
         weather_str = weather['天气'] if isinstance(weather, dict) else weather
@@ -320,15 +326,15 @@ for league_name in df_next_round['联赛'].unique():
         prompt = f"""你是一位精通全球足球的资深数据分析专家，同时也是盘口大师。请基于以下数据，写一段精炼、口语化的赛前点评（不超过150字）：
         比赛：{home_cn} vs {away_cn} ({league_name})
         模型赛果倾向：{predict_choice}
-        最终推荐下注：{final_recommend}
+        最终胜平负下注：{final_recommend}
         {split_logic}
+        进球期望：主队 {home_xg:.2f}，客队 {away_xg:.2f}。总进球 {model_total_xg:.2f}。
+        大小球推荐：{ou_recommend} ({ou_msg})
         历史交锋：近3次交手主队胜率 {h2h_home_win_rate*100:.1f}%
-        进球期望：主队 {home_xg:.2f}，客队 {away_xg:.2f}。
-        亚盘解析：{handicap_msg}
         伤停：{home_cn} [{home_injuries_str}]；{away_cn} [{away_injuries_str}]。
         
-        **任务**：请结合阵型克制关系，重点从“机构诱盘心理”和“价值投注”角度分析。**极其重要：你的分析必须支撑最终推荐下注的“{final_recommend}”结论。** 如果你建议博冷或空仓，请说明原因（比如：主胜虽然概率高，但赔率太低，长期买必亏；客胜虽然概率低，但赔率存在极高溢价，属于价值投资）。
-        请综合以上信息分析，并以“推荐关注：{final_recommend}”结尾。"""
+        **任务**：请结合阵型克制关系，重点从“机构诱盘心理”和“价值投注”角度分析。必须支撑模型得出的结论。
+        请综合以上信息分析，并以“推荐关注：{final_recommend}，大小球倾向：{ou_recommend}”结尾。"""
         
         try:
             response = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False)
@@ -368,11 +374,10 @@ for league_name in df_next_round['联赛'].unique():
         html_report += f"<hr><h3>{match_time} - {home_cn} vs {away_cn} [{league_name}]</h3>"
         html_report += f"<img src='cid:chart_{len(img_buffers)-1}' width='600'><br>"
         html_report += f"<p><b>⚖️ 亚盘让球：</b>{handicap_msg}</p>"
-        html_report += f"<p><b>⚖️ 大小球：</b>{total_msg}</p>"
+        html_report += f"<p><b>⚖️ 大小球：</b>{ou_msg}</p>"
         html_report += f"<p><b>⚔️ 历史交锋：</b>近3次交手，主队胜率 {h2h_home_win_rate*100:.1f}%</p>"
         html_report += f"<p><b>💰 凯利建议：</b>{kelly_msg}</p>"
         
-        # 🌟 重新排版，彻底告别精神分裂
         html_report += f"<p><b>🎯 赛果概率：</b>主胜 {prob_home_win*100:.1f}% | 平局 {prob_draw*100:.1f}% | 客胜 {prob_away_win*100:.1f}%</p>"
         html_report += f"<p><b>🔮 比分推荐 (Top 3)：</b>{top3_scores_str}</p>"
         
@@ -381,6 +386,7 @@ for league_name in df_next_round['联赛'].unique():
             <p style='margin:0; font-size:16px;'><b>💡 最终下注建议：</b><span style='font-size:22px;color:red;font-weight:bold;'>{final_recommend}</span></p>
             <p style='margin:5px 0 0 0; color:#333;'><b>💰 下注金额：</b>{bet_info_msg}</p>
             <p style='margin:5px 0 0 0; color:#d35400; font-size:14px;'>{split_logic}</p>
+            <p style='margin:5px 0 0 0; color:#2c3e50; font-size:14px;'><b>⚽ 大小球建议：</b>{ou_recommend}</p>
         </div>
         """
         html_report += f"<p style='margin-top:15px;'><b>🧠 AI战术点评：</b>{expert_comment}</p>"
@@ -398,4 +404,4 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V9.2 每日战报 (资金分配版)", html_report, img_buffers)
+send_rich_email("全球多联赛 V11.0 每日战报 (盘口双煞版)", html_report, img_buffers)
