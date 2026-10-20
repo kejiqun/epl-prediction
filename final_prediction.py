@@ -171,7 +171,7 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V13.0 (严格风控版)</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V14.0 (多线程资金管理版)</h2>"
 prediction_logs = []; img_buffers = []
 
 for league_name in df_next_round['联赛'].unique():
@@ -262,15 +262,11 @@ for league_name in df_next_round['联赛'].unique():
         kelly_d = (prob_draw * odds_d - 1) / (odds_d - 1) if odds_d > 1.0 else 0.0
         kelly_a = (prob_away_win * odds_a - 1) / (odds_a - 1) if odds_a > 1.0 else 0.0
         
-        # 🌟 严格风控：过滤掉极低概率的博冷
-        max_kelly = 0
-        bet_choice = ""
-        if kelly_h > 0.02 and prob_home_win > 0.25:
-            max_kelly = kelly_h; bet_choice = "主胜"
-        if kelly_d > max_kelly and prob_draw > 0.25:
-            max_kelly = kelly_d; bet_choice = "平局"
-        if kelly_a > max_kelly and prob_away_win > 0.25:
-            max_kelly = kelly_a; bet_choice = "客胜"
+        # 胜平负下注逻辑
+        max_kelly = 0; bet_choice = ""
+        if kelly_h > 0.02 and prob_home_win > 0.25: max_kelly = kelly_h; bet_choice = "主胜"
+        if kelly_d > max_kelly and prob_draw > 0.25: max_kelly = kelly_d; bet_choice = "平局"
+        if kelly_a > max_kelly and prob_away_win > 0.25: max_kelly = kelly_a; bet_choice = "客胜"
             
         final_recommend = predict_choice
         split_logic = ""
@@ -282,13 +278,11 @@ for league_name in df_next_round['联赛'].unique():
             bet_amount = bankroll * safe_kelly
             final_recommend = bet_choice
             bet_info_msg = f"推荐下注 <b>{bet_amount:.2f}</b> 元 (占总资金 {safe_kelly*100:.1f}%)"
-            
             if bet_choice != predict_choice:
                 split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但 <b>{bet_choice}</b> 的赔率提供了极高的价值，综合推荐去买 <b>{bet_choice}</b>。"
         else:
-            # 如果最高凯利对应的概率低于25%，直接提示禁手
             if (kelly_a > 0.02 and prob_away_win <= 0.25) or (kelly_d > 0.02 and prob_draw <= 0.25) or (kelly_h > 0.02 and prob_home_win <= 0.25):
-                split_logic = f"🛑 <b>风控警告：</b>虽然某项赔率极高（凯利为正），但发生概率低于25%，属于“买彩票”行为，系统直接禁手，建议观望。"
+                split_logic = f"🛑 <b>风控警告：</b>虽然某项赔率极高（凯利为正），但发生概率低于25%，属于“买彩票”行为，系统直接禁手。"
             else:
                 split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但赔率过低/无价值，建议观望。"
 
@@ -298,6 +292,7 @@ for league_name in df_next_round['联赛'].unique():
         
         kelly_msg = f"主胜 {max(0, kelly_h)*100:.1f}% | 平局 {max(0, kelly_d)*100:.1f}% | 客胜 {max(0, kelly_a)*100:.1f}%"
 
+        # 盘口与大小球逻辑
         handicap = match.get('让球盘口', 0.0)
         h_handicap_odd = match.get('主让胜赔率', 0.0)
         a_handicap_odd = match.get('客受让胜赔率', 0.0)
@@ -317,31 +312,43 @@ for league_name in df_next_round['联赛'].unique():
         prob_handicap_home = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + handicap > ag)
         prob_handicap_away = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + handicap < ag)
         
+        # 🌟 大小球下注
         ou_recommend = "观望"
         ou_msg = "博彩公司暂未对本场开设大小球盘口"
+        ou_bet_amount = 0.0
         if pd.notna(total_line) and total_line > 0:
             ev_over = prob_over * over_odd
             ev_under = prob_under * under_odd
             if ev_over > 1.05 and ev_over > ev_under:
                 ou_recommend = "大球"
-                ou_msg = f"盘口{total_line}，大球概率{prob_over*100:.1f}%，参考赔率{over_odd:.2f}，价值极高！"
+                kelly_ou = (ev_over - 1) / (over_odd - 1)
+                ou_bet_amount = bankroll * min(kelly_ou * 0.5, 0.05)
+                ou_msg = f"盘口{total_line}，大球概率{prob_over*100:.1f}%，参考赔率{over_odd:.2f}，价值极高！推荐下注 {ou_bet_amount:.2f} 元。"
             elif ev_under > 1.05 and ev_under > ev_over:
                 ou_recommend = "小球"
-                ou_msg = f"盘口{total_line}，小球概率{prob_under*100:.1f}%，参考赔率{under_odd:.2f}，价值极高！"
+                kelly_ou = (ev_under - 1) / (under_odd - 1)
+                ou_bet_amount = bankroll * min(kelly_ou * 0.5, 0.05)
+                ou_msg = f"盘口{total_line}，小球概率{prob_under*100:.1f}%，参考赔率{under_odd:.2f}，价值极高！推荐下注 {ou_bet_amount:.2f} 元。"
             else:
                 ou_msg = f"盘口{total_line}，大球{prob_over*100:.1f}% / 小球{prob_under*100:.1f}%，模型认为赔率不足以覆盖风险。"
 
+        # 🌟 让球下注
         handicap_recommend = "观望"
         handicap_msg = "博彩公司暂未对本场开设让球盘口"
+        hc_bet_amount = 0.0
         if pd.notna(handicap) and handicap != 0:
             ev_hc_home = prob_handicap_home * h_handicap_odd
             ev_hc_away = prob_handicap_away * a_handicap_odd
             if ev_hc_home > 1.05 and ev_hc_home > ev_hc_away:
                 handicap_recommend = "主队赢盘"
-                handicap_msg = f"主让{handicap}，赢盘概率{prob_handicap_home*100:.1f}%，参考赔率{h_handicap_odd:.2f}，具有价值。"
+                kelly_hc = (ev_hc_home - 1) / (h_handicap_odd - 1)
+                hc_bet_amount = bankroll * min(kelly_hc * 0.5, 0.05)
+                handicap_msg = f"主让{handicap}，赢盘概率{prob_handicap_home*100:.1f}%，参考赔率{h_handicap_odd:.2f}。推荐下注 {hc_bet_amount:.2f} 元。"
             elif ev_hc_away > 1.05 and ev_hc_away > ev_hc_home:
                 handicap_recommend = "客队赢盘"
-                handicap_msg = f"主让{handicap}，客队赢盘概率{prob_handicap_away*100:.1f}%，参考赔率{a_handicap_odd:.2f}，具有价值。"
+                kelly_hc = (ev_hc_away - 1) / (a_handicap_odd - 1)
+                hc_bet_amount = bankroll * min(kelly_hc * 0.5, 0.05)
+                handicap_msg = f"主让{handicap}，客队赢盘概率{prob_handicap_away*100:.1f}%，参考赔率{a_handicap_odd:.2f}。推荐下注 {hc_bet_amount:.2f} 元。"
             else:
                 handicap_msg = f"主让{handicap}，主赢盘{prob_handicap_home*100:.1f}% / 客赢盘{prob_handicap_away*100:.1f}%，模型认为赔率不足以覆盖风险。"
 
@@ -377,6 +384,8 @@ for league_name in df_next_round['联赛'].unique():
             'model_home_xg': round(home_xg, 3), 'model_away_xg': round(away_xg, 3),
             'model_net_xg': round(home_xg - away_xg, 3), 'model_total_xg': round(home_xg + away_xg, 3),
             'handicap': handicap, 'total_line': total_line,
+            'ou_recommend': ou_recommend, 'ou_bet_amount': round(ou_bet_amount, 2), 'over_odd': over_odd, 'under_odd': under_odd,
+            'hc_recommend': handicap_recommend, 'hc_bet_amount': round(hc_bet_amount, 2), 'h_handicap_odd': h_handicap_odd, 'a_handicap_odd': a_handicap_odd,
             'odds_h': odds_h, 'odds_d': odds_d, 'odds_a': odds_a,
             'weather': weather_str, 'home_injuries': home_injuries_str, 'away_injuries': away_injuries_str
         })
@@ -431,4 +440,4 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V13.0 每日战报 (严格风控版)", html_report, img_buffers)
+send_rich_email("全球多联赛 V14.0 每日战报 (多线程资金版)", html_report, img_buffers)
