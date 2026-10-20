@@ -16,6 +16,7 @@ from email.header import Header
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from team_mapping import translate_team_name
 
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei', 'Arial Unicode MS']
 plt.rcParams['axes.unicode_minus'] = False
