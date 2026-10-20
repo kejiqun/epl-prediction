@@ -7,6 +7,36 @@ from team_mapping import translate_team_name
 
 ODDS_API_KEY = os.environ.get("ODDS_API_KEY")
 
+# 🌟 补充冷门欧战球队字典 (如果不在这里面，且 team_mapping.py 也没有，就会保留英文)
+EXTRA_MAPPING = {
+    'Sabah FK': '萨巴巴库', 'Sabah': '萨巴巴库',
+    'Slovan Bratislava': '布拉迪斯拉发',
+    'FC Porto': '波尔图',
+    'Qarabag FK': '卡拉巴赫', 'Qarabag': '卡拉巴赫',
+    'Sporting Braga': '布拉加',
+    'FC Copenhagen': '哥本哈根',
+    'PSV Eindhoven': '埃因霍温',
+    'Feyenoord': '费耶诺德',
+    'Young Boys': '伯尔尼年轻人',
+    'Red Star Belgrade': '贝尔格莱德红星',
+    'FC Salzburg': '萨尔茨堡红牛',
+    'Dinamo Zagreb': '萨格勒布迪纳摩',
+    'Slavia Prague': '布拉格斯拉维亚',
+    'Sturm Graz': '格拉茨风暴',
+    'Sparta Prague': '布拉格斯巴达',
+    'Union St. Gilloise': '圣吉尔联',
+    'Shakhtar Donetsk': '顿涅茨克矿工',
+    'Atalanta': '亚特兰大',
+    'Bayer Leverkusen': '勒沃库森'
+}
+
+def smart_translate(name):
+    # 先找大全，再找补丁
+    translated = translate_team_name(name)
+    if translated == name: # 说明没找到
+        return EXTRA_MAPPING.get(name, name)
+    return translated
+
 def fetch_schedule_and_odds():
     all_matches = []
     today = datetime.now()
@@ -15,7 +45,6 @@ def fetch_schedule_and_odds():
         print(f"⏳ 正在抓取 {league_name} 赛程与赔率...")
         upcoming = []
         
-        # 只抓未来 3 天（确保比赛是马上要打的）
         for i in range(3): 
             date_str = (today + timedelta(days=i)).strftime('%Y%m%d')
             url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{config['espn_code']}/scoreboard?dates={date_str}"
@@ -39,13 +68,12 @@ def fetch_schedule_and_odds():
             
         odds_dict = {}
         try:
-            # 🌟 恢复亚盘(spreads)和大小球(totals)请求
             resp = requests.get("https://api.the-odds-api.com/v4/sports/" + config['odds_api_code'] + "/odds", 
                                 params={'apiKey': ODDS_API_KEY, 'regions': 'uk', 'markets': 'h2h,spreads,totals', 'oddsFormat': 'decimal'}, timeout=20)
             odds_data = resp.json() if resp.status_code == 200 else []
             for match in odds_data:
-                h_cn = translate_team_name(match['home_team'])
-                a_cn = translate_team_name(match['away_team'])
+                h_cn = smart_translate(match['home_team'])
+                a_cn = smart_translate(match['away_team'])
                 
                 h_odd, d_odd, a_odd = 0, 0, 0
                 handicap, total_line = 0.0, 0.0
@@ -70,14 +98,14 @@ def fetch_schedule_and_odds():
         except: pass
         
         for m in upcoming:
-            h_cn = translate_team_name(m['home_team'])
-            a_cn = translate_team_name(m['away_team'])
+            h_cn = smart_translate(m['home_team'])
+            a_cn = smart_translate(m['away_team'])
             odds = odds_dict.get((h_cn, a_cn), (0, 0, 0, 0.0, 0.0))
             all_matches.append({
-                'league': m['league'], 'datetime': m['datetime'],
-                'home_team': h_cn, 'away_team': a_cn,
-                'odds_h': odds[0], 'odds_d': odds[1], 'odds_a': odds[2],
-                'handicap': odds[3], 'total_line': odds[4]
+                '联赛': m['league'], '比赛时间': m['datetime'],
+                '主队': h_cn, '客队': a_cn,
+                '主胜赔率': odds[0], '平局赔率': odds[1], '客胜赔率': odds[2],
+                '让球盘口': odds[3], '大小球盘口': odds[4]
             })
             
     df = pd.DataFrame(all_matches)
