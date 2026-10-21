@@ -48,7 +48,7 @@ def distill_knowledge_base():
         dist_resp = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": distill_prompt}], stream=False)
         distilled_text = dist_resp.choices[0].message.content.strip()
         
-        # 🌟 核心修改：直接覆盖原文件，不生成任何备份！
+        # 🌟 核心修改：直接覆盖原文件，不再生成任何备份！
         with open('knowledge.txt', 'w', encoding='utf-8') as f:
             f.write(f"--- 知识库提纯于 {datetime.now().strftime('%Y-%m-%d %H:%M')} ---\n")
             f.write(distilled_text)
@@ -232,6 +232,7 @@ try:
 except Exception as e:
     review_report_md = f"AI复盘暂时不可用，报错: {e}"
 
+# 提取经验部分，追加到 knowledge.txt
 exp_matches = re.search(r'###\s*💡\s*三、\s*经验入库.*?\n(.*?)(?:\n###|\Z)', review_report_md, re.DOTALL)
 if exp_matches:
     with open('knowledge.txt', 'a', encoding='utf-8') as f:
@@ -250,6 +251,7 @@ else:
     df_bank = new_bankroll_row
 df_bank.to_csv('bankroll.csv', index=False, encoding='utf-8-sig')
 
+# Markdown 简单转 HTML
 html_content = review_report_md.replace('\n', '<br>').replace('###', '<h3 style="color:#2c3e50;border-left:4px solid #3498db;padding-left:10px;">').replace('- ', '• ')
 
 html_report = f"""
