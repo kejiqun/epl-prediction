@@ -1,21 +1,19 @@
 import unicodedata
-import re
 
 def remove_accents(input_str):
-    """去掉字母上的声调符号，比如 Málaga 变 Malaga，Mönchengladbach 变 Monchengladbach"""
     nfkd_form = unicodedata.normalize('NFKD', input_str)
     return "".join([c for c in nfkd_form if not unicodedata.combining(c)])
 
 TEAM_MAPPING = {
     # ================= 英超及英冠升降机 =================
     'Arsenal': '阿森纳', 'Arsenal FC': '阿森纳', 'Aston Villa': '阿斯顿维拉', 'AFC Bournemouth': '伯恩茅斯', 'Bournemouth': '伯恩茅斯',
-    'Brentford': '布伦特福德', 'Brighton': '布莱顿', 'Chelsea': '切尔西', 'Crystal Palace': '水晶宫', 'Everton': '埃弗顿', 'Fulham': '富勒姆',
-    'Ipswich': '伊普斯维奇', 'Leicester': '莱斯特城', 'Liverpool': '利物浦', 'Man City': '曼城', 'Manchester City': '曼城',
+    'Brentford': '布伦特福德', 'Brighton': '布莱顿', 'Brighton & Hove Albion': '布莱顿', 'Chelsea': '切尔西', 'Crystal Palace': '水晶宫', 'Everton': '埃弗顿', 'Fulham': '富勒姆',
+    'Ipswich': '伊普斯维奇', 'Ipswich Town': '伊普斯维奇', 'Leicester': '莱斯特城', 'Leicester City': '莱斯特城', 'Liverpool': '利物浦', 'Man City': '曼城', 'Manchester City': '曼城',
     'Man Utd': '曼联', 'Man United': '曼联', 'Manchester United': '曼联', 'Newcastle': '纽卡斯尔联', 'Newcastle United': '纽卡斯尔联',
     'Nott\'m Forest': '诺丁汉森林', 'Nottingham Forest': '诺丁汉森林', 'Southampton': '南安普顿', 'Spurs': '热刺', 'Tottenham': '热刺', 'Tottenham Hotspur': '热刺',
-    'West Ham': '西汉姆联', 'Wolves': '狼队', 'Wolverhampton': '狼队',
+    'West Ham': '西汉姆联', 'West Ham United': '西汉姆联', 'Wolves': '狼队', 'Wolverhampton': '狼队', 'Wolverhampton Wanderers': '狼队',
     'Leeds United': '利兹联', 'Leeds': '利兹联', 'Hull City': '赫尔城', 'Hull': '赫尔城', 'Coventry City': '考文垂', 'Coventry': '考文垂',
-    'Sunderland': '桑德兰', 'Leicester City': '莱斯特城', 'Burnley': '伯恩利', 'Sheffield United': '谢菲尔德联', 'Luton': '卢顿', 'Watford': '沃特福德', 'Norwich': '诺维奇',
+    'Sunderland': '桑德兰', 'Burnley': '伯恩利', 'Sheffield United': '谢菲尔德联', 'Luton': '卢顿', 'Luton Town': '卢顿', 'Watford': '沃特福德', 'Norwich': '诺维奇', 'Norwich City': '诺维奇',
 
     # ================= 西甲 =================
     'Real Madrid': '皇家马德里', 'Barcelona': '巴塞罗那', 'Atletico Madrid': '马德里竞技', 'Girona': '赫罗纳',
@@ -37,25 +35,19 @@ TEAM_MAPPING = {
     'Bologna': '博洛尼亚', 'Torino': '都灵', 'Monza': '蒙扎', 'Genoa': '热那亚', 'Lecce': '莱切', 'Sassuolo': '萨索洛',
     'Udinese': '乌迪内斯', 'Cagliari': '卡利亚里', 'Empoli': '恩波利', 'Verona': '维罗纳', 'Frosinone': '弗洛西诺内', 'Salernitana': '萨勒尼塔纳',
 
-    # ================= 法甲 =================
-    'Paris Saint-Germain': '巴黎圣日耳曼', 'PSG': '巴黎圣日耳曼', 'Marseille': '马赛', 'Monaco': '摩纳哥',
-    'Lille': '里尔', 'Nice': '尼斯', 'Lens': '朗斯', 'Rennes': '雷恩', 'Lyon': '里昂', 'Reims': '兰斯',
-    'Montpellier': '蒙彼利埃', 'Toulouse': '图卢兹', 'Strasbourg': '斯特拉斯堡', 'Nantes': '南特', 'Brest': '布雷斯特', 'Le Havre': '勒阿弗尔',
-
     # ================= 欧战常客 =================
     'Ajax': '阿贾克斯', 'PSV': '埃因霍温', 'PSV Eindhoven': '埃因霍温', 'Feyenoord': '费耶诺德', 'AZ Alkmaar': '阿尔克马尔', 'Twente': '特温特',
-    'Benfica': '本菲卡', 'Porto': '波尔图', 'Sporting CP': '葡萄牙体育', 'Sporting Lisbon': '葡萄牙体育', 'Braga': '布拉加',
+    'Benfica': '本菲卡', 'Porto': '波尔图', 'FC Porto': '波尔图', 'Sporting CP': '葡萄牙体育', 'Sporting Lisbon': '葡萄牙体育', 'Braga': '布拉加',
     'Celtic': '凯尔特人', 'Rangers': '格拉斯哥流浪者', 'Galatasaray': '加拉塔萨雷', 'Fenerbahce': '费内巴切', 'Besiktas': '贝西克塔斯',
     'Club Brugge': '布鲁日', 'Anderlecht': '安德莱赫特', 'Genk': '亨克', 'Union St. Gilloise': '圣吉尔联', 'Union SG': '圣吉尔联',
-    'Red Bull Salzburg': '萨尔茨堡红牛', 'RB Salzburg': '萨尔茨堡红牛', 'Sturm Graz': '格拉茨风暴', 'Young Boys': '伯尔尼年轻人', 'Basel': '巴塞尔',
-    'Olympiacos': '奥林匹亚科斯', 'Panathinaikos': '帕纳辛奈科斯', 'AEK Athens': '雅典AEK', 'Copenhagen': '哥本哈根', 'Midtjylland': '中日德兰',
-    'Slavia Prague': '布拉格斯拉维亚', 'Viktoria Plzen': '比尔森胜利', 'Shakhtar Donetsk': '顿涅茨克矿工', 'Dynamo Kyiv': '基辅迪纳摩',
+    'Red Bull Salzburg': '萨尔茨堡红牛', 'RB Salzburg': '萨尔茨堡红牛', 'FC Salzburg': '萨尔茨堡红牛', 'Sturm Graz': '格拉茨风暴', 'Young Boys': '伯尔尼年轻人', 'Basel': '巴塞尔',
+    'Olympiacos': '奥林匹亚科斯', 'Panathinaikos': '帕纳辛奈科斯', 'AEK Athens': '雅典AEK', 'Copenhagen': '哥本哈根', 'FC Copenhagen': '哥本哈根', 'Midtjylland': '中日德兰',
+    'Slavia Prague': '布拉格斯拉维亚', 'Sparta Prague': '布拉格斯巴达', 'Viktoria Plzen': '比尔森胜利', 'Shakhtar Donetsk': '顿涅茨克矿工', 'Dynamo Kyiv': '基辅迪纳摩',
     'Bodo/Glimt': '博多闪耀', 'Dinamo Zagreb': '萨格勒布迪纳摩', 'Red Star Belgrade': '贝尔格莱德红星', 'Crvena Zvezda': '贝尔格莱德红星',
-    'Maccabi Tel Aviv': '特拉维夫马卡比', 'Maccabi Haifa': '海法马卡比'
+    'Maccabi Tel Aviv': '特拉维夫马卡比', 'Maccabi Haifa': '海法马卡比', 'Qarabag FK': '卡拉巴赫', 'Qarabag': '卡拉巴赫', 'Slovan Bratislava': '布拉迪斯拉发', 'Sabah FK': '萨巴巴库'
 }
 
 def translate_team_name(name):
     if not isinstance(name, str): return name
-    # 去重音符号
     cleaned_name = remove_accents(name.replace(" and ", " & ").strip())
     return TEAM_MAPPING.get(cleaned_name, cleaned_name)
