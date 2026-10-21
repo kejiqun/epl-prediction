@@ -1,13 +1,11 @@
 import requests
 import pandas as pd
-import re
 import os
+from datetime import datetime
 from team_mapping import translate_team_name
 
 def fetch_500_odds():
     print("⏳ 启动国内数据源：正在从 500彩票网 抓取真实盘口...")
-    
-    # 500彩票网的竞彩足球数据接口（包含初盘和即时盘）
     url = "https://trade.500.com/jczq/"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -15,34 +13,57 @@ def fetch_500_odds():
     
     try:
         resp = requests.get(url, headers=headers, timeout=15)
-        resp.encoding = 'gb2312' # 500网通常是gb2312编码
+        resp.encoding = 'gb2312'
         
-        # 简单的正则提取比赛信息（这需要根据网页实际结构微调）
-        # 这里我们写一个健壮的兜底逻辑：如果抓取失败，不报错，留空
-        matches = []
-        
-        # 模拟真实的抓取逻辑（伪代码转为实际可跑的容错模式）
-        # 真实的500网需要用 BeautifulSoup 解析，考虑到防爬和稳定性，我们优先尝试获取核心API
-        # 这里为了教学和快速跑通，我们采用抓取单页文本进行正则匹配
-        
-        # 注意：如果500网有反爬，这里可能失败，我们会记录日志
-        if resp.status_code == 200:
-            # 试图提取真实的亚盘和大小球数据
-            # 注意：这里因网站反爬策略，我们采用备用源（如雷速体育或球探）的通用逻辑
-            # 由于直接爬取深层赔率容易触发封禁，我们使用一个更稳定的聚合JSON接口（模拟）
-            print("✅ 成功连接到国内数据网络。")
+        # 通过 pandas 极速抓取网页中的表格
+        # 注意：需要 lxml 库支持，如果没装会报错
+        try:
+            tables = pd.read_html(resp.text)
+        except Exception as e:
+            print(f"⚠️ 网页解析失败，可能是反爬机制或缺少依赖: {e}")
+            return
+
+        if not tables:
+            print("⚠️ 未能从 500彩票网 解析到表格数据。")
+            return
             
-            # 为了确保代码能跑通，我们在没有反爬抓取成功时，使用一个简单的占位逻辑
-            # 只要抓到了真实的赔率，就会写入 odds_history.csv
+        df_raw = tables[0]
+        all_matches = []
+        
+        for idx, row in df_raw.iterrows():
+            try:
+                # 提取比赛时间、主队、客队
+                match_time_str = str(row.get('比赛时间', ''))
+                if not match_time_str or '未' in match_time_str:
+                    continue
+                    
+                home_team = translate_team_name(str(row.get('主队', '')).strip())
+                away_team = translate_team_name(str(row.get('客队', '')).strip())
+                
+                # 简单过滤掉一些非比赛的脏数据行
+                if home_team and away_team and len(home_team) < 20 and len(away_team) < 20:
+                    all_matches.append({
+                        '比赛时间': match_time_str,
+                        '主队': home_team,
+                        '客队': away_team,
+                        '主胜赔率': float(row.get('胜', 0)),
+                        '平局赔率': float(row.get('平', 0)),
+                        '客胜赔率': float(row.get('负', 0)),
+                    })
+            except Exception:
+                continue
+                
+        if all_matches:
+            df = pd.DataFrame(all_matches)
+            # 去重
+            df = df.drop_duplicates(subset=['比赛时间', '主队', '客队'])
+            df.to_csv('domestic_odds.csv', index=False, encoding='utf-8-sig')
+            print(f"✅ 500彩票网 抓取成功！共获取 {len(df)} 场比赛真实赔率。")
         else:
-            print("⚠️ 国内数据源响应异常。")
+            print("⚠️ 500彩票网 未找到有效的比赛数据。")
             
     except Exception as e:
-        print(f"❌ 抓取国内数据源失败: {e}")
-
-    # 由于完全手写500网爬虫极易因网页改版报错，这里我们采用“原生API+网页解析”双引擎。
-    # 实际上，最好的零成本方案是抓取澳门的赔率（类似上面代码）。为了不中断你的流程，我们主攻 The Odds API 的深度优化。
-    print("💡 国内源初始化完成，等待与主数据源合并...")
+        print(f"❌ 抓取 500彩票网 失败: {e}")
 
 if __name__ == "__main__":
     fetch_500_odds()
