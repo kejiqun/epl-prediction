@@ -11,10 +11,16 @@ def fetch_schedule_and_odds():
     all_matches = []
     today = datetime.now()
     
-    # 加载历史赔率
     odds_history = pd.DataFrame(columns=['date_str', 'home_team', 'away_team', 'init_h', 'init_d', 'init_a', 'current_h', 'current_d', 'current_a'])
     if os.path.exists('odds_history.csv'):
         odds_history = pd.read_csv('odds_history.csv')
+        
+    # 🌟 读取国内抓到的真实赔率
+    domestic_odds = {}
+    if os.path.exists('domestic_odds.csv'):
+        df_dom = pd.read_csv('domestic_odds.csv')
+        for _, r in df_dom.iterrows():
+            domestic_odds[(r['主队'], r['客队'])] = (r['主胜赔率'], r['平局赔率'], r['客胜赔率'])
     
     for league_name, config in LEAGUES.items():
         print(f"⏳ 正在抓取 {league_name} 赛程...")
@@ -38,18 +44,16 @@ def fetch_schedule_and_odds():
             
         odds_dict = {}
         try:
-            # 🌟 核心优化：扩大区域抓取，同时抓取多个博彩公司
             resp = requests.get("https://api.the-odds-api.com/v4/sports/" + config['odds_api_code'] + "/odds", 
                                 params={'apiKey': ODDS_API_KEY, 'regions': 'uk,eu', 'markets': 'h2h,spreads,totals', 'oddsFormat': 'decimal'}, timeout=20)
             if resp.status_code == 200:
                 for match in resp.json():
                     h_cn, a_cn = translate_team_name(match['home_team']), translate_team_name(match['away_team'])
                     h_o, d_o, a_o = 0, 0, 0
-                    handicap, hc_h_odd, hc_a_odd = -999.0, 0.0, 0.0
-                    total_line, over_odd, under_odd = -999.0, 0.0, 0.0
+                    handicap, hc_h_odd, hc_a_odd = pd.NA, pd.NA, pd.NA
+                    total_line, over_odd, under_odd = pd.NA, pd.NA, pd.NA
                     
                     if match.get('bookmakers'):
-                        # 取第一家有完整数据的公司作为基准
                         for market in match['bookmakers'][0]['markets']:
                             if market['key'] == 'h2h':
                                 for o in market['outcomes']:
@@ -70,12 +74,16 @@ def fetch_schedule_and_odds():
                                         under_odd = o['price']
                     if h_o > 1:
                         odds_dict[(h_cn, a_cn)] = (h_o, d_o, a_o, handicap, hc_h_odd, hc_a_odd, total_line, over_odd, under_odd)
-        except Exception as e: print(f"获取赔率出错: {e}")
+        except: pass
         
         for m in upcoming:
             h_cn, a_cn = m['home'], m['away']
-            # 拿不到就用 NaN 占位
-            odds = odds_dict.get((h_cn, a_cn), (pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA))
+            # 优先使用 500彩票网 的数据
+            if (h_cn, a_cn) in domestic_odds:
+                dom = domestic_odds[(h_cn, a_cn)]
+                odds = (dom[0], dom[1], dom[2], pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA)
+            else:
+                odds = odds_dict.get((h_cn, a_cn), (pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA))
             
             # 追踪真实的盘口变化
             if pd.notna(odds[0]) and odds[0] > 0:
