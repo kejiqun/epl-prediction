@@ -38,7 +38,11 @@ jobs:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
         run: python fetch_multi_leagues.py
 
-      - name: 4. 运行赛前预测 (多联赛+资金分配)
+      # 🌟 新增：运行侦察兵，抓取裁判和教练数据
+      - name: 3.9 抓取真实裁判及教练风格数据
+        run: python fetch_referee_coach.py
+
+      - name: 4. 运行赛前预测 (裁判与教练介入版)
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
@@ -70,5 +74,8 @@ jobs:
           git add backtest_report.txt || true
           git add backtest_roi.png || true
           git add daily_matches.csv || true
-          git commit -m "自动更新 V16.0 数据、经验及资金库 [skip ci]" || echo "没有新数据需要更新"
+          # 🌟 新增：把侦察兵的数据保存下来
+          git add referee_stats.csv || true
+          git add coach_stats.csv || true
+          git commit -m "自动更新 V17.5 数据、经验及资金库 [skip ci]" || echo "没有新数据需要更新"
           git push
