@@ -38,6 +38,10 @@ jobs:
       - name: 3. 训练 V19.0 模型
         run: python train_v31.py
 
+      # 🌟 新增：执行国内盘口抓取
+      - name: 3.5 抓取国内真实盘口 (500彩票网)
+        run: python fetch_domestic_odds.py
+
       - name: 4. 抓取多联赛赛程与实时赔率
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
@@ -60,5 +64,5 @@ jobs:
           git config --global user.name "Actions Bot"
           git config --global user.email "actions@github.com"
           git add -A
-          git commit -m "V19.0 自动更新数据与经验 [skip ci]" || echo "无变化"
+          git commit -m "V22.0 自动更新数据 [skip ci]" || echo "无变化"
           git push
