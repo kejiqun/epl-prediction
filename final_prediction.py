@@ -41,7 +41,7 @@ def send_rich_email(subject, html_content, img_buffers, receiver="308730509@qq.c
         smtpObj = smtplib.SMTP_SSL('smtp.qq.com', 465)
         smtpObj.login(EMAIL_SENDER, EMAIL_PASSWORD)
         smtpObj.sendmail(EMAIL_SENDER, [receiver], msg.as_string())
-    except Exception as e: print(f"❌ 邮件发送失败: {e}")
+    except Exception as e: print(f"❌ 邮件失败: {e}")
 
 def dixon_coles_tau(h, a, home_xg, away_xg, rho=-0.1):
     if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
@@ -84,7 +84,6 @@ now_ts = pd.Timestamp.now()
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= now_ts) & (df_next_round['datetime_parsed'] <= now_ts + pd.Timedelta(hours=72))]
 if df_next_round.empty: exit()
 
-# 🌟 读取真实赔率字典
 real_odds_dict = {}
 if os.path.exists('real_odds.csv'):
     df_odds = pd.read_csv('real_odds.csv')
@@ -119,33 +118,29 @@ if os.path.exists('xg_data.csv'):
     df_xg['date'] = pd.to_datetime(df_xg['date'])
     df_hist = pd.merge(df_hist, df_xg, on=['date', 'home_team_cn', 'away_team_cn'], how='left', suffixes=('', '_xg'))
 
-# 🌟 核心修复：重新计算 Elo 和 赛程强度 (SoS)，对齐 9 大特征
 league_avg_goals = (df_hist['home_goals'].mean() + df_hist['away_goals'].mean()) / 2
-team_stats, elo = {}, {}
+team_stats, last_date = {}, {}
 for _, row in df_hist.iterrows():
-    h, a = row['home_team_cn'], row['away_team_cn']
+    h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
     for t in [h, a]:
         if t not in team_stats: team_stats[t] = {'xg':[], 'opp_elo':[], 'pts':[]}
-        if t not in elo: elo[t] = 1500
-        
-    # 更新 Elo
-    exp_h = 1 / (1 + 10 ** ((elo[a] - (elo[h] + 100)) / 400))
-    score_h = 1 if row['home_goals'] > row['away_goals'] else (0.5 if row['home_goals'] == row['away_goals'] else 0)
-    elo[h] += 20 * (score_h - exp_h)
-    elo[a] += 20 * ((1-score_h) - (1-exp_h))
-    
-    # 记录历史
+        if t not in last_date: last_date[t] = None
     act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
     act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
-    
-    team_stats[h]['xg'].append(act_h_xg); team_stats[h]['opp_elo'].append(elo[a])
+    team_stats[h]['xg'].append(act_h_xg); team_stats[h]['opp_elo'].append(1500) # 简化计算
     team_stats[h]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
-    team_stats[a]['xg'].append(act_a_xg); team_stats[a]['opp_elo'].append(elo[h])
+    team_stats[a]['xg'].append(act_a_xg); team_stats[a]['opp_elo'].append(1500)
     team_stats[a]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+    last_date[h] = m_date; last_date[a] = m_date
+
+elo_dict = {}
+if os.path.exists('elo_dict.pkl'): elo_dict = joblib.load('elo_dict.pkl')
 
 knowledge_base = open('knowledge.txt', 'r', encoding='utf-8').read() if os.path.exists('knowledge.txt') else ""
 model_h, model_a = joblib.load('epl_v31_home_goals_model.pkl'), joblib.load('epl_v31_away_goals_model.pkl')
-html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V26.0 真实数据预测 (严谨全盘口版)</h2>", [], []
+calibrated_clf = joblib.load('epl_result_classifier.pkl')
+
+html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V27.0 真实数据预测 (疲劳战意量化版)</h2>", [], []
 
 for league in df_next_round['联赛'].unique():
     html_report += f"<h2 style='color:blue;'>🏆 {league}</h2>"
@@ -167,9 +162,12 @@ for league in df_next_round['联赛'].unique():
             tl_line, over_odd, under_odd = 2.5, 0.0, 0.0
             has_real = False
 
-        # 🌟 核心修复：严格构建 9 大特征
         h = team_stats.get(h_cn, {'xg':[], 'opp_elo':[], 'pts':[]})
         a = team_stats.get(a_cn, {'xg':[], 'opp_elo':[], 'pts':[]})
+        
+        h_rest = (pd.Timestamp(m_date) - last_date[h_cn]).days if h_cn in last_date else 7
+        a_rest = (pd.Timestamp(m_date) - last_date[a_cn]).days if a_cn in last_date else 7
+        rest_diff = h_rest - a_rest
         
         h_xg = np.mean(h['xg'][-5:]) if h['xg'] else league_avg_goals
         a_xg = np.mean(a['xg'][-5:]) if a['xg'] else league_avg_goals
@@ -178,11 +176,10 @@ for league in df_next_round['联赛'].unique():
         h_pts = np.mean(h['pts'][-5:]) if h['pts'] else 1.0
         a_pts = np.mean(a['pts'][-5:]) if a['pts'] else 1.0
         
-        h_elo = elo.get(h_cn, 1500)
-        a_elo = elo.get(a_cn, 1500)
+        h_elo = elo_dict.get(h_cn, 1500)
+        a_elo = elo_dict.get(a_cn, 1500)
         
-        # 严格 9 个特征
-        feat = [h_elo, a_elo, h_elo - a_elo, h_sos, a_sos, h_xg, a_xg, h_pts, a_pts]
+        feat = [h_elo, a_elo, h_elo - a_elo, h_sos, a_sos, h_xg, a_xg, h_pts, a_pts, rest_diff]
         feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000).reshape(1, -1)
         
         home_xg = max(0.1, model_h.predict(feat)[0])
@@ -257,6 +254,7 @@ for league in df_next_round['联赛'].unique():
         prompt = f"""资深专家，点评(150字内)：
         比赛：{h_cn} vs {a_cn}。倾向：{predict_choice}。
         伤停：{injury_info}
+        赛程：主队休息{h_rest}天，客队休息{a_rest}天。
         大小球/让球：{ou_msg} / {hc_msg}
         AI理由：{ai_reason}
         请结合机构心理，以“推荐关注：{final_rec}”结尾。"""
@@ -274,6 +272,7 @@ for league in df_next_round['联赛'].unique():
         html_report += f"<img src='cid:chart_{len(img_buffers)-1}' width='600'><br>"
         html_report += f"<p><b>💪 Elo 实力：</b>{h_cn} {h_elo:.0f} vs {a_cn} {a_elo:.0f} (差值: {h_elo-a_elo:+.0f})</p>"
         html_report += f"<p><b>📊 赛程强度：</b>主队近5场对手均强{h_sos:.0f} / 客队近5场对手均强{a_sos:.0f}</p>"
+        html_report += f"<p><b>⏱️ 休息天数：</b>主队 {h_rest} 天 vs 客队 {a_rest} 天</p>"
         html_report += f"<p><b>🚨 核心伤停：</b>主队[{h_inj_str}] / 客队[{a_inj_str}]</p>"
         html_report += f"<p><b>⚖️ 亚盘让球：</b>{hc_msg} 推荐：<b>{hc_rec}</b></p>"
         html_report += f"<p><b>⚖️ 大小球：</b>{ou_msg} 推荐：<b>{ou_rec}</b></p>"
@@ -291,4 +290,4 @@ if os.path.exists('predictions_log.csv'):
     log_df = pd.concat([old, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html_report)
-send_rich_email("V26.0 真实数据预测 (严谨全盘口版)", html_report, img_buffers)
+send_rich_email("V27.0 真实数据预测 (疲劳战意量化版)", html_report, img_buffers)
