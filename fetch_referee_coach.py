@@ -33,7 +33,6 @@ def fetch_referee_and_coach():
                             away_team = next((c['team']['name'] for c in competitors if c['homeAway'] == 'away'), None)
                             
                             if home_team and away_team:
-                                # 如果裁判未公布，数据保持0，不瞎编
                                 is_known = 1 if ref_name != "未公布" else 0
                                 referee_records.append({
                                     'date': event['date'][:10],
@@ -51,16 +50,22 @@ def fetch_referee_and_coach():
         df_ref.to_csv('referee_stats.csv', index=False, encoding='utf-8-sig')
         print(f"✅ 裁判数据已记录，共 {len(df_ref)} 场。")
 
-    # 教练风格：基于英超历史数据
-    if os.path.exists('epl_matches_10y.csv'):
-        df_hist = pd.read_csv('epl_matches_10y.csv')
+    # 🌟 修改点：读取多联赛历史数据来计算教练风格
+    history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
+    if os.path.exists(history_file):
+        print(f"正在基于 {history_file} 计算教练风格...")
+        df_hist = pd.read_csv(history_file)
         df_hist['date'] = pd.to_datetime(df_hist['date'])
         df_hist = df_hist.sort_values('date').reset_index(drop=True)
-        df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
-        df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
         
+        # 如果列名是老的，兼容一下
+        if 'home_team_cn' not in df_hist.columns:
+            df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
+            df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
+            
         coach_stats = {}
-        for idx, row in df_hist.tail(500).iterrows(): 
+        # 只取最近的1000场比赛来算，反映近期状态
+        for idx, row in df_hist.tail(1000).iterrows(): 
             home, away = row['home_team_cn'], row['away_team_cn']
             for t in [home, away]:
                 if t not in coach_stats: coach_stats[t] = {'scored': [], 'conceded': []}
@@ -80,7 +85,7 @@ def fetch_referee_and_coach():
                 coach_records.append({'team': team, 'coach_style': style, 'avg_goals_scored': round(avg_scored, 2), 'avg_goals_conceded': round(avg_conceded, 2)})
                 
         pd.DataFrame(coach_records).to_csv('coach_stats.csv', index=False, encoding='utf-8-sig')
-        print("✅ 教练风格数据已计算并保存。")
+        print("✅ 教练风格数据已计算并保存（包含多联赛）。")
 
 if __name__ == "__main__":
     fetch_referee_and_coach()
