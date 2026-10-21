@@ -44,8 +44,10 @@ def train_models():
             a_scored / league_avg_goals, a_conceded / league_avg_goals,
             h_pts, a_pts
         ]
-        # 🌟 防御：清理所有 nan 和无穷大极值
+        # 🌟 关键防御：强力清洗所有 nan 和 inf
         row_features = np.nan_to_num(row_features, nan=0.0, posinf=1.0, neginf=0.0)
+        # 进一步限制特征范围，防止极端值冲击
+        row_features = np.clip(row_features, -10.0, 10.0) 
         features.append(row_features)
         labels_home.append(row['home_goals'])
         labels_away.append(row['away_goals'])
@@ -58,11 +60,12 @@ def train_models():
         team_stats[away]['conceded'].append(row['home_goals'])
         team_stats[away]['points'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
 
-    # 🌟 核心修改：强制转为 float32 的 numpy array，规避底层 C++ 转换崩溃
+    # 🌟 强制转为 float32 的 numpy array，规避底层 C++ 转换崩溃
     X = np.array(features, dtype=np.float32)
     y_home = np.array(labels_home, dtype=np.float32)
     y_away = np.array(labels_away, dtype=np.float32)
     
+    # 训练时明确指定 n_jobs=1，避免多线程问题
     model_home = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1)
     model_away = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1)
     
