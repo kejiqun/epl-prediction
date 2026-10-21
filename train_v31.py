@@ -3,7 +3,6 @@ import numpy as np
 import xgboost as xgb
 import joblib
 import os
-from sklearn.model_selection import train_test_split
 from team_mapping import translate_team_name
 
 def train_models():
@@ -22,7 +21,6 @@ def train_models():
     
     league_avg_goals = (df['home_goals'].mean() + df['away_goals'].mean()) / 2
     
-    # 构造特征
     features = []
     labels_home = []
     labels_away = []
@@ -33,7 +31,6 @@ def train_models():
         for t in [home, away]:
             if t not in team_stats: team_stats[t] = {'scored':[], 'conceded':[], 'points':[]}
         
-        # 特征：近5场平均进球/失球，胜率等 (极其简化的特征，原版应该更丰富)
         h_scored = np.mean(team_stats[home]['scored'][-5:]) if team_stats[home]['scored'] else league_avg_goals
         h_conceded = np.mean(team_stats[home]['conceded'][-5:]) if team_stats[home]['conceded'] else league_avg_goals
         a_scored = np.mean(team_stats[away]['scored'][-5:]) if team_stats[away]['scored'] else league_avg_goals
@@ -42,15 +39,17 @@ def train_models():
         h_pts = np.mean(team_stats[home]['points'][-5:]) if team_stats[home]['points'] else 1.0
         a_pts = np.mean(team_stats[away]['points'][-5:]) if team_stats[away]['points'] else 1.0
         
-        features.append([
+        row_features = [
             h_scored / league_avg_goals, h_conceded / league_avg_goals, 
             a_scored / league_avg_goals, a_conceded / league_avg_goals,
             h_pts, a_pts
-        ])
+        ]
+        # 🌟 防御：清理所有 nan 和无穷大极值
+        row_features = np.nan_to_num(row_features, nan=0.0, posinf=1.0, neginf=0.0)
+        features.append(row_features)
         labels_home.append(row['home_goals'])
         labels_away.append(row['away_goals'])
         
-        # 更新统计数据
         team_stats[home]['scored'].append(row['home_goals'])
         team_stats[home]['conceded'].append(row['away_goals'])
         team_stats[home]['points'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
@@ -59,13 +58,13 @@ def train_models():
         team_stats[away]['conceded'].append(row['home_goals'])
         team_stats[away]['points'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
 
-    X = np.array(features)
-    y_home = np.array(labels_home)
-    y_away = np.array(labels_away)
+    # 🌟 核心修改：强制转为 float32 的 numpy array，规避底层 C++ 转换崩溃
+    X = np.array(features, dtype=np.float32)
+    y_home = np.array(labels_home, dtype=np.float32)
+    y_away = np.array(labels_away, dtype=np.float32)
     
-    # 训练
-    model_home = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3)
-    model_away = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3)
+    model_home = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1)
+    model_away = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1)
     
     model_home.fit(X, y_home)
     model_away.fit(X, y_away)
