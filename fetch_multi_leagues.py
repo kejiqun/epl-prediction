@@ -11,7 +11,7 @@ def fetch_schedule_and_odds():
     all_matches = []
     today = datetime.now()
     
-    # 加载历史赔率记录
+    # 加载历史赔率
     odds_history = pd.DataFrame(columns=['date_str', 'home_team', 'away_team', 'init_h', 'init_d', 'init_a', 'current_h', 'current_d', 'current_a'])
     if os.path.exists('odds_history.csv'):
         odds_history = pd.read_csv('odds_history.csv')
@@ -36,11 +36,11 @@ def fetch_schedule_and_odds():
                                     upcoming.append({'league': league_name, 'datetime': event['date'], 'home': translate_team_name(h_t), 'away': translate_team_name(a_t)})
             except: continue
             
-        # 主数据源抓取
         odds_dict = {}
         try:
+            # 🌟 核心优化：扩大区域抓取，同时抓取多个博彩公司
             resp = requests.get("https://api.the-odds-api.com/v4/sports/" + config['odds_api_code'] + "/odds", 
-                                params={'apiKey': ODDS_API_KEY, 'regions': 'uk', 'markets': 'h2h,spreads,totals', 'oddsFormat': 'decimal'}, timeout=20)
+                                params={'apiKey': ODDS_API_KEY, 'regions': 'uk,eu', 'markets': 'h2h,spreads,totals', 'oddsFormat': 'decimal'}, timeout=20)
             if resp.status_code == 200:
                 for match in resp.json():
                     h_cn, a_cn = translate_team_name(match['home_team']), translate_team_name(match['away_team'])
@@ -49,6 +49,7 @@ def fetch_schedule_and_odds():
                     total_line, over_odd, under_odd = -999.0, 0.0, 0.0
                     
                     if match.get('bookmakers'):
+                        # 取第一家有完整数据的公司作为基准
                         for market in match['bookmakers'][0]['markets']:
                             if market['key'] == 'h2h':
                                 for o in market['outcomes']:
@@ -69,15 +70,15 @@ def fetch_schedule_and_odds():
                                         under_odd = o['price']
                     if h_o > 1:
                         odds_dict[(h_cn, a_cn)] = (h_o, d_o, a_o, handicap, hc_h_odd, hc_a_odd, total_line, over_odd, under_odd)
-        except: pass
+        except Exception as e: print(f"获取赔率出错: {e}")
         
         for m in upcoming:
             h_cn, a_cn = m['home'], m['away']
-            # 获取赔率
-            odds = odds_dict.get((h_cn, a_cn), (0, 0, 0, -999.0, 0.0, 0.0, -999.0, 0.0, 0.0))
+            # 拿不到就用 NaN 占位
+            odds = odds_dict.get((h_cn, a_cn), (pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA))
             
-            # 追踪盘口变化
-            if odds[0] > 0:
+            # 追踪真实的盘口变化
+            if pd.notna(odds[0]) and odds[0] > 0:
                 match_date = m['datetime'][:10]
                 existing = odds_history[(odds_history['date_str'] == match_date) & (odds_history['home_team'] == h_cn) & (odds_history['away_team'] == a_cn)]
                 if existing.empty:
@@ -99,7 +100,6 @@ def fetch_schedule_and_odds():
     df = pd.DataFrame(all_matches)
     if not df.empty:
         df = df.drop_duplicates(subset=['比赛时间', '主队', '客队'])
-        df.replace(-999.0, pd.NA, inplace=True)
         df.to_csv('daily_matches.csv', index=False, encoding='utf-8-sig')
         odds_history.to_csv('odds_history.csv', index=False, encoding='utf-8-sig')
-        print(f"✅ 抓取完毕！赔率轨迹已记录。")
+        print(f"✅ 抓取完毕！盘口轨迹已更新。")
