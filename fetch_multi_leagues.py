@@ -30,7 +30,8 @@ def fetch_schedule_and_odds():
         print(f"⏳ 正在抓取 {league_name} 赛程与盘口...")
         upcoming = []
         
-        for i in range(3): 
+        # 🌟 修改点：把范围从 3 天扩大到 7 天
+        for i in range(7): 
             date_str = (today + timedelta(days=i)).strftime('%Y%m%d')
             url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{config['espn_code']}/scoreboard?dates={date_str}"
             try:
@@ -66,7 +67,6 @@ def fetch_schedule_and_odds():
                 total_line, over_odd, under_odd = 0.0, 0.0, 0.0
                 
                 if match.get('bookmakers'):
-                    # 🌟 核心修改：遍历所有博彩公司，只要有一家提供了盘口就抓取！
                     for b in match['bookmakers']:
                         for market in b['markets']:
                             if market['key'] == 'h2h' and h_odd == 0:
@@ -108,6 +108,8 @@ def fetch_schedule_and_odds():
             
     df = pd.DataFrame(all_matches)
     if not df.empty:
+        # 去重，防止重复抓取
+        df = df.drop_duplicates(subset=['比赛时间', '主队', '客队'])
         df.to_csv('daily_matches.csv', index=False, encoding='utf-8-sig')
         print(f"✅ 抓取完毕！共获取 {len(df)} 场比赛，已保存到 daily_matches.csv")
     else:
