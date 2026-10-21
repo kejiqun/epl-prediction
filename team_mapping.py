@@ -35,6 +35,11 @@ TEAM_MAPPING = {
     'Bologna': '博洛尼亚', 'Torino': '都灵', 'Monza': '蒙扎', 'Genoa': '热那亚', 'Lecce': '莱切', 'Sassuolo': '萨索洛',
     'Udinese': '乌迪内斯', 'Cagliari': '卡利亚里', 'Empoli': '恩波利', 'Verona': '维罗纳', 'Frosinone': '弗洛西诺内', 'Salernitana': '萨勒尼塔纳',
 
+    # ================= 法甲 =================
+    'Paris Saint-Germain': '巴黎圣日耳曼', 'PSG': '巴黎圣日耳曼', 'Marseille': '马赛', 'Monaco': '摩纳哥',
+    'Lille': '里尔', 'Nice': '尼斯', 'Lens': '朗斯', 'Rennes': '雷恩', 'Lyon': '里昂', 'Reims': '兰斯',
+    'Montpellier': '蒙彼利埃', 'Toulouse': '图卢兹', 'Strasbourg': '斯特拉斯堡', 'Nantes': '南特', 'Brest': '布雷斯特', 'Le Havre': '勒阿弗尔', 'Como': '科莫',
+
     # ================= 欧战常客 =================
     'Ajax': '阿贾克斯', 'PSV': '埃因霍温', 'PSV Eindhoven': '埃因霍温', 'Feyenoord': '费耶诺德', 'AZ Alkmaar': '阿尔克马尔', 'Twente': '特温特',
     'Benfica': '本菲卡', 'Porto': '波尔图', 'FC Porto': '波尔图', 'Sporting CP': '葡萄牙体育', 'Sporting Lisbon': '葡萄牙体育', 'Braga': '布拉加',
@@ -44,7 +49,8 @@ TEAM_MAPPING = {
     'Olympiacos': '奥林匹亚科斯', 'Panathinaikos': '帕纳辛奈科斯', 'AEK Athens': '雅典AEK', 'Copenhagen': '哥本哈根', 'FC Copenhagen': '哥本哈根', 'Midtjylland': '中日德兰',
     'Slavia Prague': '布拉格斯拉维亚', 'Sparta Prague': '布拉格斯巴达', 'Viktoria Plzen': '比尔森胜利', 'Shakhtar Donetsk': '顿涅茨克矿工', 'Dynamo Kyiv': '基辅迪纳摩',
     'Bodo/Glimt': '博多闪耀', 'Dinamo Zagreb': '萨格勒布迪纳摩', 'Red Star Belgrade': '贝尔格莱德红星', 'Crvena Zvezda': '贝尔格莱德红星',
-    'Maccabi Tel Aviv': '特拉维夫马卡比', 'Maccabi Haifa': '海法马卡比', 'Qarabag FK': '卡拉巴赫', 'Qarabag': '卡拉巴赫', 'Slovan Bratislava': '布拉迪斯拉发', 'Sabah FK': '萨巴巴库'
+    'Maccabi Tel Aviv': '特拉维夫马卡比', 'Maccabi Haifa': '海法马卡比', 'Qarabag FK': '卡拉巴赫', 'Qarabag': '卡拉巴赫', 'Slovan Bratislava': '布拉迪斯拉发', 'Sabah FK': '萨巴巴库',
+    'Viking FK': '维京', 'Viking': '维京', 'Molde': '莫尔德', 'Rosenborg': '罗森博格', 'Malmo FF': '马尔默', 'AIK': 'AIK索尔纳'
 }
 
 def translate_team_name(name):
