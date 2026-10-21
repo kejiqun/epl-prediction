@@ -9,15 +9,17 @@ def fetch_schedule_and_odds():
     all_matches = []
     today = datetime.now()
     
-    # 🌟 读取抓到的真实赔率，并把日期格式统一为 YYYY-MM-DD
+    # 🌟 核心修改：抛弃日期，直接以 (主队, 客队) 为键构建赔率字典！
     real_odds = {}
     if os.path.exists('real_odds.csv'):
         df_odds = pd.read_csv('real_odds.csv')
         for _, r in df_odds.iterrows():
-            try:
-                date_only = pd.to_datetime(r['比赛时间']).date()
-                real_odds[(date_only, r['主队'], r['客队'])] = (r['主胜赔率'], r['平局赔率'], r['客胜赔率'], r['大小球盘口'])
-            except: pass
+            # 将所有的赔率列全部塞进去
+            real_odds[(r['主队'], r['客队'])] = (
+                r['主胜赔率'], r['平局赔率'], r['客胜赔率'],
+                r['让球盘口'], r['主让胜赔率'], r['客受让胜赔率'],
+                r['大小球盘口'], r['大球赔率'], r['小球赔率']
+            )
 
     for league_name, config in LEAGUES.items():
         print(f"⏳ 正在抓取 {league_name} 赛程...")
@@ -41,16 +43,15 @@ def fetch_schedule_and_odds():
             
         for m in upcoming:
             h_cn, a_cn = m['home'], m['away']
-            match_date = pd.to_datetime(m['datetime']).date()
             
-            # 用 日期 + 主队 + 客队 去匹配真实赔率
-            if (match_date, h_cn, a_cn) in real_odds:
-                odds = real_odds[(match_date, h_cn, a_cn)]
+            # 🌟 核心修改：只要队名在字典里，直接赋值！
+            if (h_cn, a_cn) in real_odds:
+                odds = real_odds[(h_cn, a_cn)]
                 all_matches.append({
                     '联赛': m['league'], '比赛时间': m['datetime'], '主队': h_cn, '客队': a_cn,
                     '主胜赔率': odds[0], '平局赔率': odds[1], '客胜赔率': odds[2],
-                    '让球盘口': 0.0, '主让胜赔率': 0.0, '客受让胜赔率': 0.0,
-                    '大小球盘口': odds[3], '大球赔率': 0.0, '小球赔率': 0.0
+                    '让球盘口': odds[3], '主让胜赔率': odds[4], '客受让胜赔率': odds[5],
+                    '大小球盘口': odds[6], '大球赔率': odds[7], '小球赔率': odds[8]
                 })
             else:
                 all_matches.append({
