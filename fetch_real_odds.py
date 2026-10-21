@@ -31,13 +31,12 @@ def fetch_real_odds():
             return
 
         all_odds = []
-        # 🌟 过滤白名单：只要五大联赛、欧冠和常见杯赛
-        valid_leagues = ['England - Premier League', 'Spain - La Liga', 'Germany - Bundesliga', 'Italy - Serie A', 'France - Ligue 1', 'UEFA Champions League', 'UEFA Europa League', 'England - EFL Cup', 'England - FA Cup']
+        # 过滤白名单：只要五大联赛和欧战
+        valid_leagues = ['England - Premier League', 'Spain - La Liga', 'Germany - Bundesliga', 'Italy - Serie A', 'France - Ligue 1', 'UEFA Champions League', 'UEFA Europa League']
         
         for match in events:
             try:
                 league_name = match.get('league_name', '')
-                # 如果不是白名单里的比赛，直接跳过，不存！
                 if not any(vl in league_name for vl in valid_leagues):
                     continue
                     
@@ -48,19 +47,35 @@ def fetch_real_odds():
                 periods = match.get('periods', {})
                 num_0 = periods.get('num_0', {})
                 
+                # 1. 胜平负
                 ml = num_0.get('money_line', {})
                 h_odd = ml.get('home')
                 d_odd = ml.get('draw')
                 a_odd = ml.get('away')
                 
+                # 2. 让球盘 (spreads)
+                spreads = num_0.get('spreads', {})
+                handicap = 0.0
+                hc_h_odd = 0.0
+                hc_a_odd = 0.0
+                if spreads:
+                    for key in spreads:
+                        handicap = spreads[key].get('hdp', 0.0)
+                        hc_h_odd = spreads[key].get('home', 0.0)
+                        hc_a_odd = spreads[key].get('away', 0.0)
+                        break # 只拿第一个盘口
+                        
+                # 3. 大小球 (totals)
                 totals = num_0.get('totals', {})
                 over_under_line = 2.5
+                over_odd = 0.0
+                under_odd = 0.0
                 if totals:
-                    if "2.5" in totals: over_under_line = 2.5
-                    elif "3" in totals: over_under_line = 3.0
-                    else:
-                        first_key = list(totals.keys())[0]
-                        if isinstance(totals[first_key], dict): over_under_line = totals[first_key].get('points', 2.5)
+                    for key in totals:
+                        over_under_line = totals[key].get('points', 2.5)
+                        over_odd = totals[key].get('over', 0.0)
+                        under_odd = totals[key].get('under', 0.0)
+                        break # 只拿第一个盘口
 
                 if h_odd and a_odd and home_team and away_team:
                     all_odds.append({
@@ -70,7 +85,12 @@ def fetch_real_odds():
                         '主胜赔率': float(h_odd),
                         '平局赔率': float(d_odd) if d_odd else 0.0,
                         '客胜赔率': float(a_odd),
-                        '大小球盘口': float(over_under_line)
+                        '让球盘口': float(handicap),
+                        '主让胜赔率': float(hc_h_odd),
+                        '客受让胜赔率': float(hc_a_odd),
+                        '大小球盘口': float(over_under_line),
+                        '大球赔率': float(over_odd),
+                        '小球赔率': float(under_odd)
                     })
             except Exception as e:
                 continue
