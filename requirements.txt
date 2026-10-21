@@ -1,12 +1,10 @@
 pandas
-numpy
-requests
+numpy==1.26.4
 scipy
-joblib
+requests
 openai
 scikit-learn
-xgboost
+xgboost==2.0.3
 lightgbm
-espn-sports-api
-optuna
 matplotlib
+joblib
