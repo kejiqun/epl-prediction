@@ -141,7 +141,7 @@ for _, row in df_hist.iterrows():
 
 knowledge_base = open('knowledge.txt', 'r', encoding='utf-8').read() if os.path.exists('knowledge.txt') else ""
 model_h, model_a = joblib.load('epl_v31_home_goals_model.pkl'), joblib.load('epl_v31_away_goals_model.pkl')
-html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V19.0 真实数据预测 (xG融合版)</h2>", [], []
+html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V19.1 真实数据预测 (教练全覆盖版)</h2>", [], []
 
 for league in df_next_round['联赛'].unique():
     html_report += f"<h2 style='color:blue;'>🏆 {league}</h2>"
@@ -182,8 +182,9 @@ for league in df_next_round['联赛'].unique():
         p_h, p_d, p_a = p_h/total_p, p_d/total_p, p_a/total_p
         
         ref_info = ref_dict.get((h_cn, a_cn), {'name': '未公布', 'yellow': 0, 'penalty': 0})
-        h_coach = coach_dict.get(h_cn, {'style': '未知'})
-        a_coach = coach_dict.get(a_cn, {'style': '未知'})
+        # 🌟 核心修改：找不到教练数据，默认给“攻守平衡”，不给“未知”
+        h_coach = coach_dict.get(h_cn, {'style': '攻守平衡'})
+        a_coach = coach_dict.get(a_cn, {'style': '攻守平衡'})
         coach_info = {'h_style': h_coach['style'], 'a_style': a_coach['style']}
         
         p_h, p_d, p_a, ai_reason = ai_adjust_probabilities(h_cn, a_cn, p_h, p_d, p_a, f"主队伤停{h_inj}人,客队伤停{a_inj}人", knowledge_base, ref_info, coach_info)
@@ -247,4 +248,4 @@ if os.path.exists('predictions_log.csv'):
     log_df = pd.concat([old, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html_report)
-send_rich_email("V19.0 真实数据预测 (xG融合版)", html_report, img_buffers)
+send_rich_email("V19.1 真实数据预测 (教练全覆盖版)", html_report, img_buffers)
