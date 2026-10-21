@@ -96,7 +96,7 @@ df_next_round = pd.read_csv('daily_matches.csv')
 df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
 
 now_ts = pd.Timestamp.now()
-df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= now_ts) & (df_next_round['datetime_parsed'] <= now_ts + pd.Timedelta(hours=48))]
+df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= now_ts) & (df_next_round['datetime_parsed'] <= now_ts + pd.Timedelta(hours=72))]
 
 if df_next_round.empty:
     print("⚠️ 未来 48 小时内无比赛。")
