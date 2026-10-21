@@ -1,16 +1,17 @@
 import requests
 import pandas as pd
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from team_mapping import translate_team_name
 
-# 从 GitHub Secrets 获取 Key，如果没有设置，默认使用 'demo'
-PINNWIRE_API_KEY = os.environ.get("PINNWIRE_API_KEY", "demo")
+PINNWIRE_API_KEY = os.environ.get("PINNWIRE_API_KEY")
 
-# PinnWire 的 REST API 基础地址
+if not PINNWIRE_API_KEY:
+    print("❌ 严重警告：没有读取到 PINNWIRE_API_KEY！请检查 GitHub Secrets。")
+else:
+    print(f"🔑 成功读取到 Key，前4位是: {PINNWIRE_API_KEY[:4]}...")
+
 PINNWIRE_BASE_URL = "https://pinnwire.com/kit/v1"
-
-# PinnWire 中足球的 sport_id 是 1
 SOCCER_SPORT_ID = 1
 
 def fetch_real_odds():
@@ -21,7 +22,6 @@ def fetch_real_odds():
         "sport_id": SOCCER_SPORT_ID
     }
     
-    # 我们抓取赛前（Prematch）的赔率
     url = f"{PINNWIRE_BASE_URL}/prematch/fixtures"
     
     try:
@@ -29,46 +29,53 @@ def fetch_real_odds():
         
         if resp.status_code != 200:
             print(f"❌ PinnWire 请求失败，状态码: {resp.status_code}")
-            # 尝试打印错误信息
-            try:
-                print(resp.json())
-            except:
-                pass
+            print(f"详细报错: {resp.text}")
             return
 
         data = resp.json()
-        # PinnWire 的响应结构通常是 { "fixtures": [...] }
-        fixtures = data.get('fixtures', data.get('data', []))
+        # 🌟 核心修正：根据截图，根节点是 events
+        events = data.get('events', [])
         
-        if not fixtures:
+        if not events:
             print("⚠️ PinnWire 未返回任何赛前比赛数据。")
             return
 
         all_odds = []
         
-        for match in fixtures:
+        for match in events:
             try:
-                # 解析比赛和赔率信息
-                home_team = translate_team_name(match['home'])
-                away_team = translate_team_name(match['away'])
-                match_time_str = match['start_time'] # ISO 格式时间
+                # 🌟 核心修正：根据截图提取字段
+                home_team = translate_team_name(match.get('home'))
+                away_team = translate_team_name(match.get('away'))
+                match_time_str = match.get('starts') # 截图显示是 starts
                 
-                # 获取赔率字典
-                odds_dict = match.get('odds', {})
-                # 这里我们尝试提取最常规的赔率：胜平负（Moneyline）和大小球（Totals）
-                # 注意：具体字段名需要根据 PinnWire 实际返回的 JSON 调整，这里使用常见命名
+                # 提取赔率
+                periods = match.get('periods', {})
+                num_0 = periods.get('num_0', {})
                 
-                # 胜平负赔率
-                moneyline = odds_dict.get('moneyline', {})
-                h_odd = moneyline.get('home')
-                d_odd = moneyline.get('draw')
-                a_odd = moneyline.get('away')
+                # 1. 胜平负
+                ml = num_0.get('money_line', {})
+                h_odd = ml.get('home')
+                d_odd = ml.get('draw')
+                a_odd = ml.get('away')
                 
-                # 大小球盘口
-                totals = odds_dict.get('totals', {})
-                over_under_line = totals.get('points') # 盘口，如 2.5
-                
-                if h_odd and a_odd:
+                # 2. 大小球 (寻找最接近 2.5 或 3.0 的盘口)
+                totals = num_0.get('totals', {})
+                over_under_line = 2.5
+                if totals:
+                    # 尝试找 2.5
+                    if "2.5" in totals:
+                        over_under_line = 2.5
+                    elif "3" in totals:
+                        over_under_line = 3.0
+                    else:
+                        # 如果都没有，随便拿第一个
+                        first_key = list(totals.keys())[0]
+                        if isinstance(totals[first_key], dict):
+                            over_under_line = totals[first_key].get('points', 2.5)
+
+                # 如果主客胜赔率都有，就保存
+                if h_odd and a_odd and home_team and away_team:
                     all_odds.append({
                         '比赛时间': match_time_str,
                         '主队': home_team,
@@ -76,10 +83,10 @@ def fetch_real_odds():
                         '主胜赔率': float(h_odd),
                         '平局赔率': float(d_odd) if d_odd else 0.0,
                         '客胜赔率': float(a_odd),
-                        '大小球盘口': float(over_under_line) if over_under_line else 2.5
+                        '大小球盘口': float(over_under_line)
                     })
             except Exception as e:
-                print(f"⚠️ 解析单场比赛数据失败: {e}")
+                # 如果某场比赛解析失败，跳过它，不影响其他比赛
                 continue
         
         if all_odds:
@@ -87,7 +94,7 @@ def fetch_real_odds():
             df.to_csv('real_odds.csv', index=False, encoding='utf-8-sig')
             print(f"✅ PinnWire 真实盘口抓取成功！共获取 {len(df)} 场比赛数据。")
         else:
-            print("⚠️ 未能解析出有效的赔率数据。")
+            print("⚠️ 解析到了数据，但没有找到符合条件的赔率盘口。")
             
     except Exception as e:
         print(f"❌ 请求 PinnWire 时发生异常: {e}")
