@@ -14,6 +14,7 @@ TEAM_MAPPING = {
     'West Ham': '西汉姆联', 'West Ham United': '西汉姆联', 'Wolves': '狼队', 'Wolverhampton': '狼队', 'Wolverhampton Wanderers': '狼队',
     'Leeds United': '利兹联', 'Leeds': '利兹联', 'Hull City': '赫尔城', 'Hull': '赫尔城', 'Coventry City': '考文垂', 'Coventry': '考文垂',
     'Sunderland': '桑德兰', 'Burnley': '伯恩利', 'Sheffield United': '谢菲尔德联', 'Luton': '卢顿', 'Luton Town': '卢顿', 'Watford': '沃特福德', 'Norwich': '诺维奇', 'Norwich City': '诺维奇',
+    'Fleetwood Town': '弗利特伍德', 'Bradford City': '布拉德福德', 'Peterborough United': '彼得堡联',
 
     # ================= 西甲 =================
     'Real Madrid': '皇家马德里', 'Barcelona': '巴塞罗那', 'Atletico Madrid': '马德里竞技', 'Girona': '赫罗纳',
@@ -40,7 +41,7 @@ TEAM_MAPPING = {
     'Lille': '里尔', 'Nice': '尼斯', 'Lens': '朗斯', 'Rennes': '雷恩', 'Lyon': '里昂', 'Reims': '兰斯',
     'Montpellier': '蒙彼利埃', 'Toulouse': '图卢兹', 'Strasbourg': '斯特拉斯堡', 'Nantes': '南特', 'Brest': '布雷斯特', 'Le Havre': '勒阿弗尔', 'Como': '科莫',
 
-    # ================= 欧战常客 =================
+    # ================= 欧战与南美/澳超常客 =================
     'Ajax': '阿贾克斯', 'PSV': '埃因霍温', 'PSV Eindhoven': '埃因霍温', 'Feyenoord': '费耶诺德', 'AZ Alkmaar': '阿尔克马尔', 'Twente': '特温特',
     'Benfica': '本菲卡', 'Porto': '波尔图', 'FC Porto': '波尔图', 'Sporting CP': '葡萄牙体育', 'Sporting Lisbon': '葡萄牙体育', 'Braga': '布拉加',
     'Celtic': '凯尔特人', 'Rangers': '格拉斯哥流浪者', 'Galatasaray': '加拉塔萨雷', 'Fenerbahce': '费内巴切', 'Besiktas': '贝西克塔斯',
@@ -50,7 +51,9 @@ TEAM_MAPPING = {
     'Slavia Prague': '布拉格斯拉维亚', 'Sparta Prague': '布拉格斯巴达', 'Viktoria Plzen': '比尔森胜利', 'Shakhtar Donetsk': '顿涅茨克矿工', 'Dynamo Kyiv': '基辅迪纳摩',
     'Bodo/Glimt': '博多闪耀', 'Dinamo Zagreb': '萨格勒布迪纳摩', 'Red Star Belgrade': '贝尔格莱德红星', 'Crvena Zvezda': '贝尔格莱德红星',
     'Maccabi Tel Aviv': '特拉维夫马卡比', 'Maccabi Haifa': '海法马卡比', 'Qarabag FK': '卡拉巴赫', 'Qarabag': '卡拉巴赫', 'Slovan Bratislava': '布拉迪斯拉发', 'Sabah FK': '萨巴巴库',
-    'Viking FK': '维京', 'Viking': '维京', 'Molde': '莫尔德', 'Rosenborg': '罗森博格', 'Malmo FF': '马尔默', 'AIK': 'AIK索尔纳'
+    'Viking FK': '维京', 'Viking': '维京', 'Molde': '莫尔德', 'Rosenborg': '罗森博格', 'Malmo FF': '马尔默', 'AIK': 'AIK索尔纳',
+    'Montevideo City Torque': '蒙得维的亚城力矩', 'Atletico Mineiro': '米内罗竞技', 'Atletico Nacional': '国民竞技', 'Deportivo Pasto': '帕斯托体育',
+    'Brisbane Roar': '布里斯班狮吼', 'Perth Glory': '珀斯光荣', 'Brondby': '布隆德比'
 }
 
 def translate_team_name(name):
