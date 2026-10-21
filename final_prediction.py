@@ -97,7 +97,6 @@ now_ts = pd.Timestamp.now()
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= now_ts) & (df_next_round['datetime_parsed'] <= now_ts + pd.Timedelta(hours=72))]
 if df_next_round.empty: exit()
 
-# 加载历史赔率
 odds_hist = pd.DataFrame()
 if os.path.exists('odds_history.csv'):
     odds_hist = pd.read_csv('odds_history.csv')
@@ -147,7 +146,7 @@ for _, row in df_hist.iterrows():
 
 knowledge_base = open('knowledge.txt', 'r', encoding='utf-8').read() if os.path.exists('knowledge.txt') else ""
 model_h, model_a = joblib.load('epl_v31_home_goals_model.pkl'), joblib.load('epl_v31_away_goals_model.pkl')
-html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V21.0 真实数据预测 (盘口异动追踪版)</h2>", [], []
+html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V22.0 真实数据预测 (国内直连版)</h2>", [], []
 
 for league in df_next_round['联赛'].unique():
     html_report += f"<h2 style='color:blue;'>🏆 {league}</h2>"
@@ -193,7 +192,6 @@ for league in df_next_round['联赛'].unique():
         
         has_real = (pd.notna(real_h) and real_h > 1.0)
         
-        # 🌟 盘口轨迹分析
         odds_trend = "暂无盘口轨迹数据"
         if has_real and not odds_hist.empty:
             match_hist = odds_hist[(odds_hist['date_str'] == m_date_str) & (odds_hist['home_team'] == h_cn) & (odds_hist['away_team'] == a_cn)]
@@ -238,6 +236,7 @@ for league in df_next_round['联赛'].unique():
         predict_choice = "主胜" if p_h > max(p_d, p_a) else ("平局" if p_d > max(p_h, p_a) else "客胜")
         oh, od, oa = (real_h, real_d, real_a) if has_real else (2.0, 3.3, 3.5)
         
+        # 🌟 核心修改：如果没有真实赔率，也会给出一个技术性“倾向”
         final_rec, bet_amt, split_msg = "观望", 0.0, ""
         if has_real:
             kh, kd, ka = (p_h*oh-1)/(oh-1), (p_d*od-1)/(od-1), (p_a*oa-1)/(oa-1)
@@ -248,6 +247,12 @@ for league in df_next_round['联赛'].unique():
                     safe_k = min(max_k * 0.5, 0.05)
                     bet_amt, final_rec = bankroll * safe_k, b_choice
                     split_msg = f"推荐下注 {bet_amt:.2f}元"
+            else:
+                final_rec = "观望"
+        else:
+            # 没盘口时，给出纯技术倾向，但不建议下注
+            final_rec = f"技术倾向：{predict_choice}"
+            split_msg = "无真实盘口，仅供参考，禁止实盘。"
 
         top_scores = sorted([(f"{i}-{j}", prob_matrix[i][j]) for i in range(7) for j in range(7)], key=lambda x: x[1], reverse=True)[:3]
         top3_str = ", ".join([f"{s[0]}({s[1]*100:.1f}%)" for s in top_scores])
@@ -291,4 +296,4 @@ if os.path.exists('predictions_log.csv'):
     log_df = pd.concat([old, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html_report)
-send_rich_email("V21.0 真实数据预测 (盘口异动追踪版)", html_report, img_buffers)
+send_rich_email("V22.0 真实数据预测 (国内直连版)", html_report, img_buffers)
