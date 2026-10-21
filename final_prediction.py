@@ -83,20 +83,20 @@ def dixon_coles_tau(h, a, home_xg, away_xg, rho=-0.1):
     else: return 1.0
 
 def ai_adjust_probabilities(home_cn, away_cn, p_h, p_d, p_a, injuries, knowledge, ref_info, coach_info):
+    ref_text = f"主裁场均出牌 {ref_info.get('yellow', 0)} 张，点球 {ref_info.get('penalty', 0)} 个" if ref_info.get('name') != '未公布' else "裁判信息暂未公布"
+    coach_text = f"主队[{coach_info.get('h_style', '未知')}]，客队[{coach_info.get('a_style', '未知')}]"
+    
     prompt = f"""你是一位量化风控总监。当前比赛：{home_cn} vs {away_cn}
     基础模型算出的概率：主胜 {p_h*100:.1f}%，平局 {p_d*100:.1f}%，客胜 {p_a*100:.1f}%。
     赛前情报（伤停）：{injuries}
-    **裁判信息**：本场主裁场均出牌 {ref_info.get('yellow', 4.2)} 张，场均点球 {ref_info.get('penalty', 0.25)} 个。
-    **教练风格**：{home_cn} [{coach_info.get('h_style', '未知')}，近5场场均进{coach_info.get('h_gs', 1.2)}丢{coach_info.get('h_gc', 1.2)}]；{away_cn} [{coach_info.get('a_style', '未知')}，近5场场均进{coach_info.get('a_gs', 1.2)}丢{coach_info.get('a_gc', 1.2)}]。
+    裁判信息：{ref_text}
+    教练风格：{coach_text}
     
     请根据以下你的【历史经验库】，判断是否需要对概率进行微调。
     【经验库】：
     {knowledge}
     
-    **要求**：
-    1. 必须输出严格的纯 JSON 格式（不要用任何 markdown 代码块包裹）。
-    2. 包含调整后的概率和调整理由。
-    格式示例：{{"p_h": 0.45, "p_d": 0.30, "p_a": 0.25, "reason": "因裁判严厉且客队教练保守，下调进球期望，上调平局概率"}}
+    **要求**：必须输出严格的纯 JSON 格式（不要用任何 markdown 代码块包裹），格式：{{"p_h": 0.45, "p_d": 0.30, "p_a": 0.25, "reason": "因情报缺失，平局概率上调"}}
     """
     try:
         response = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False)
@@ -109,7 +109,6 @@ def ai_adjust_probabilities(home_cn, away_cn, p_h, p_d, p_a, injuries, knowledge
             return new_h/total, new_d/total, new_a/total, data.get('reason', 'AI微调完成')
         else: return p_h, p_d, p_a, "AI未返回JSON格式。"
     except Exception as e:
-        print(f"⚠️ AI 干预失败: {e}")
         return p_h, p_d, p_a, "AI干预失败，使用原始概率。"
 
 print("⏳ 正在读取虚拟资金账户...")
@@ -123,6 +122,11 @@ if os.path.exists('bankroll.csv'):
 print("⏳ 读取每日多联赛赛程...")
 if not os.path.exists('daily_matches.csv'): exit()
 df_next_round = pd.read_csv('daily_matches.csv')
+
+# 🌟 强制中文翻译，彻底消灭英文
+df_next_round['主队'] = df_next_round['主队'].apply(translate_team_name)
+df_next_round['客队'] = df_next_round['客队'].apply(translate_team_name)
+
 df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
 now_ts = pd.Timestamp.now()
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= now_ts) & (df_next_round['datetime_parsed'] <= now_ts + pd.Timedelta(hours=72))]
@@ -132,7 +136,6 @@ if df_next_round.empty:
     send_rich_email("🛡️ 多联赛每日战报 (今日休战)", "<html><body><h2>未来 72 小时内无比赛</h2></body></html>", [])
     exit()
 
-# 🌟 加载裁判和教练数据
 ref_dict = {}
 if os.path.exists('referee_stats.csv'):
     df_ref = pd.read_csv('referee_stats.csv')
@@ -249,8 +252,7 @@ for league_name in df_next_round['联赛'].unique():
         total_imp = imp_h + imp_d + imp_a
         market_h, market_d, market_a = imp_h/total_imp, imp_d/total_imp, imp_a/total_imp
 
-        # 🌟 提取裁判与教练特征
-        ref_info = ref_dict.get((home_cn, away_cn), {'name': '未公布', 'yellow': 4.2, 'penalty': 0.25})
+        ref_info = ref_dict.get((home_cn, away_cn), {'name': '未公布', 'yellow': 0, 'penalty': 0})
         h_coach = coach_dict.get(home_cn, {'style': '未知', 'gs': 1.2, 'gc': 1.2})
         a_coach = coach_dict.get(away_cn, {'style': '未知', 'gs': 1.2, 'gc': 1.2})
         
@@ -267,10 +269,11 @@ for league_name in df_next_round['联赛'].unique():
         X_pred = pd.DataFrame([feature_dict])
         home_xg, away_xg = max(0.1, model_home_goals.predict(X_pred)[0]), max(0.1, model_away_goals.predict(X_pred)[0])
         
-        # 🌟 裁判因素直接影响进球期望 (严厉裁判吹停多，进球少)
-        if ref_info['yellow'] > 4.5:
+        # 🌟 只有真实拿到了裁判数据，才进行微调
+        if ref_info['name'] != '未公布' and ref_info['yellow'] > 4.5:
             home_xg *= 0.95; away_xg *= 0.95
-        # 教练因素微调
+        
+        # 🌟 只有真实知道教练风格，才进行微调
         if h_coach['style'] == "保守防守": home_xg *= 0.9
         elif h_coach['style'] == "激进进攻": home_xg *= 1.1
         if a_coach['style'] == "保守防守": away_xg *= 0.9
@@ -300,7 +303,6 @@ for league_name in df_next_round['联赛'].unique():
         away_injuries_str = '，'.join(injury_dict.get(away_cn, ["无"]))
         injuries_info = f"{home_cn}伤停: {home_injuries_str}; {away_cn}伤停: {away_injuries_str}"
         
-        # 组装教练数据传给 AI
         coach_info = {
             'h_style': h_coach['style'], 'h_gs': h_coach['gs'], 'h_gc': h_coach['gc'],
             'a_style': a_coach['style'], 'a_gs': a_coach['gs'], 'a_gc': a_coach['gc']
@@ -385,7 +387,7 @@ for league_name in df_next_round['联赛'].unique():
         比赛：{home_cn} vs {away_cn} ({league_name})
         赛果倾向：{predict_choice}，最终胜平负下注：{final_recommend}
         进球期望：主队 {home_xg:.2f}，客队 {away_xg:.2f}。
-        裁判信息：主裁场均黄牌{ref_info['yellow']}张，点球{ref_info['penalty']}个。
+        裁判信息：{ref_info['name']} (场均黄牌{ref_info['yellow']}张，点球{ref_info['penalty']}个)。
         教练风格：{home_cn}[{h_coach['style']}]，{away_cn}[{a_coach['style']}]。
         大小球解析：{ou_msg} 推荐：{ou_recommend}
         让球解析：{handicap_msg} 推荐：{handicap_recommend}
@@ -393,7 +395,7 @@ for league_name in df_next_round['联赛'].unique():
         AI经验修正原因：{ai_reason}
         **机构异常警报：{trap_warning}**
         
-        **任务**：重点从“机构诱盘心理”和“价值投注”角度分析。必须把裁判出牌倾向和教练攻防风格融入到点评中！
+        **任务**：重点从“机构诱盘心理”和“价值投注”角度分析。请把裁判出牌倾向（如有）和教练攻防风格（如有）融入到点评中。
         请综合以上信息分析，并以“推荐关注：{final_recommend}，盘口倾向：{ou_recommend}/{handicap_recommend}”结尾。"""
         
         try: expert_comment = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False).choices[0].message.content.strip()
@@ -429,7 +431,6 @@ for league_name in df_next_round['联赛'].unique():
 
         html_report += f"<hr><h3>{match_time} - {home_cn} vs {away_cn} [{league_name}]</h3>"
         html_report += f"<img src='cid:chart_{len(img_buffers)-1}' width='600'><br>"
-        # 🌟 展示裁判和教练数据
         html_report += f"<p><b>🧑‍⚖️ 主裁信息：</b>{ref_info['name']} (场均黄牌{ref_info['yellow']}张 / 点球{ref_info['penalty']}个)</p>"
         html_report += f"<p><b>🧠 教练风格：</b>{home_cn}[{h_coach['style']}] vs {away_cn}[{a_coach['style']}]</p>"
         html_report += f"<p><b>⚖️ 亚盘让球：</b>{handicap_msg}</p>"
