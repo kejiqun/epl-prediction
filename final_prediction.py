@@ -176,7 +176,7 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V15.3 (真假赔率隔离版)</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V15.4 (优雅降级版)</h2>"
 prediction_logs = []; img_buffers = []
 
 for league_name in df_next_round['联赛'].unique():
@@ -217,7 +217,6 @@ for league_name in df_next_round['联赛'].unique():
         past_h2h = h2h_stats.get((home_cn, away_cn), [])[-3:]
         h2h_home_win_rate = sum(1 for hg, ag in past_h2h if hg > ag) / len(past_h2h) if past_h2h else 0.5
 
-        # 🌟 核心修改：真假赔率隔离机制
         real_odds_h = match.get('主胜赔率', 0.0)
         real_odds_d = match.get('平局赔率', 0.0)
         real_odds_a = match.get('客胜赔率', 0.0)
@@ -227,7 +226,6 @@ for league_name in df_next_round['联赛'].unique():
         if has_real_odds:
             odds_h, odds_d, odds_a = real_odds_h, real_odds_d, real_odds_a
         else:
-            # 使用兜底赔率仅为了跑通模型
             odds_h, odds_d, odds_a = 2.00, 3.30, 3.50
 
         imp_h = 1 / odds_h; imp_d = 1 / odds_d; imp_a = 1 / odds_a
@@ -289,12 +287,13 @@ for league_name in df_next_round['联赛'].unique():
         bet_amount = 0.0
         bet_info_msg = "模型认为无价值，建议空仓观望"
         
-        # 🌟 隔离执行：如果没真实赔率，绝对不许下注！
         if not has_real_odds:
-            bet_info_msg = "⚠️ 缺失真实赔率，仅供娱乐观赛"
-            split_logic = f"🛑 <b>风控警告：</b>未抓取到真实市场赔率，无法计算价值，无论模型预测什么，<b>坚决禁止下注</b>。"
+            bet_info_msg = "⚠️ 无真实市场赔率"
+            split_logic = f"🛑 <b>风控提示：</b>未抓取到真实赔率，无法计算价值。模型倾向：<b>{predict_choice}</b>，仅供观赛参考，<b>坚决禁止实盘下注</b>。"
             final_recommend = "观望"
+            kelly_msg = "暂无真实赔率，无法计算凯利"
         else:
+            kelly_msg = f"主胜 {max(0, kelly_h)*100:.1f}% | 平局 {max(0, kelly_d)*100:.1f}% | 客胜 {max(0, kelly_a)*100:.1f}%"
             if max_kelly > 0.02:
                 safe_kelly = min(max_kelly * 0.5, 0.05)
                 bet_amount = bankroll * safe_kelly
@@ -311,8 +310,6 @@ for league_name in df_next_round['联赛'].unique():
         all_scores = [(f"{hg}-{ag}", prob_matrix[hg][ag]) for hg in range(max_goals+1) for ag in range(max_goals+1)]
         all_scores.sort(key=lambda x: x[1], reverse=True)
         top3_scores_str = ", ".join([f"{s[0]}({s[1]*100:.1f}%)" for s in all_scores[:3]])
-        
-        kelly_msg = f"主胜 {max(0, kelly_h)*100:.1f}% | 平局 {max(0, kelly_d)*100:.1f}% | 客胜 {max(0, kelly_a)*100:.1f}%"
 
         handicap = match.get('让球盘口', 0.0)
         h_handicap_odd = match.get('主让胜赔率', 0.0)
@@ -322,7 +319,6 @@ for league_name in df_next_round['联赛'].unique():
         over_odd = match.get('大球赔率', 0.0)
         under_odd = match.get('小球赔率', 0.0)
         
-        # 真假盘口隔离
         has_real_ou = (pd.notna(total_line) and total_line > 0 and pd.notna(over_odd) and over_odd > 1.0)
         has_real_hc = (pd.notna(handicap) and handicap != 0 and pd.notna(h_handicap_odd) and h_handicap_odd > 1.0)
         
@@ -343,7 +339,7 @@ for league_name in df_next_round['联赛'].unique():
         ou_bet_amount = 0.0
         
         if not has_real_ou:
-            ou_msg += " (缺失真实赔率，禁止下注)"
+            ou_msg += " (缺失真实赔率，仅供观赛)"
         else:
             ev_over = prob_over * over_odd
             ev_under = prob_under * under_odd
@@ -362,7 +358,7 @@ for league_name in df_next_round['联赛'].unique():
         handicap_msg = f"主让{handicap}，主赢盘{prob_handicap_home*100:.1f}% / 客赢盘{prob_handicap_away*100:.1f}%。"
         hc_bet_amount = 0.0
         if not has_real_hc:
-            handicap_msg += " (缺失真实赔率，禁止下注)"
+            handicap_msg += " (缺失真实赔率，仅供观赛)"
         else:
             ev_hc_home = prob_handicap_home * h_handicap_odd
             ev_hc_away = prob_handicap_away * a_handicap_odd
@@ -424,9 +420,16 @@ for league_name in df_next_round['联赛'].unique():
         ax1.bar(x + width/2, market_probs, width, label='市场平均', color='gray', alpha=0.7)
         ax1.set_xticks(x); ax1.set_xticklabels(labels); ax1.set_ylabel('概率')
         ax1.set_title(f"{home_cn} vs {away_cn}"); ax1.legend()
-        kelly_vals = [max(0, kelly_h), max(0, kelly_d), max(0, kelly_a)]
-        ax2.bar(labels, kelly_vals, color=['green', 'orange', 'red'])
-        ax2.set_ylabel('建议下注比例 (%)'); ax2.set_title(f"凯利下注建议")
+        
+        # 🌟 核心美化：如果没赔率，右侧画提示框，绝不画大白板
+        if not has_real_odds:
+            ax2.text(0.5, 0.5, '暂未抓取到真实市场赔率\n禁止计算凯利指数', horizontalalignment='center', verticalalignment='center', fontsize=14, color='gray')
+            ax2.set_xticks([]); ax2.set_yticks([])
+        else:
+            kelly_vals = [max(0, kelly_h), max(0, kelly_d), max(0, kelly_a)]
+            ax2.bar(labels, kelly_vals, color=['green', 'orange', 'red'])
+            ax2.set_ylabel('建议下注比例 (%)'); ax2.set_title(f"凯利下注建议")
+            
         plt.tight_layout()
         buf = io.BytesIO(); plt.savefig(buf, format='png', dpi=100); buf.seek(0)
         img_buffers.append(buf); plt.close(fig)
@@ -465,4 +468,4 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V15.3 每日战报 (真假赔率隔离版)", html_report, img_buffers)
+send_rich_email("全球多联赛 V15.4 每日战报 (优雅降级版)", html_report, img_buffers)
