@@ -5,35 +5,16 @@ import os
 from datetime import datetime, timedelta
 import warnings
 from openai import OpenAI
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.header import Header
 import re
 
 from config import LEAGUES
 from team_mapping import translate_team_name
 
 warnings.filterwarnings('ignore')
-
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
-EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
-EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
-def send_email(subject, html_content, receiver="308730509@qq.com"):
-    if not EMAIL_SENDER or not EMAIL_PASSWORD: return
-    msg = MIMEMultipart('alternative')
-    msg['From'] = EMAIL_SENDER; msg['To'] = receiver; msg['Subject'] = Header(subject, 'utf-8')
-    msg.attach(MIMEText(html_content, 'html', 'utf-8'))
-    try:
-        smtpObj = smtplib.SMTP_SSL('smtp.qq.com', 465)
-        smtpObj.login(EMAIL_SENDER, EMAIL_PASSWORD)
-        smtpObj.sendmail(EMAIL_SENDER, [receiver], msg.as_string())
-        print("✅ 复盘邮件发送成功！")
-    except Exception as e: print(f"❌ 邮件发送失败: {e}")
-
-print("⏳ 正在启动 V25.0 深度复盘引擎 (错题剖析)...")
+print("⏳ 正在启动 V27.0 错题深度复盘引擎...")
 if not os.path.exists('predictions_log.csv'): exit()
 
 df_log = pd.read_csv('predictions_log.csv')
@@ -41,18 +22,14 @@ df_log['date'] = pd.to_datetime(df_log['date'])
 today = datetime.now()
 past_3_days = today - timedelta(days=3)
 
-# 补齐缺失列
 for c in ['actual_score', 'actual_result', 'is_win']:
     if c not in df_log.columns: df_log[c] = ""
 
-# 获取需要复盘的记录（近3天，且尚未结算）
 pending_review = df_log[(df_log['date'] >= past_3_days) & (df_log['actual_score'].isna() | (df_log['actual_score'] == ""))].copy()
 
 if pending_review.empty:
     print("✅ 最近 3 天没有需要复盘的新比赛。")
     exit()
-
-print(f"⏳ 找到 {len(pending_review)} 场待复盘比赛，正在抓取赛果...")
 
 actual_results = {}
 for league_name, config in LEAGUES.items():
@@ -78,7 +55,7 @@ for league_name, config in LEAGUES.items():
                                 actual_results[(match_date_str, h_name, a_name)] = (h_score, a_score)
         except: continue
 
-wrong_matches = [] # 错题本
+wrong_matches = []
 
 for idx, row in pending_review.iterrows():
     m_date = row['date'].strftime('%Y-%m-%d')
@@ -93,58 +70,35 @@ for idx, row in pending_review.iterrows():
         df_log.at[idx, 'actual_result'] = actual_res
         df_log.at[idx, 'is_win'] = is_win
         
-        # 如果预测错了（且不是观望），加入错题本
+        # 只有“预测错误”且“非观望”的才会被提进错题本
         if row['predicted_result'] != actual_res and row['predicted_result'] != "观望":
             wrong_matches.append({
-                '联赛': row['league'], '比赛': f"{row['home_team']} vs {row['away_team']}",
-                '实际比分': f"{hg}-{ag}", '预测赛果': row['predicted_result'], 
-                '模型xG': f"主{row['model_home_xg']} 客{row['model_away_xg']}",
-                '伤停': f"主[{row['home_injuries']}] 客[{row['away_injuries']}]"
+                '比赛': f"{row['home_team']} vs {row['away_team']}",
+                '比分': f"{hg}-{ag}", '预测': row['predicted_result'], '实际': actual_res,
+                '模型概率': f"主{row.get('pred_prob_h', 0)*100:.0f}% 平{row.get('pred_prob_d',0)*100:.0f}% 客{row.get('pred_prob_a',0)*100:.0f}%",
+                '伤停': f"主[{row.get('home_injuries', '无')}] 客[{row.get('away_injuries', '无')}]"
             })
 
-if not wrong_matches:
-    print("🎉 完美！近期比赛全中，没有错题需要分析。")
-    send_email("💡 完美复盘 (无错题)", "<html><body><h2>近期预测全中，无错题复盘。</h2></body></html>")
-    df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
-    exit()
-
-print(f"🚨 发现 {len(wrong_matches)} 场错题，呼叫 AI 深度剖析...")
-
-prompt = f"""你是一位顶级的足球量化风控总监。以下是近期系统预测失败（错题）的比赛数据：
-{wrong_matches}
-
-当前我们 V25.0 模型已经使用了：Elo评级、赛程强度、xG、伤停等数据。
-但依然出现了亏损。请分析：这些冷门/失败的原因是什么？是机构诱导（赔率异常）、还是核心球员意外伤退、还是杯赛轮换？
-请输出 3 条以内极其深刻、能够直接作为未来预测铁律的【错题经验】，直接以 '-' 开头输出，方便我写入知识库。"""
-
-try:
-    res = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False)
-    review_report = res.choices[0].message.content.strip()
+if wrong_matches:
+    print(f"🚨 发现 {len(wrong_matches)} 场错题，呼叫 AI 提炼教训...")
+    prompt = f"""你是一位顶级的足球量化风控总监。以下是近期系统预测失败（亏损）的比赛数据：
+    {wrong_matches}
     
-    # 提取经验并追加到 knowledge.txt
-    with open('knowledge.txt', 'a', encoding='utf-8') as f:
-        f.write(f"\n\n--- {datetime.now().strftime('%Y-%m-%d')} 错题深度归因 ---\n")
-        f.write(review_report)
-    print("✅ 错题经验已成功提炼并写入 knowledge.txt")
+    当前我们的模型已经包含了：Elo实力、赛程强度、xG、伤停影响。
+    请分析这些冷门/亏损的原因（比如：强队轮换？赔率过度诱导？伤停影响被低估？）。请输出 3 条极其深刻的【错题经验】，直接以 '-' 开头，方便我写入知识库。"""
     
-except Exception as e:
-    review_report = f"AI 剖析失败: {e}"
+    try:
+        res = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False)
+        review_report = res.choices[0].message.content.strip()
+        
+        with open('knowledge.txt', 'a', encoding='utf-8') as f:
+            f.write(f"\n\n--- {datetime.now().strftime('%Y-%m-%d')} 错题深度归因 ---\n")
+            f.write(review_report)
+        print("✅ 错题经验已成功写入 knowledge.txt")
+    except Exception as e:
+        print(f"AI 剖析失败: {e}")
+else:
+    print("🎉 近期比赛预测全中（或者全都是观望），没有实盘错题需要分析。")
 
-html_report = f"""
-<html><body style="font-family: sans-serif; padding: 20px;">
-    <h2>🚨 V25.0 错题深度归因复盘</h2>
-    <div style="background: #f8d7da; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-        <h3>❌ 近期错题汇总</h3>
-        {pd.DataFrame(wrong_matches).to_html(index=False)}
-    </div>
-    <div style="background: #d1ecf1; padding: 15px; border-radius: 8px;">
-        <h3>🧠 AI 总监深度剖析 (已入库)</h3>
-        <p style="white-space: pre-wrap;">{review_report}</p>
-    </div>
-</body></html>
-"""
-
-send_email("🚨 V25.0 错题深度归因报告", html_report)
-
-# 保存最新日志
 df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
+print("✅ 复盘流程结束。")
