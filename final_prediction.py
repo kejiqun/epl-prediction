@@ -93,16 +93,19 @@ print("⏳ 读取每日多联赛赛程...")
 if not os.path.exists('daily_matches.csv'): exit()
 
 df_next_round = pd.read_csv('daily_matches.csv')
-df_next_round = df_next_round[(df_next_round['主胜赔率'] > 1) & (df_next_round['平局赔率'] > 1) & (df_next_round['客胜赔率'] > 1)].copy()
-
-# 🌟 核心修复点：增加 utc=True，强制统一时区，防止报错
 df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
 
 now_ts = pd.Timestamp.now()
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= now_ts) & (df_next_round['datetime_parsed'] <= now_ts + pd.Timedelta(hours=48))]
 
 if df_next_round.empty:
-    print("⚠️ 未来 48 小时内无带赔率的比赛，停止预测。"); exit()
+    print("⚠️ 未来 48 小时内无比赛。")
+    html_report = f"""<html><body><div style="text-align: center; padding: 50px;">
+        <h2 style="color: #2c3e50;">🛡️ 今日休战</h2>
+        <p style="color: #666; font-size: 16px;">未来 48 小时内没有需要预测的足球赛事。</p>
+    </div></body></html>"""
+    send_rich_email("🛡️ 多联赛每日战报 (今日休战)", html_report, [])
+    exit()
 
 try:
     df_standings = pd.read_csv('epl_standings.csv')
@@ -173,7 +176,7 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V15.1 (盘口破局版)</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V15.3 (真假赔率隔离版)</h2>"
 prediction_logs = []; img_buffers = []
 
 for league_name in df_next_round['联赛'].unique():
@@ -214,7 +217,20 @@ for league_name in df_next_round['联赛'].unique():
         past_h2h = h2h_stats.get((home_cn, away_cn), [])[-3:]
         h2h_home_win_rate = sum(1 for hg, ag in past_h2h if hg > ag) / len(past_h2h) if past_h2h else 0.5
 
-        imp_h = 1 / match['主胜赔率']; imp_d = 1 / match['平局赔率']; imp_a = 1 / match['客胜赔率']
+        # 🌟 核心修改：真假赔率隔离机制
+        real_odds_h = match.get('主胜赔率', 0.0)
+        real_odds_d = match.get('平局赔率', 0.0)
+        real_odds_a = match.get('客胜赔率', 0.0)
+        
+        has_real_odds = (pd.notna(real_odds_h) and real_odds_h > 1.0)
+        
+        if has_real_odds:
+            odds_h, odds_d, odds_a = real_odds_h, real_odds_d, real_odds_a
+        else:
+            # 使用兜底赔率仅为了跑通模型
+            odds_h, odds_d, odds_a = 2.00, 3.30, 3.50
+
+        imp_h = 1 / odds_h; imp_d = 1 / odds_d; imp_a = 1 / odds_a
         total_imp = imp_h + imp_d + imp_a
         market_h, market_d, market_a = imp_h/total_imp, imp_d/total_imp, imp_a/total_imp
 
@@ -259,10 +275,9 @@ for league_name in df_next_round['联赛'].unique():
         pred_result_idx = np.argmax(probs)
         predict_choice = "主胜" if pred_result_idx == 2 else ("平局" if pred_result_idx == 1 else "客胜")
         
-        odds_h = match['主胜赔率']; odds_d = match['平局赔率']; odds_a = match['客胜赔率']
-        kelly_h = (prob_home_win * odds_h - 1) / (odds_h - 1) if odds_h > 1.0 else 0.0
-        kelly_d = (prob_draw * odds_d - 1) / (odds_d - 1) if odds_d > 1.0 else 0.0
-        kelly_a = (prob_away_win * odds_a - 1) / (odds_a - 1) if odds_a > 1.0 else 0.0
+        kelly_h = (prob_home_win * odds_h - 1) / (odds_h - 1)
+        kelly_d = (prob_draw * odds_d - 1) / (odds_d - 1)
+        kelly_a = (prob_away_win * odds_a - 1) / (odds_a - 1)
         
         max_kelly = 0; bet_choice = ""
         if kelly_h > 0.02 and prob_home_win > 0.25: max_kelly = kelly_h; bet_choice = "主胜"
@@ -274,18 +289,24 @@ for league_name in df_next_round['联赛'].unique():
         bet_amount = 0.0
         bet_info_msg = "模型认为无价值，建议空仓观望"
         
-        if max_kelly > 0.02:
-            safe_kelly = min(max_kelly * 0.5, 0.05)
-            bet_amount = bankroll * safe_kelly
-            final_recommend = bet_choice
-            bet_info_msg = f"推荐下注 <b>{bet_amount:.2f}</b> 元 (占总资金 {safe_kelly*100:.1f}%)"
-            if bet_choice != predict_choice:
-                split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但 <b>{bet_choice}</b> 的赔率提供了极高的价值，综合推荐去买 <b>{bet_choice}</b>。"
+        # 🌟 隔离执行：如果没真实赔率，绝对不许下注！
+        if not has_real_odds:
+            bet_info_msg = "⚠️ 缺失真实赔率，仅供娱乐观赛"
+            split_logic = f"🛑 <b>风控警告：</b>未抓取到真实市场赔率，无法计算价值，无论模型预测什么，<b>坚决禁止下注</b>。"
+            final_recommend = "观望"
         else:
-            if (kelly_a > 0.02 and prob_away_win <= 0.25) or (kelly_d > 0.02 and prob_draw <= 0.25) or (kelly_h > 0.02 and prob_home_win <= 0.25):
-                split_logic = f"🛑 <b>风控警告：</b>虽然某项赔率极高（凯利为正），但发生概率低于25%，属于“买彩票”行为，系统直接禁手。"
+            if max_kelly > 0.02:
+                safe_kelly = min(max_kelly * 0.5, 0.05)
+                bet_amount = bankroll * safe_kelly
+                final_recommend = bet_choice
+                bet_info_msg = f"推荐下注 <b>{bet_amount:.2f}</b> 元 (占总资金 {safe_kelly*100:.1f}%)"
+                if bet_choice != predict_choice:
+                    split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但 <b>{bet_choice}</b> 的赔率提供了极高的价值，综合推荐去买 <b>{bet_choice}</b>。"
             else:
-                split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但赔率过低/无价值，建议观望。"
+                if (kelly_a > 0.02 and prob_away_win <= 0.25) or (kelly_d > 0.02 and prob_draw <= 0.25) or (kelly_h > 0.02 and prob_home_win <= 0.25):
+                    split_logic = f"🛑 <b>风控警告：</b>虽然某项赔率极高（凯利为正），但发生概率低于25%，属于“买彩票”行为，系统直接禁手。"
+                else:
+                    split_logic = f"⚠️ <b>量化提示：</b>模型预测赛果为 <b>{predict_choice}</b>，但赔率过低/无价值，建议观望。"
 
         all_scores = [(f"{hg}-{ag}", prob_matrix[hg][ag]) for hg in range(max_goals+1) for ag in range(max_goals+1)]
         all_scores.sort(key=lambda x: x[1], reverse=True)
@@ -293,7 +314,6 @@ for league_name in df_next_round['联赛'].unique():
         
         kelly_msg = f"主胜 {max(0, kelly_h)*100:.1f}% | 平局 {max(0, kelly_d)*100:.1f}% | 客胜 {max(0, kelly_a)*100:.1f}%"
 
-        # 盘口与大小球逻辑
         handicap = match.get('让球盘口', 0.0)
         h_handicap_odd = match.get('主让胜赔率', 0.0)
         a_handicap_odd = match.get('客受让胜赔率', 0.0)
@@ -302,10 +322,15 @@ for league_name in df_next_round['联赛'].unique():
         over_odd = match.get('大球赔率', 0.0)
         under_odd = match.get('小球赔率', 0.0)
         
-        if h_handicap_odd <= 1: h_handicap_odd = 1.90
-        if a_handicap_odd <= 1: a_handicap_odd = 1.90
-        if over_odd <= 1: over_odd = 1.90
-        if under_odd <= 1: under_odd = 1.90
+        # 真假盘口隔离
+        has_real_ou = (pd.notna(total_line) and total_line > 0 and pd.notna(over_odd) and over_odd > 1.0)
+        has_real_hc = (pd.notna(handicap) and handicap != 0 and pd.notna(h_handicap_odd) and h_handicap_odd > 1.0)
+        
+        if h_handicap_odd <= 1 or pd.isna(h_handicap_odd): h_handicap_odd = 1.90
+        if a_handicap_odd <= 1 or pd.isna(a_handicap_odd): a_handicap_odd = 1.90
+        if over_odd <= 1 or pd.isna(over_odd): over_odd = 1.90
+        if under_odd <= 1 or pd.isna(under_odd): under_odd = 1.90
+        if pd.isna(total_line) or total_line == 0: total_line = 2.5
         
         prob_over = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + ag > total_line)
         prob_under = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + ag < total_line)
@@ -314,42 +339,43 @@ for league_name in df_next_round['联赛'].unique():
         prob_handicap_away = sum(prob_matrix[hg][ag] for hg in range(max_goals+1) for ag in range(max_goals+1) if hg + handicap < ag)
         
         ou_recommend = "观望"
-        ou_msg = "博彩公司暂未对本场开设大小球盘口"
+        ou_msg = f"盘口{total_line}，大球{prob_over*100:.1f}% / 小球{prob_under*100:.1f}%。"
         ou_bet_amount = 0.0
-        if pd.notna(total_line) and total_line > 0:
+        
+        if not has_real_ou:
+            ou_msg += " (缺失真实赔率，禁止下注)"
+        else:
             ev_over = prob_over * over_odd
             ev_under = prob_under * under_odd
             if ev_over > 1.05 and ev_over > ev_under:
                 ou_recommend = "大球"
                 kelly_ou = (ev_over - 1) / (over_odd - 1)
                 ou_bet_amount = bankroll * min(kelly_ou * 0.5, 0.05)
-                ou_msg = f"盘口{total_line}，大球概率{prob_over*100:.1f}%，参考赔率{over_odd:.2f}，价值极高！"
+                ou_msg += f" 大球价值极高！(赔率{over_odd:.2f})"
             elif ev_under > 1.05 and ev_under > ev_over:
                 ou_recommend = "小球"
                 kelly_ou = (ev_under - 1) / (under_odd - 1)
                 ou_bet_amount = bankroll * min(kelly_ou * 0.5, 0.05)
-                ou_msg = f"盘口{total_line}，小球概率{prob_under*100:.1f}%，参考赔率{under_odd:.2f}，价值极高！"
-            else:
-                ou_msg = f"盘口{total_line}，大球{prob_over*100:.1f}% / 小球{prob_under*100:.1f}%，模型认为赔率不足以覆盖风险。"
+                ou_msg += f" 小球价值极高！(赔率{under_odd:.2f})"
 
         handicap_recommend = "观望"
-        handicap_msg = "博彩公司暂未对本场开设让球盘口"
+        handicap_msg = f"主让{handicap}，主赢盘{prob_handicap_home*100:.1f}% / 客赢盘{prob_handicap_away*100:.1f}%。"
         hc_bet_amount = 0.0
-        if pd.notna(handicap) and handicap != 0:
+        if not has_real_hc:
+            handicap_msg += " (缺失真实赔率，禁止下注)"
+        else:
             ev_hc_home = prob_handicap_home * h_handicap_odd
             ev_hc_away = prob_handicap_away * a_handicap_odd
             if ev_hc_home > 1.05 and ev_hc_home > ev_hc_away:
                 handicap_recommend = "主队赢盘"
                 kelly_hc = (ev_hc_home - 1) / (h_handicap_odd - 1)
                 hc_bet_amount = bankroll * min(kelly_hc * 0.5, 0.05)
-                handicap_msg = f"主让{handicap}，主赢盘概率{prob_handicap_home*100:.1f}%，参考赔率{h_handicap_odd:.2f}。"
+                handicap_msg += f" 主赢盘具有价值！(赔率{h_handicap_odd:.2f})"
             elif ev_hc_away > 1.05 and ev_hc_away > ev_hc_home:
                 handicap_recommend = "客队赢盘"
                 kelly_hc = (ev_hc_away - 1) / (a_handicap_odd - 1)
                 hc_bet_amount = bankroll * min(kelly_hc * 0.5, 0.05)
-                handicap_msg = f"主让{handicap}，客队赢盘概率{prob_handicap_away*100:.1f}%，参考赔率{a_handicap_odd:.2f}。"
-            else:
-                handicap_msg = f"主让{handicap}，主赢盘{prob_handicap_home*100:.1f}% / 客赢盘{prob_handicap_away*100:.1f}%，模型认为赔率不足以覆盖风险。"
+                handicap_msg += f" 客赢盘具有价值！(赔率{a_handicap_odd:.2f})"
 
         weather = get_match_weather(home_cn, match_time)
         weather_str = weather['天气'] if isinstance(weather, dict) else weather
@@ -439,4 +465,4 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V15.1 每日战报 (盘口破局版)", html_report, img_buffers)
+send_rich_email("全球多联赛 V15.3 每日战报 (真假赔率隔离版)", html_report, img_buffers)
