@@ -44,9 +44,8 @@ def train_models():
             a_scored / league_avg_goals, a_conceded / league_avg_goals,
             h_pts, a_pts
         ]
-        # 🌟 关键防御：强力清洗所有 nan 和 inf
+        # 强力清洗：处理 NaN 和无穷大，并将其限制在合理范围
         row_features = np.nan_to_num(row_features, nan=0.0, posinf=1.0, neginf=0.0)
-        # 进一步限制特征范围，防止极端值冲击
         row_features = np.clip(row_features, -10.0, 10.0) 
         features.append(row_features)
         labels_home.append(row['home_goals'])
@@ -60,7 +59,7 @@ def train_models():
         team_stats[away]['conceded'].append(row['home_goals'])
         team_stats[away]['points'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
 
-    # 🌟 强制转为 float32 的 numpy array，规避底层 C++ 转换崩溃
+    # 显式转换为 float32 的 numpy 数组
     X = np.array(features, dtype=np.float32)
     y_home = np.array(labels_home, dtype=np.float32)
     y_away = np.array(labels_away, dtype=np.float32)
@@ -69,8 +68,12 @@ def train_models():
     model_home = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1)
     model_away = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1)
     
-    model_home.fit(X, y_home)
-    model_away.fit(X, y_away)
+    # 使用 xgb.DMatrix 来包装数据，这是 XGBoost 的原生数据结构，最为稳定
+    dtrain_home = xgb.DMatrix(X, label=y_home)
+    dtrain_away = xgb.DMatrix(X, label=y_away)
+    
+    model_home.fit(dtrain_home)
+    model_away.fit(dtrain_away)
     
     joblib.dump(model_home, 'epl_v31_home_goals_model.pkl')
     joblib.dump(model_away, 'epl_v31_away_goals_model.pkl')
