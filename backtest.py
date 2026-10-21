@@ -71,18 +71,15 @@ def run_backtest():
             h_elo = elo.get(h, 1500)
             a_elo = elo.get(a, 1500)
             
-            # 严格对齐 9 个特征
             feat = [h_elo, a_elo, h_elo - a_elo, h_sos, a_sos, h_xg, a_xg, h_pts, a_pts]
             feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000).reshape(1, -1)
             
-            # 使用融合后的分类模型预测概率
             clf_probs = calibrated_clf.predict_proba(feat)[0]
             p_a_clf, p_d_clf, p_h_clf = clf_probs[0], clf_probs[1], clf_probs[2]
             
             max_p = max(p_h_clf, p_d_clf, p_a_clf)
             bet_choice = ""
             
-            # 🌟 极简严选：概率必须大于 60% 才下注
             if max_p > 0.60: 
                 if max_p == p_h_clf: bet_choice = "主胜"
                 elif max_p == p_d_clf: bet_choice = "平局"
@@ -90,7 +87,6 @@ def run_backtest():
                 
             if bet_choice:
                 actual_res = "主胜" if row['home_goals'] > row['away_goals'] else ("平局" if row['home_goals'] == row['away_goals'] else "客胜")
-                # 回测统一用固定的基准赔率 2.0 (真实环境需要依赖赔率)
                 sim_odds = 2.0 
                 
                 if bet_choice == actual_res:
@@ -104,14 +100,12 @@ def run_backtest():
                     'bet': bet_choice, 'actual': actual_res, 'profit': profit, 'bankroll': bankroll
                 })
         
-        # 更新 Elo
         exp_h = 1 / (1 + 10 ** ((elo[a] - (elo[h] + 100)) / 400))
         score_h = 1 if row['home_goals'] > row['away_goals'] else (0.5 if row['home_goals'] == row['away_goals'] else 0)
         score_a = 1 - score_h
         elo[h] += 20 * (score_h - exp_h)
         elo[a] += 20 * (score_a - (1 - exp_h))
         
-        # 更新统计数据
         act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
         act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
         team_stats[h]['xg'].append(act_h_xg); team_stats[h]['opp_elo'].append(elo[a])
@@ -120,7 +114,7 @@ def run_backtest():
         team_stats[a]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
 
     if not records:
-        print("⚠️ 在过去一年的回测中，没有找到胜率大于 60% 的比赛。")
+        print("⚠️ 没有比赛符合严选条件。")
         return
         
     df_rec = pd.DataFrame(records)
@@ -135,26 +129,21 @@ def run_backtest():
     plt.figure(figsize=(10, 5))
     plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
     plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
-    plt.title('历史回测资金曲线 (V25.0 终极验证)')
+    plt.title('历史回测资金曲线 (V25.0 终极验证版)')
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.savefig('backtest_roi.png', dpi=120)
     plt.close()
     
+    # 🌟 这里改了文件名和标题，只要更新，你一眼就能看出变了
     report = f"""--- 历史回测报告 (V25.0 终极验证版) ---
-回测比赛总数: {len(df[df['date'] >= backtest_start_date])} 场
-实际下注场次: {total_bets} 场 (胜率>60%严选)
-命中场次: {win_bets} 场
 下注胜率: {win_rate:.2f}%
-初始资金: {initial_bankroll:.2f}
-最终资金: {bankroll:.2f}
 总收益率 (ROI): {roi:+.2f}%
 总盈亏: {total_profit:+.2f} 元
 ========================================
 """
     with open('backtest_report.txt', 'w', encoding='utf-8') as f:
         f.write(report)
-    print("✅ 回测报告已生成。")
 
 if __name__ == "__main__":
     run_backtest()
