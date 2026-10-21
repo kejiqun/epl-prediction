@@ -23,7 +23,9 @@ def dixon_coles_tau(h, a, home_xg, away_xg, rho=-0.1):
 def run_backtest():
     print("⏳ 启动时光机回测系统 (V25.0 终极验证版)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
-    if not os.path.exists(history_file): return
+    if not os.path.exists(history_file): 
+        print("❌ 找不到历史数据文件，直接退出。")
+        return
         
     df = pd.read_csv(history_file)
     df['date'] = pd.to_datetime(df['date'])
@@ -42,8 +44,8 @@ def run_backtest():
         model_h = joblib.load('epl_v31_home_goals_model.pkl')
         model_a = joblib.load('epl_v31_away_goals_model.pkl')
         calibrated_clf = joblib.load('epl_result_classifier.pkl')
-    except: 
-        print("❌ 找不到模型文件，请先运行 train_v31.py。")
+    except Exception as e: 
+        print(f"❌ 找不到模型文件，报错: {e}")
         return
 
     initial_bankroll = 10000.0
@@ -80,7 +82,8 @@ def run_backtest():
             max_p = max(p_h_clf, p_d_clf, p_a_clf)
             bet_choice = ""
             
-            if max_p > 0.60: 
+            # 🌟 放宽到 50%，只要模型觉得稍微有点优势，咱们就测试一下
+            if max_p > 0.50: 
                 if max_p == p_h_clf: bet_choice = "主胜"
                 elif max_p == p_d_clf: bet_choice = "平局"
                 else: bet_choice = "客胜"
@@ -113,8 +116,22 @@ def run_backtest():
         team_stats[a]['xg'].append(act_a_xg); team_stats[a]['opp_elo'].append(elo[h])
         team_stats[a]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
 
+    # 🌟 即使没下注，也生成报告并画图！
     if not records:
-        print("⚠️ 没有比赛符合严选条件。")
+        print("⚠️ 没有比赛符合严选条件，生成空报告。")
+        report = f"""--- 历史回测报告 (V25.0 终极验证版) ---
+下注胜率: 0.00%
+总收益率 (ROI): 0.00%
+总盈亏: 0.00 元
+========================================
+"""
+        with open('backtest_report.txt', 'w', encoding='utf-8') as f:
+            f.write(report)
+        # 画个空图
+        plt.figure(figsize=(10, 5))
+        plt.title('历史回测资金曲线 (V25.0 终极验证版 - 无下注)')
+        plt.savefig('backtest_roi.png', dpi=120)
+        plt.close()
         return
         
     df_rec = pd.DataFrame(records)
@@ -135,7 +152,6 @@ def run_backtest():
     plt.savefig('backtest_roi.png', dpi=120)
     plt.close()
     
-    # 🌟 这里改了文件名和标题，只要更新，你一眼就能看出变了
     report = f"""--- 历史回测报告 (V25.0 终极验证版) ---
 下注胜率: {win_rate:.2f}%
 总收益率 (ROI): {roi:+.2f}%
