@@ -21,12 +21,10 @@ def dixon_coles_tau(h, a, home_xg, away_xg, rho=-0.1):
     return 1.0
 
 def run_backtest():
-    print("⏳ 启动时光机回测系统...")
+    print("⏳ 启动时光机回测系统 (极简严选版)...")
     
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
-    if not os.path.exists(history_file):
-        print("❌ 找不到历史数据，无法回测。")
-        return
+    if not os.path.exists(history_file): return
         
     df = pd.read_csv(history_file)
     df['date'] = pd.to_datetime(df['date'])
@@ -44,19 +42,13 @@ def run_backtest():
     try:
         model_h = joblib.load('epl_v31_home_goals_model.pkl')
         model_a = joblib.load('epl_v31_away_goals_model.pkl')
-    except:
-        print("❌ 找不到模型文件，请先运行 train_v31.py 训练模型。")
-        return
+    except: return
 
-    # 模拟资金与回测池
     initial_bankroll = 10000.0
     bankroll = initial_bankroll
-    bet_amount = 100.0 # 每场固定下注100元
+    bet_amount = 100.0 
     records = []
-    
     team_stats = {}
-    
-    # 我们只回测最近一年的数据，之前的作为历史底库
     backtest_start_date = df['date'].max() - pd.Timedelta(days=365)
     
     for idx, row in df.iterrows():
@@ -67,7 +59,7 @@ def run_backtest():
                 team_stats[t] = {'xg':[], 'xga':[], 'pts':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[]}
                 
         if m_date >= backtest_start_date:
-            # 提取特征
+            # 特征提取
             h_all_xg = np.mean(team_stats[home]['xg'][-5:]) if team_stats[home]['xg'] else league_avg_goals
             h_home_xg = np.mean(team_stats[home]['home_xg'][-5:]) if team_stats[home]['home_xg'] else league_avg_goals
             h_home_xga = np.mean(team_stats[home]['home_xga'][-5:]) if team_stats[home]['home_xga'] else league_avg_goals
@@ -95,21 +87,22 @@ def run_backtest():
             total_p = p_h + p_d + p_a
             p_h, p_d, p_a = p_h/total_p, p_d/total_p, p_a/total_p
             
-            # 采用一个基础的模拟赔率（因为没有历史赔率，我们用行业均值 2.0, 3.3, 3.5 作为基准来测试胜率）
-            # 在真实量化中，你可以用同样的逻辑去跑有赔率的历史数据
-            sim_odds_h, sim_odds_d, sim_odds_a = 2.10, 3.30, 3.50
+            # 🌟 动态模拟赔率：根据模型概率反推（加上了庄家抽水）
+            # 如果模型算主胜 50%，模拟赔率大概在 1.9 左右
+            sim_odds_h = 1 / (p_h + 0.05) if p_h > 0.1 else 15.0
+            sim_odds_d = 1 / (p_d + 0.05) if p_d > 0.1 else 15.0
+            sim_odds_a = 1 / (p_a + 0.05) if p_a > 0.1 else 15.0
             
-            # 简单的凯利策略
-            kelly_h = (p_h * sim_odds_h - 1) / (sim_odds_h - 1)
-            kelly_d = (p_d * sim_odds_d - 1) / (sim_odds_d - 1)
-            kelly_a = (p_a * sim_odds_a - 1) / (sim_odds_a - 1)
-            
-            max_kelly = max(kelly_h, kelly_d, kelly_a)
+            # 🌟 极简严选策略
+            # 1. 只买概率最高的一项
+            probs = [p_h, p_d, p_a]
+            max_p = max(probs)
             bet_choice = ""
-            if max_kelly > 0.05: # 回测中稍微放宽门槛
-                if max_kelly == kelly_h and p_h > 0.3: bet_choice = "主胜"
-                elif max_kelly == kelly_d and p_d > 0.3: bet_choice = "平局"
-                elif max_kelly == kelly_a and p_a > 0.3: bet_choice = "客胜"
+            
+            if max_p > 0.55: # 胜率不够 55% 绝对不碰
+                if max_p == p_h and sim_odds_h > 1.3: bet_choice = "主胜"
+                elif max_p == p_d and sim_odds_d > 2.8: bet_choice = "平局"
+                elif max_p == p_a and sim_odds_a > 1.6: bet_choice = "客胜"
                 
             if bet_choice:
                 actual_res = "主胜" if row['home_goals'] > row['away_goals'] else ("平局" if row['home_goals'] == row['away_goals'] else "客胜")
@@ -140,22 +133,23 @@ def run_backtest():
         team_stats[away]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
 
     if not records:
-        print("⚠️ 在过去一年的回测中，模型没有找到符合下注条件的比赛。")
+        print("⚠️ 在过去一年的回测中，由于极度严选，模型没有找到符合条件的比赛。")
         return
         
     df_rec = pd.DataFrame(records)
     total_bets = len(df_rec)
     win_bets = len(df_rec[df_rec['profit'] > 0])
-    win_rate = (win_bets / total_bets) * 100
+    win_rate = (win_bets / total_bets) * 100 if total_bets > 0 else 0
     total_profit = df_rec['profit'].sum()
-    roi = (total_profit / (total_bets * bet_amount)) * 100
+    roi = (total_profit / (total_bets * bet_amount)) * 100 if total_bets > 0 else 0
     
     print(f"✅ 回测完成！共下注 {total_bets} 场，胜率 {win_rate:.1f}%，总盈亏 {total_profit:+.2f} 元，ROI {roi:+.1f}%")
     
-    # 生成回测报告与曲线图
+    # 画图
     plt.figure(figsize=(10, 5))
     plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
-    plt.title('历史回测资金曲线 (每场固定100元)')
+    plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
+    plt.title('历史回测资金曲线 (V24.0 极简严选版)')
     plt.xlabel('下注场次')
     plt.ylabel('资金')
     plt.legend()
@@ -163,17 +157,21 @@ def run_backtest():
     plt.savefig('backtest_roi.png', dpi=120)
     plt.close()
     
-    report = f"""--- 历史回测报告 ---
+    report = f"""--- 历史回测报告 (V24.0 极简严选版) ---
 回测时间段: {backtest_start_date.strftime('%Y-%m-%d')} 至 {df['date'].max().strftime('%Y-%m-%d')}
-总下注场次: {total_bets}
-盈利场次: {win_bets}
-胜率: {win_rate:.2f}%
+回测比赛总数: {len(df[df['date'] >= backtest_start_date])} 场
+实际下注场次: {total_bets} 场 (极简严选)
+命中场次: {win_bets} 场
+下注胜率: {win_rate:.2f}%
+初始资金: {initial_bankroll:.2f}
+最终资金: {bankroll:.2f}
+总收益率 (ROI): {roi:+.2f}%
 总盈亏: {total_profit:+.2f} 元
-投资回报率 (ROI): {roi:+.2f}%
+========================================
 """
     with open('backtest_report.txt', 'w', encoding='utf-8') as f:
         f.write(report)
-    print("✅ 回测报告已生成 (backtest_report.txt / backtest_roi.png)")
+    print("✅ 回测报告已生成。")
 
 if __name__ == "__main__":
     run_backtest()
