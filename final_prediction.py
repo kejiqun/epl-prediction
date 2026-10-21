@@ -103,19 +103,16 @@ if os.path.exists('referee_stats.csv'):
 if os.path.exists('coach_stats.csv'):
     for _, r in pd.read_csv('coach_stats.csv').iterrows(): coach_dict[r['team']] = {'style': r['coach_style']}
 
-# 🌟 核心优化：只计算有“首发/重要轮换”价值的伤停（剔除边缘球员）
 injury_dict, injury_impact = {}, {}
 try:
     fpl_data = requests.get("https://fantasy.premierleague.com/api/bootstrap-static/", timeout=15).json()
     teams_map = {t['id']: translate_team_name(t['name']) for t in fpl_data['teams']}
     for e in fpl_data['elements']:
-        # 只有身价（now_cost）> 4.5 或 总得分 > 20 的球员，才算“真金白银”的伤停
         if (e['status'] in ['d', 'i', 's', 'u'] or (e.get('chance_of_playing_next_round') or 100) < 75) and (e.get('now_cost', 0) >= 50 or e.get('total_points', 0) >= 20):
             t_name = teams_map.get(e['team'])
             if t_name:
                 injury_dict.setdefault(t_name, []).append(f"{e['web_name']}({e.get('element_type')})")
-                # 权重取决于身价和位置（前锋权重更高）
-                pos_weight = 1.0 if e.get('element_type') == 4 else 0.7 # 4是前锋
+                pos_weight = 1.0 if e.get('element_type') == 4 else 0.7
                 injury_impact[t_name] = injury_impact.get(t_name, 0) + ((e.get('now_cost', 50) / 100.0) * pos_weight)
 except: pass
 
@@ -145,7 +142,7 @@ for _, row in df_hist.iterrows():
 
 knowledge_base = open('knowledge.txt', 'r', encoding='utf-8').read() if os.path.exists('knowledge.txt') else ""
 model_h, model_a = joblib.load('epl_v31_home_goals_model.pkl'), joblib.load('epl_v31_away_goals_model.pkl')
-html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V20.0 真实数据预测 (全盘口量化版)</h2>", [], []
+html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V20.1 真实数据预测 (盘口防呆优化版)</h2>", [], []
 
 for league in df_next_round['联赛'].unique():
     html_report += f"<h2 style='color:blue;'>🏆 {league}</h2>"
@@ -184,29 +181,31 @@ for league in df_next_round['联赛'].unique():
         total_p = p_h + p_d + p_a
         p_h, p_d, p_a = p_h/total_p, p_d/total_p, p_a/total_p
         
-        # 🌟 核心：真正的大小球与让球盘量化分析
+        # 🌟 核心防呆：判空逻辑
         real_h, real_d, real_a = match.get('主胜赔率', 0), match.get('平局赔率', 0), match.get('客胜赔率', 0)
-        hc_line, hc_h_odd, hc_a_odd = match.get('让球盘口', 0.0), match.get('主让胜赔率', 0.0), match.get('客受让胜赔率', 0.0)
-        tl_line, over_odd, under_odd = match.get('大小球盘口', 2.5), match.get('大球赔率', 0.0), match.get('小球赔率', 0.0)
+        hc_line, hc_h_odd, hc_a_odd = match.get('让球盘口', pd.NA), match.get('主让胜赔率', pd.NA), match.get('客受让胜赔率', pd.NA)
+        tl_line, over_odd, under_odd = match.get('大小球盘口', pd.NA), match.get('大球赔率', pd.NA), match.get('小球赔率', pd.NA)
         
         has_real = (pd.notna(real_h) and real_h > 1.0)
         
-        # 计算真实大小球/让球概率
-        prob_over = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + j > tl_line)
-        prob_under = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + j < tl_line)
-        prob_hc_home = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + hc_line > j)
-        prob_hc_away = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + hc_line < j)
-        
-        ou_msg = f"盘口 {tl_line}，模型认为大球概率 {prob_over*100:.1f}%，小球 {prob_under*100:.1f}%。"
-        hc_msg = f"主队让 {hc_line} 球，模型认为主赢盘概率 {prob_hc_home*100:.1f}%，客赢盘 {prob_hc_away*100:.1f}%。"
-        
+        ou_msg = "暂未抓取到真实大小球盘口"
+        hc_msg = "暂未抓取到真实让球盘口"
         ou_rec, hc_rec = "观望", "观望"
-        if pd.notna(over_odd) and over_odd > 1.0:
+        
+        # 只有当盘口是有效数字时，才进行概率计算
+        if pd.notna(tl_line) and pd.notna(over_odd) and tl_line > 0:
+            prob_over = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + j > tl_line)
+            prob_under = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + j < tl_line)
+            ou_msg = f"盘口 {tl_line}，模型大球概率 {prob_over*100:.1f}%，小球 {prob_under*100:.1f}%。"
             ev_over = prob_over * over_odd
             ev_under = prob_under * under_odd
             if ev_over > 1.05 and ev_over > ev_under: ou_rec = "大球 (高价值)"
             elif ev_under > 1.05 and ev_under > ev_over: ou_rec = "小球 (高价值)"
-        if pd.notna(hc_h_odd) and hc_h_odd > 1.0:
+            
+        if pd.notna(hc_line) and pd.notna(hc_h_odd):
+            prob_hc_home = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + hc_line > j)
+            prob_hc_away = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + hc_line < j)
+            hc_msg = f"主队让 {hc_line} 球，模型主赢盘 {prob_hc_home*100:.1f}%，客赢盘 {prob_hc_away*100:.1f}%。"
             ev_hc_h = prob_hc_home * hc_h_odd
             ev_hc_a = prob_hc_away * hc_a_odd
             if ev_hc_h > 1.05 and ev_hc_h > ev_hc_a: hc_rec = "主队赢盘 (高价值)"
@@ -221,7 +220,7 @@ for league in df_next_round['联赛'].unique():
         a_inj_str = ','.join(injury_dict.get(a_cn, ['无']))
         injury_info = f"主队伤停: {h_inj_str} (权重{h_impact:.1f}); 客队伤停: {a_inj_str} (权重{a_impact:.1f})"
         
-        odds_trend = "暂无盘口异动"
+        odds_trend = "暂未获取到盘口轨迹数据"
         p_h, p_d, p_a, ai_reason = ai_adjust_probabilities(h_cn, a_cn, p_h, p_d, p_a, injury_info, odds_trend, knowledge_base, ref_info, coach_info)
         
         predict_choice = "主胜" if p_h > max(p_d, p_a) else ("平局" if p_d > max(p_h, p_a) else "客胜")
@@ -244,8 +243,8 @@ for league in df_next_round['联赛'].unique():
         prompt = f"""资深专家，点评(150字内)：
         比赛：{h_cn} vs {a_cn}。倾向：{predict_choice}。
         伤停：{injury_info}
-        大小球：{ou_msg} 推荐：{ou_rec}
-        让球：{hc_msg} 推荐：{hc_rec}
+        大小球：{ou_msg}
+        让球：{hc_msg}
         AI理由：{ai_reason}
         请结合机构心理，以“推荐关注：{final_rec}”结尾。"""
         try: ai_comment = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False).choices[0].message.content.strip()
@@ -279,4 +278,4 @@ if os.path.exists('predictions_log.csv'):
     log_df = pd.concat([old, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html_report)
-send_rich_email("V20.0 真实数据预测 (全盘口量化版)", html_report, img_buffers)
+send_rich_email("V20.1 真实数据预测 (盘口防呆优化版)", html_report, img_buffers)
