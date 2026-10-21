@@ -50,7 +50,6 @@ def fetch_referee_and_coach():
         df_ref.to_csv('referee_stats.csv', index=False, encoding='utf-8-sig')
         print(f"✅ 裁判数据已记录，共 {len(df_ref)} 场。")
 
-    # 🌟 修改点：读取多联赛历史数据来计算教练风格
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if os.path.exists(history_file):
         print(f"正在基于 {history_file} 计算教练风格...")
@@ -58,14 +57,12 @@ def fetch_referee_and_coach():
         df_hist['date'] = pd.to_datetime(df_hist['date'])
         df_hist = df_hist.sort_values('date').reset_index(drop=True)
         
-        # 如果列名是老的，兼容一下
         if 'home_team_cn' not in df_hist.columns:
             df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
             df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
             
         coach_stats = {}
-        # 只取最近的1000场比赛来算，反映近期状态
-        for idx, row in df_hist.tail(1000).iterrows(): 
+        for idx, row in df_hist.tail(1500).iterrows(): # 扩大历史样本到最近1500场
             home, away = row['home_team_cn'], row['away_team_cn']
             for t in [home, away]:
                 if t not in coach_stats: coach_stats[t] = {'scored': [], 'conceded': []}
@@ -76,7 +73,7 @@ def fetch_referee_and_coach():
             
         coach_records = []
         for team, stats in coach_stats.items():
-            if len(stats['scored']) >= 3:
+            if len(stats['scored']) >= 1: # 🌟 核心修改：哪怕只出现过1场，也给风格
                 avg_scored = sum(stats['scored'][-5:]) / len(stats['scored'][-5:])
                 avg_conceded = sum(stats['conceded'][-5:]) / len(stats['conceded'][-5:])
                 if avg_scored > 1.8: style = "激进进攻"
@@ -85,7 +82,7 @@ def fetch_referee_and_coach():
                 coach_records.append({'team': team, 'coach_style': style, 'avg_goals_scored': round(avg_scored, 2), 'avg_goals_conceded': round(avg_conceded, 2)})
                 
         pd.DataFrame(coach_records).to_csv('coach_stats.csv', index=False, encoding='utf-8-sig')
-        print("✅ 教练风格数据已计算并保存（包含多联赛）。")
+        print("✅ 教练风格数据已计算并保存。")
 
 if __name__ == "__main__":
     fetch_referee_and_coach()
