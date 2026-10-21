@@ -97,6 +97,11 @@ now_ts = pd.Timestamp.now()
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= now_ts) & (df_next_round['datetime_parsed'] <= now_ts + pd.Timedelta(hours=72))]
 if df_next_round.empty: exit()
 
+# 加载历史赔率
+odds_hist = pd.DataFrame()
+if os.path.exists('odds_history.csv'):
+    odds_hist = pd.read_csv('odds_history.csv')
+
 ref_dict, coach_dict = {}, {}
 if os.path.exists('referee_stats.csv'):
     for _, r in pd.read_csv('referee_stats.csv').iterrows(): ref_dict[(r['home_team'], r['away_team'])] = {'name': r['referee'], 'yellow': r['avg_yellow_cards'], 'penalty': r['avg_penalties']}
@@ -142,7 +147,7 @@ for _, row in df_hist.iterrows():
 
 knowledge_base = open('knowledge.txt', 'r', encoding='utf-8').read() if os.path.exists('knowledge.txt') else ""
 model_h, model_a = joblib.load('epl_v31_home_goals_model.pkl'), joblib.load('epl_v31_away_goals_model.pkl')
-html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V20.1 真实数据预测 (盘口防呆优化版)</h2>", [], []
+html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V21.0 真实数据预测 (盘口异动追踪版)</h2>", [], []
 
 for league in df_next_round['联赛'].unique():
     html_report += f"<h2 style='color:blue;'>🏆 {league}</h2>"
@@ -150,6 +155,7 @@ for league in df_next_round['联赛'].unique():
         h_cn, a_cn = match['主队'], match['客队']
         m_time = pd.to_datetime(match['datetime_parsed']).strftime('%Y-%m-%d %H:%M')
         m_date = pd.to_datetime(match['datetime_parsed']).date()
+        m_date_str = m_date.strftime('%Y-%m-%d')
         
         h = team_stats.get(h_cn, {'xg':[], 'xga':[], 'pts':[]})
         a = team_stats.get(a_cn, {'xg':[], 'xga':[], 'pts':[]})
@@ -181,35 +187,42 @@ for league in df_next_round['联赛'].unique():
         total_p = p_h + p_d + p_a
         p_h, p_d, p_a = p_h/total_p, p_d/total_p, p_a/total_p
         
-        # 🌟 核心防呆：判空逻辑
         real_h, real_d, real_a = match.get('主胜赔率', 0), match.get('平局赔率', 0), match.get('客胜赔率', 0)
         hc_line, hc_h_odd, hc_a_odd = match.get('让球盘口', pd.NA), match.get('主让胜赔率', pd.NA), match.get('客受让胜赔率', pd.NA)
         tl_line, over_odd, under_odd = match.get('大小球盘口', pd.NA), match.get('大球赔率', pd.NA), match.get('小球赔率', pd.NA)
         
         has_real = (pd.notna(real_h) and real_h > 1.0)
         
-        ou_msg = "暂未抓取到真实大小球盘口"
-        hc_msg = "暂未抓取到真实让球盘口"
-        ou_rec, hc_rec = "观望", "观望"
-        
-        # 只有当盘口是有效数字时，才进行概率计算
+        # 🌟 盘口轨迹分析
+        odds_trend = "暂无盘口轨迹数据"
+        if has_real and not odds_hist.empty:
+            match_hist = odds_hist[(odds_hist['date_str'] == m_date_str) & (odds_hist['home_team'] == h_cn) & (odds_hist['away_team'] == a_cn)]
+            if not match_hist.empty:
+                row = match_hist.iloc[-1]
+                init_h, curr_h = row['init_h'], row['current_h']
+                if init_h > 0 and curr_h > 0:
+                    diff_pct = (curr_h - init_h) / init_h
+                    if diff_pct > 0.1:
+                        odds_trend = f"⚠️ 主胜初盘 {init_h:.2f} 升至临场 {curr_h:.2f} (升幅{diff_pct*100:.1f}%)。机构对主胜信心减弱，疑似诱导资金去主胜！"
+                    elif diff_pct < -0.1:
+                        odds_trend = f"🔥 主胜初盘 {init_h:.2f} 降至临场 {curr_h:.2f} (降幅{diff_pct*100:.1f}%)。机构在极度防范主胜打出，主队极稳。"
+                    else:
+                        odds_trend = f"盘口平稳 (初盘{init_h:.2f} → 临场{curr_h:.2f})。无明显异动。"
+
+        ou_msg, hc_msg, ou_rec, hc_rec = "暂未抓取到真实盘口", "暂未抓取到真实盘口", "观望", "观望"
         if pd.notna(tl_line) and pd.notna(over_odd) and tl_line > 0:
             prob_over = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + j > tl_line)
             prob_under = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + j < tl_line)
-            ou_msg = f"盘口 {tl_line}，模型大球概率 {prob_over*100:.1f}%，小球 {prob_under*100:.1f}%。"
-            ev_over = prob_over * over_odd
-            ev_under = prob_under * under_odd
-            if ev_over > 1.05 and ev_over > ev_under: ou_rec = "大球 (高价值)"
-            elif ev_under > 1.05 and ev_under > ev_over: ou_rec = "小球 (高价值)"
+            ou_msg = f"盘口 {tl_line}，模型大球概率 {prob_over*100:.1f}%。"
+            if prob_over * over_odd > 1.05: ou_rec = "大球 (高价值)"
+            elif prob_under * under_odd > 1.05: ou_rec = "小球 (高价值)"
             
         if pd.notna(hc_line) and pd.notna(hc_h_odd):
             prob_hc_home = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + hc_line > j)
             prob_hc_away = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + hc_line < j)
-            hc_msg = f"主队让 {hc_line} 球，模型主赢盘 {prob_hc_home*100:.1f}%，客赢盘 {prob_hc_away*100:.1f}%。"
-            ev_hc_h = prob_hc_home * hc_h_odd
-            ev_hc_a = prob_hc_away * hc_a_odd
-            if ev_hc_h > 1.05 and ev_hc_h > ev_hc_a: hc_rec = "主队赢盘 (高价值)"
-            elif ev_hc_a > 1.05 and ev_hc_a > ev_hc_h: hc_rec = "客队赢盘 (高价值)"
+            hc_msg = f"主队让 {hc_line} 球，模型主赢盘 {prob_hc_home*100:.1f}%。"
+            if prob_hc_home * hc_h_odd > 1.05: hc_rec = "主队赢盘 (高价值)"
+            elif prob_hc_away * hc_a_odd > 1.05: hc_rec = "客队赢盘 (高价值)"
 
         ref_info = ref_dict.get((h_cn, a_cn), {'name': '未公布', 'yellow': 0, 'penalty': 0})
         h_coach = coach_dict.get(h_cn, {'style': '攻守平衡'})
@@ -220,7 +233,6 @@ for league in df_next_round['联赛'].unique():
         a_inj_str = ','.join(injury_dict.get(a_cn, ['无']))
         injury_info = f"主队伤停: {h_inj_str} (权重{h_impact:.1f}); 客队伤停: {a_inj_str} (权重{a_impact:.1f})"
         
-        odds_trend = "暂未获取到盘口轨迹数据"
         p_h, p_d, p_a, ai_reason = ai_adjust_probabilities(h_cn, a_cn, p_h, p_d, p_a, injury_info, odds_trend, knowledge_base, ref_info, coach_info)
         
         predict_choice = "主胜" if p_h > max(p_d, p_a) else ("平局" if p_d > max(p_h, p_a) else "客胜")
@@ -243,10 +255,10 @@ for league in df_next_round['联赛'].unique():
         prompt = f"""资深专家，点评(150字内)：
         比赛：{h_cn} vs {a_cn}。倾向：{predict_choice}。
         伤停：{injury_info}
-        大小球：{ou_msg}
-        让球：{hc_msg}
+        【盘口异动】：{odds_trend}
+        大小球/让球：{ou_msg} / {hc_msg}
         AI理由：{ai_reason}
-        请结合机构心理，以“推荐关注：{final_rec}”结尾。"""
+        请重点结合盘口异动，以“推荐关注：{final_rec}”结尾。"""
         try: ai_comment = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False).choices[0].message.content.strip()
         except: ai_comment = "AI解析失败"
 
@@ -262,6 +274,7 @@ for league in df_next_round['联赛'].unique():
         html_report += f"<p><b>🧑‍⚖️ 主裁信息：</b>{ref_info['name']} (场均黄牌{ref_info['yellow']}张)</p>"
         html_report += f"<p><b>🧠 教练风格：</b>{h_cn}[{h_coach['style']}] vs {a_cn}[{a_coach['style']}]</p>"
         html_report += f"<p><b>🚨 核心伤停：</b>主队[{h_inj_str}] / 客队[{a_inj_str}]</p>"
+        html_report += f"<p><b>📈 盘口轨迹：</b><span style='color:blue;'>{odds_trend}</span></p>"
         html_report += f"<p><b>⚖️ 亚盘让球：</b>{hc_msg} 推荐：<b>{hc_rec}</b></p>"
         html_report += f"<p><b>⚖️ 大小球：</b>{ou_msg} 推荐：<b>{ou_rec}</b></p>"
         html_report += f"<p><b>🎯 赛果概率：</b>主胜 {p_h*100:.1f}% | 平局 {p_d*100:.1f}% | 客胜 {p_a*100:.1f}%</p>"
@@ -278,4 +291,4 @@ if os.path.exists('predictions_log.csv'):
     log_df = pd.concat([old, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html_report)
-send_rich_email("V20.1 真实数据预测 (盘口防呆优化版)", html_report, img_buffers)
+send_rich_email("V21.0 真实数据预测 (盘口异动追踪版)", html_report, img_buffers)
