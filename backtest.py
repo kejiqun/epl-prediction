@@ -21,11 +21,9 @@ def dixon_coles_tau(h, a, home_xg, away_xg, rho=-0.1):
     return 1.0
 
 def run_backtest():
-    print("⏳ 启动时光机回测系统 (V25.0 终极验证版)...")
+    print("⏳ 启动时光机回测系统 (V27.0 10大特征版)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
-    if not os.path.exists(history_file): 
-        print("❌ 找不到历史数据文件，直接退出。")
-        return
+    if not os.path.exists(history_file): return
         
     df = pd.read_csv(history_file)
     df['date'] = pd.to_datetime(df['date'])
@@ -44,15 +42,16 @@ def run_backtest():
         model_h = joblib.load('epl_v31_home_goals_model.pkl')
         model_a = joblib.load('epl_v31_away_goals_model.pkl')
         calibrated_clf = joblib.load('epl_result_classifier.pkl')
+        elo_dict = joblib.load('elo_dict.pkl')
     except Exception as e: 
-        print(f"❌ 找不到模型文件，报错: {e}")
+        print(f"❌ 找不到模型文件: {e}")
         return
 
     initial_bankroll = 10000.0
     bankroll = initial_bankroll
     bet_amount = 100.0 
     records = []
-    team_stats, elo = {}, {}
+    team_stats, last_date = {}, {}
     backtest_start_date = df['date'].max() - pd.Timedelta(days=365)
     
     for idx, row in df.iterrows():
@@ -60,9 +59,13 @@ def run_backtest():
         
         for t in [h, a]:
             if t not in team_stats: team_stats[t] = {'xg':[], 'opp_elo':[], 'pts':[]}
-            if t not in elo: elo[t] = 1500
+            if t not in last_date: last_date[t] = None
                 
         if m_date >= backtest_start_date:
+            h_rest = (m_date - last_date[h]).days if last_date[h] else 7
+            a_rest = (m_date - last_date[a]).days if last_date[a] else 7
+            rest_diff = h_rest - a_rest
+            
             h_xg = np.mean(team_stats[h]['xg'][-5:]) if team_stats[h]['xg'] else league_avg_goals
             a_xg = np.mean(team_stats[a]['xg'][-5:]) if team_stats[a]['xg'] else league_avg_goals
             h_sos = np.mean(team_stats[h]['opp_elo'][-5:]) if team_stats[h]['opp_elo'] else 1500
@@ -70,10 +73,11 @@ def run_backtest():
             h_pts = np.mean(team_stats[h]['pts'][-5:]) if team_stats[h]['pts'] else 1.0
             a_pts = np.mean(team_stats[a]['pts'][-5:]) if team_stats[a]['pts'] else 1.0
             
-            h_elo = elo.get(h, 1500)
-            a_elo = elo.get(a, 1500)
+            h_elo = elo_dict.get(h, 1500)
+            a_elo = elo_dict.get(a, 1500)
             
-            feat = [h_elo, a_elo, h_elo - a_elo, h_sos, a_sos, h_xg, a_xg, h_pts, a_pts]
+            # 🌟 核心修复：补齐第 10 个特征 rest_diff
+            feat = [h_elo, a_elo, h_elo - a_elo, h_sos, a_sos, h_xg, a_xg, h_pts, a_pts, rest_diff]
             feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000).reshape(1, -1)
             
             clf_probs = calibrated_clf.predict_proba(feat)[0]
@@ -82,8 +86,7 @@ def run_backtest():
             max_p = max(p_h_clf, p_d_clf, p_a_clf)
             bet_choice = ""
             
-            # 🌟 放宽到 50%，只要模型觉得稍微有点优势，咱们就测试一下
-            if max_p > 0.50: 
+            if max_p > 0.55: # 设定回测严选胜率阈值
                 if max_p == p_h_clf: bet_choice = "主胜"
                 elif max_p == p_d_clf: bet_choice = "平局"
                 else: bet_choice = "客胜"
@@ -103,35 +106,18 @@ def run_backtest():
                     'bet': bet_choice, 'actual': actual_res, 'profit': profit, 'bankroll': bankroll
                 })
         
-        exp_h = 1 / (1 + 10 ** ((elo[a] - (elo[h] + 100)) / 400))
-        score_h = 1 if row['home_goals'] > row['away_goals'] else (0.5 if row['home_goals'] == row['away_goals'] else 0)
-        score_a = 1 - score_h
-        elo[h] += 20 * (score_h - exp_h)
-        elo[a] += 20 * (score_a - (1 - exp_h))
-        
+        # 更新统计数据
         act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
         act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
-        team_stats[h]['xg'].append(act_h_xg); team_stats[h]['opp_elo'].append(elo[a])
+        team_stats[h]['xg'].append(act_h_xg); team_stats[h]['opp_elo'].append(elo_dict.get(a, 1500))
         team_stats[h]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
-        team_stats[a]['xg'].append(act_a_xg); team_stats[a]['opp_elo'].append(elo[h])
+        team_stats[a]['xg'].append(act_a_xg); team_stats[a]['opp_elo'].append(elo_dict.get(h, 1500))
         team_stats[a]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        
+        last_date[h] = m_date; last_date[a] = m_date
 
-    # 🌟 即使没下注，也生成报告并画图！
     if not records:
-        print("⚠️ 没有比赛符合严选条件，生成空报告。")
-        report = f"""--- 历史回测报告 (V25.0 终极验证版) ---
-下注胜率: 0.00%
-总收益率 (ROI): 0.00%
-总盈亏: 0.00 元
-========================================
-"""
-        with open('backtest_report.txt', 'w', encoding='utf-8') as f:
-            f.write(report)
-        # 画个空图
-        plt.figure(figsize=(10, 5))
-        plt.title('历史回测资金曲线 (V25.0 终极验证版 - 无下注)')
-        plt.savefig('backtest_roi.png', dpi=120)
-        plt.close()
+        print("⚠️ 没有比赛符合严选条件。")
         return
         
     df_rec = pd.DataFrame(records)
@@ -146,13 +132,13 @@ def run_backtest():
     plt.figure(figsize=(10, 5))
     plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
     plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
-    plt.title('历史回测资金曲线 (V25.0 终极验证版)')
+    plt.title('历史回测资金曲线 (V27.0 十维特征版)')
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.savefig('backtest_roi.png', dpi=120)
     plt.close()
     
-    report = f"""--- 历史回测报告 (V25.0 终极验证版) ---
+    report = f"""--- 历史回测报告 (V27.0 十维特征版) ---
 下注胜率: {win_rate:.2f}%
 总收益率 (ROI): {roi:+.2f}%
 总盈亏: {total_profit:+.2f} 元
@@ -160,6 +146,7 @@ def run_backtest():
 """
     with open('backtest_report.txt', 'w', encoding='utf-8') as f:
         f.write(report)
+    print("✅ 回测报告已生成。")
 
 if __name__ == "__main__":
     run_backtest()
