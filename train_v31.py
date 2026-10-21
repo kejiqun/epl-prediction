@@ -1,12 +1,12 @@
 import pandas as pd
 import numpy as np
-import xgboost as xgb
+import lightgbm as lgb
 import joblib
 import os
 from team_mapping import translate_team_name
 
 def train_models():
-    print("⏳ 开始训练 V31 多联赛通用模型...")
+    print("⏳ 开始训练 V31 多联赛通用模型 (LightGBM 引擎)...")
     
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file):
@@ -19,7 +19,6 @@ def train_models():
     df['home_team_cn'] = df['home_team'].apply(translate_team_name)
     df['away_team_cn'] = df['away_team'].apply(translate_team_name)
     
-    # 读取积分榜数据（用于 rank 特征）
     team_rank_dict = {}
     if os.path.exists('epl_standings.csv'):
         df_standings = pd.read_csv('epl_standings.csv')
@@ -35,7 +34,8 @@ def train_models():
     for idx, row in df.iterrows():
         home, away = row['home_team_cn'], row['away_team_cn']
         for t in [home, away]:
-            if t not in team_stats: team_stats[t] = {'scored':[], 'conceded':[], 'points':[], 'home_scored':[], 'home_conceded':[], 'away_scored':[], 'away_conceded':[]}
+            if t not in team_stats: 
+                team_stats[t] = {'scored':[], 'conceded':[], 'points':[], 'home_scored':[], 'home_conceded':[], 'away_scored':[], 'away_conceded':[]}
         
         h_avg_scored = np.mean(team_stats[home]['scored'][-5:]) if team_stats[home]['scored'] else league_avg_goals
         h_avg_conceded = np.mean(team_stats[home]['conceded'][-5:]) if team_stats[home]['conceded'] else league_avg_goals
@@ -57,7 +57,7 @@ def train_models():
         h_form_trend = (np.mean(team_stats[home]['points'][-3:]) - np.mean(team_stats[home]['points'][-5:])) if len(team_stats[home]['points']) >= 5 else 0.0
         a_form_trend = (np.mean(team_stats[away]['points'][-3:]) - np.mean(team_stats[away]['points'][-5:])) if len(team_stats[away]['points']) >= 5 else 0.0
 
-        # 确保这里构建的字典顺序和 final_prediction.py 中完全一致！
+        # 🌟 严格对齐 final_prediction.py 的 21 个特征
         feature_dict = {
             'attack': h_attack, 'defense': h_defense, 'opp_attack': a_attack, 'opp_defense': a_defense,
             'home_attack_spec': h_home_attack, 'home_defense_spec': h_home_defense,
@@ -66,7 +66,7 @@ def train_models():
             'rest_days': 7, 'opp_rest_days': 7, 'is_home': 1,
             'home_rank': team_rank_dict.get(home, 15), 'away_rank': team_rank_dict.get(away, 15),
             'h_form_trend': h_form_trend, 'a_form_trend': a_form_trend,
-            'prob_h_odds': 0.4, 'prob_d_odds': 0.3, 'prob_a_odds': 0.3 # 历史训练没赔率，给个默认值
+            'prob_h_odds': 0.4, 'prob_d_odds': 0.3, 'prob_a_odds': 0.3
         }
         
         row_features = list(feature_dict.values())
@@ -77,7 +77,6 @@ def train_models():
         labels_home.append(row['home_goals'])
         labels_away.append(row['away_goals'])
         
-        # 更新球队状态
         team_stats[home]['scored'].append(row['home_goals']); team_stats[home]['conceded'].append(row['away_goals'])
         team_stats[home]['home_scored'].append(row['home_goals']); team_stats[home]['home_conceded'].append(row['away_goals'])
         team_stats[home]['points'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
@@ -90,15 +89,25 @@ def train_models():
     y_home = np.array(labels_home, dtype=np.float32)
     y_away = np.array(labels_away, dtype=np.float32)
     
-    model_home = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1)
-    model_away = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1)
+    train_data_home = lgb.Dataset(X, label=y_home)
+    train_data_away = lgb.Dataset(X, label=y_away)
     
-    model_home.fit(X, y_home)
-    model_away.fit(X, y_away)
+    params = {
+        'objective': 'regression',
+        'metric': 'rmse',
+        'boosting_type': 'gbdt',
+        'num_leaves': 31,
+        'learning_rate': 0.1,
+        'feature_fraction': 0.9,
+        'verbose': -1
+    }
+    
+    model_home = lgb.train(params, train_data_home, num_boost_round=100)
+    model_away = lgb.train(params, train_data_away, num_boost_round=100)
     
     joblib.dump(model_home, 'epl_v31_home_goals_model.pkl')
     joblib.dump(model_away, 'epl_v31_away_goals_model.pkl')
-    print("✅ 多联赛 XGBoost 模型训练完成并保存！特征数量：21")
+    print("✅ 多联赛 LightGBM 模型训练完成并保存！特征数量：21")
 
 if __name__ == "__main__":
     train_models()
