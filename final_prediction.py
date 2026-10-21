@@ -86,7 +86,6 @@ def ai_adjust_probabilities(home_cn, away_cn, p_h, p_d, p_a, injuries, knowledge
     if len(knowledge) < 50:
         return p_h, p_d, p_a, "经验库为空，使用原始概率。"
     
-    # 🌟 修复点：去掉了三反引号，避免字符串提前闭合报错
     prompt = f"""你是一位量化风控总监。当前比赛：{home_cn} vs {away_cn}
     基础模型算出的概率：主胜 {p_h*100:.1f}%，平局 {p_d*100:.1f}%，客胜 {p_a*100:.1f}%。
     当前赛前情报（如伤停）：{injuries}
@@ -105,7 +104,6 @@ def ai_adjust_probabilities(home_cn, away_cn, p_h, p_d, p_a, injuries, knowledge
             model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False
         )
         content = response.choices[0].message.content.strip()
-        # 安全提取 JSON
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
         if json_match:
             json_str = json_match.group(0)
@@ -217,7 +215,7 @@ knowledge_base = ""
 if os.path.exists('knowledge.txt'):
     with open('knowledge.txt', 'r', encoding='utf-8') as f: knowledge_base = f.read()
 
-html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V16.0 (AI经验干预版)</h2>"
+html_report = "<html><body><h2>⚽ 全球足球多联赛全自动预测系统 V17.0 (反诈与心理博弈版)</h2>"
 prediction_logs = []; img_buffers = []
 
 for league_name in df_next_round['联赛'].unique():
@@ -338,6 +336,18 @@ for league_name in df_next_round['联赛'].unique():
         bet_amount = 0.0
         bet_info_msg = "模型认为无价值，建议空仓观望"
         
+        # 🌟 新增：诱盘判别引擎（寻找模型与市场的严重背离）
+        trap_warning = ""
+        if has_real_odds:
+            div_h = prob_home_win - market_h
+            div_a = prob_away_win - market_a
+            if div_h > 0.15:
+                trap_warning = f"⚠️ <b>诱盘警报：</b>模型认为主胜概率({prob_home_win*100:.1f}%)远超市场隐含概率({market_h*100:.1f}%)，机构可能在利用高赔率诱导资金去主胜，需警惕主队不胜。"
+            elif div_a > 0.15:
+                trap_warning = f"⚠️ <b>诱盘警报：</b>模型认为客胜概率({prob_away_win*100:.1f}%)远超市场隐含概率({market_a*100:.1f}%)，机构可能在利用高赔率诱导资金去客胜，需警惕客队不胜。"
+            elif market_h - prob_home_win > 0.15:
+                trap_warning = f"🔥 <b>阻盘信号：</b>市场给主胜的隐含概率({market_h*100:.1f}%)远高于模型({prob_home_win*100:.1f}%)，机构在极度防范主胜打出，主队可能极稳。"
+
         if not has_real_odds:
             bet_info_msg = "⚠️ 无真实市场赔率"
             split_logic = f"🛑 <b>风控提示：</b>未抓取到真实赔率，无法计算价值。模型倾向：<b>{predict_choice}</b>，仅供观赛参考，<b>坚决禁止实盘下注</b>。"
@@ -427,6 +437,7 @@ for league_name in df_next_round['联赛'].unique():
         weather = get_match_weather(home_cn, match_time)
         weather_str = weather['天气'] if isinstance(weather, dict) else weather
 
+        # 🌟 更新提示词：让 AI 必须去解释“诱盘信号”
         prompt = f"""你是一位精通全球足球的资深数据分析专家。请基于以下数据，写一段精炼、口语化的赛前点评（不超过150字）：
         比赛：{home_cn} vs {away_cn} ({league_name})
         赛果倾向：{predict_choice}，最终胜平负下注：{final_recommend}
@@ -435,8 +446,9 @@ for league_name in df_next_round['联赛'].unique():
         让球解析：{handicap_msg} 推荐：{handicap_recommend}
         伤停：{home_cn} [{home_injuries_str}]；{away_cn} [{away_injuries_str}]。
         AI经验修正原因：{ai_reason}
+        **机构异常警报：{trap_warning}**
         
-        **任务**：重点从“机构诱盘心理”和“价值投注”角度分析。必须支撑大小球和让球的量化结论。
+        **任务**：重点从“机构诱盘心理”和“价值投注”角度分析。如果有机构异常警报，请务必在点评中解释机构的陷阱是什么！
         请综合以上信息分析，并以“推荐关注：{final_recommend}，盘口倾向：{ou_recommend}/{handicap_recommend}”结尾。"""
         
         try:
@@ -466,7 +478,7 @@ for league_name in df_next_round['联赛'].unique():
         market_probs = [market_h, market_d, market_a]
         x = np.arange(len(labels)); width = 0.35
         ax1.bar(x - width/2, model_probs, width, label='V31 校准模型', color='royalblue')
-        ax1.bar(x + width/2, market_probs, width, label='市场平均', color='gray', alpha=0.7)
+        ax1.bar(x + width/2, market_probs, width, label='市场隐含', color='gray', alpha=0.7)
         ax1.set_xticks(x); ax1.set_xticklabels(labels); ax1.set_ylabel('概率')
         ax1.set_title(f"{home_cn} vs {away_cn}"); ax1.legend()
         
@@ -492,6 +504,9 @@ for league_name in df_next_round['联赛'].unique():
         html_report += f"<p><b>🧠 AI修正理由：</b><span style='color:#d35400;'>{ai_reason}</span></p>"
         html_report += f"<p><b>🔮 比分推荐 (Top 3)：</b>{top3_scores_str}</p>"
         
+        if trap_warning:
+            html_report += f"<p style='color:red; font-weight:bold;'>{trap_warning}</p>"
+
         html_report += f"""
         <div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; border-radius:8px; margin-top:15px;'>
             <p style='margin:0; font-size:16px;'><b>💡 最终胜平负下注：</b><span style='font-size:22px;color:red;font-weight:bold;'>{final_recommend}</span></p>
@@ -517,4 +532,4 @@ log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 with open('dashboard.html', 'w', encoding='utf-8') as f:
     f.write(html_report)
 
-send_rich_email("全球多联赛 V16.0 每日战报 (AI经验干预版)", html_report, img_buffers)
+send_rich_email("全球多联赛 V17.0 每日战报 (反诈与心理博弈版)", html_report, img_buffers)
