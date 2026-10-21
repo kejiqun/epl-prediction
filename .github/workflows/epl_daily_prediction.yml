@@ -22,15 +22,16 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 2.5 安装中文字体
-        run: sudo apt-get update && sudo apt-get install -y fonts-wqy-microhei
+      - name: 2.5 安装系统依赖与中文字体
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-wqy-microhei libgomp1
 
-      - name: 3. 安装依赖
+      - name: 3. 安装 Python 依赖
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt --default-timeout=100
 
-      # 🌟 新增：先抓取全球粮仓数据
       - name: 3.1 抓取五大联赛历史赛果 (建粮仓)
         run: python fetch_league_history.py
 
