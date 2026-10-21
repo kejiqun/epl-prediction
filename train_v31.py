@@ -6,108 +6,78 @@ import os
 from team_mapping import translate_team_name
 
 def train_models():
-    print("⏳ 开始训练 V31 多联赛通用模型 (LightGBM 引擎)...")
-    
+    print("⏳ 开始训练 V19.0 多联赛高级模型...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
-    if not os.path.exists(history_file):
-        print("❌ 找不到历史数据文件，训练中止。")
-        return
+    if not os.path.exists(history_file): return
         
     df = pd.read_csv(history_file)
     df['date'] = pd.to_datetime(df['date'])
-    df = df.sort_values('date').reset_index(drop=True)
     df['home_team_cn'] = df['home_team'].apply(translate_team_name)
     df['away_team_cn'] = df['away_team'].apply(translate_team_name)
     
-    team_rank_dict = {}
-    if os.path.exists('epl_standings.csv'):
-        df_standings = pd.read_csv('epl_standings.csv')
-        team_rank_dict = dict(zip(df_standings['球队'], df_standings['排名']))
+    # 融合 xG 数据
+    if os.path.exists('xg_data.csv'):
+        df_xg = pd.read_csv('xg_data.csv')
+        df_xg['date'] = pd.to_datetime(df_xg['date'])
+        df = pd.merge(df, df_xg, on=['date', 'home_team_cn', 'away_team_cn'], how='left', suffixes=('', '_xg'))
     
+    df = df.sort_values('date').reset_index(drop=True)
     league_avg_goals = (df['home_goals'].mean() + df['away_goals'].mean()) / 2
     
-    features = []
-    labels_home = []
-    labels_away = []
+    features, labels_home, labels_away = [], [], []
+    team_stats, last_date = {}, {}
     
-    team_stats = {}
     for idx, row in df.iterrows():
-        home, away = row['home_team_cn'], row['away_team_cn']
+        home, away, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
         for t in [home, away]:
-            if t not in team_stats: 
-                team_stats[t] = {'scored':[], 'conceded':[], 'points':[], 'home_scored':[], 'home_conceded':[], 'away_scored':[], 'away_conceded':[]}
+            if t not in team_stats: team_stats[t] = {'xg':[], 'xga':[], 'pts':[], 'goals':[], 'conceded':[]}
         
-        h_avg_scored = np.mean(team_stats[home]['scored'][-5:]) if team_stats[home]['scored'] else league_avg_goals
-        h_avg_conceded = np.mean(team_stats[home]['conceded'][-5:]) if team_stats[home]['conceded'] else league_avg_goals
-        a_avg_scored = np.mean(team_stats[away]['scored'][-5:]) if team_stats[away]['scored'] else league_avg_goals
-        a_avg_conceded = np.mean(team_stats[away]['conceded'][-5:]) if team_stats[away]['conceded'] else league_avg_goals
+        # 计算休息天数
+        h_rest = (m_date - last_date[home]).days if home in last_date else 7
+        a_rest = (m_date - last_date[away]).days if away in last_date else 7
         
-        h_home_scored = np.mean(team_stats[home]['home_scored'][-3:]) if team_stats[home]['home_scored'] else league_avg_goals
-        h_home_conceded = np.mean(team_stats[home]['home_conceded'][-3:]) if team_stats[home]['home_conceded'] else league_avg_goals
-        a_away_scored = np.mean(team_stats[away]['away_scored'][-3:]) if team_stats[away]['away_scored'] else league_avg_goals
-        a_away_conceded = np.mean(team_stats[away]['away_conceded'][-3:]) if team_stats[away]['away_conceded'] else league_avg_goals
-
-        h_attack, h_defense = h_avg_scored / league_avg_goals, h_avg_conceded / league_avg_goals
-        a_attack, a_defense = a_avg_scored / league_avg_goals, a_avg_conceded / league_avg_goals
-        h_home_attack, h_home_defense = h_home_scored / league_avg_goals, h_home_conceded / league_avg_goals
-        a_away_attack, a_away_defense = a_away_scored / league_avg_goals, a_away_conceded / league_avg_goals
+        # 核心10大特征 (如果没有xG，用真实进球代替)
+        h_xg_avg = np.mean(team_stats[home]['xg'][-5:]) if team_stats[home]['xg'] else league_avg_goals
+        a_xg_avg = np.mean(team_stats[away]['xg'][-5:]) if team_stats[away]['xg'] else league_avg_goals
+        h_xga_avg = np.mean(team_stats[home]['xga'][-5:]) if team_stats[home]['xga'] else league_avg_goals
+        a_xga_avg = np.mean(team_stats[away]['xga'][-5:]) if team_stats[away]['xga'] else league_avg_goals
         
-        h_win_rate = np.mean(team_stats[home]['points'][-5:]) if team_stats[home]['points'] else 0.5
-        a_win_rate = np.mean(team_stats[away]['points'][-5:]) if team_stats[away]['points'] else 0.5
-        h_form_trend = (np.mean(team_stats[home]['points'][-3:]) - np.mean(team_stats[home]['points'][-5:])) if len(team_stats[home]['points']) >= 5 else 0.0
-        a_form_trend = (np.mean(team_stats[away]['points'][-3:]) - np.mean(team_stats[away]['points'][-5:])) if len(team_stats[away]['points']) >= 5 else 0.0
-
-        # 🌟 严格对齐 final_prediction.py 的 21 个特征
-        feature_dict = {
-            'attack': h_attack, 'defense': h_defense, 'opp_attack': a_attack, 'opp_defense': a_defense,
-            'home_attack_spec': h_home_attack, 'home_defense_spec': h_home_defense,
-            'away_attack_spec': a_away_attack, 'away_defense_spec': a_away_defense,
-            'win_rate': h_win_rate, 'opp_win_rate': a_win_rate, 'win_rate_diff': h_win_rate - a_win_rate,
-            'rest_days': 7, 'opp_rest_days': 7, 'is_home': 1,
-            'home_rank': team_rank_dict.get(home, 15), 'away_rank': team_rank_dict.get(away, 15),
-            'h_form_trend': h_form_trend, 'a_form_trend': a_form_trend,
-            'prob_h_odds': 0.4, 'prob_d_odds': 0.3, 'prob_a_odds': 0.3
-        }
+        h_pts = np.mean(team_stats[home]['pts'][-5:]) if team_stats[home]['pts'] else 1.0
+        a_pts = np.mean(team_stats[away]['pts'][-5:]) if team_stats[away]['pts'] else 1.0
         
-        row_features = list(feature_dict.values())
-        row_features = np.nan_to_num(row_features, nan=0.0, posinf=10.0, neginf=-10.0)
-        row_features = np.clip(row_features, -10.0, 10.0)
+        row_feat = [
+            h_xg_avg, a_xg_avg, h_xga_avg, a_xga_avg, 
+            h_pts, a_pts, h_rest, a_rest, 
+            h_xg_avg - a_xga_avg, a_xg_avg - h_xga_avg
+        ]
+        row_feat = np.clip(np.nan_to_num(row_feat, nan=0.0, posinf=5.0, neginf=0.0), -5.0, 5.0)
         
-        features.append(row_features)
+        features.append(row_feat)
         labels_home.append(row['home_goals'])
         labels_away.append(row['away_goals'])
         
-        team_stats[home]['scored'].append(row['home_goals']); team_stats[home]['conceded'].append(row['away_goals'])
-        team_stats[home]['home_scored'].append(row['home_goals']); team_stats[home]['home_conceded'].append(row['away_goals'])
-        team_stats[home]['points'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        # 更新状态
+        act_h_xg = row.get('home_xg', row['home_goals']) if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
+        act_a_xg = row.get('away_xg', row['away_goals']) if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
         
-        team_stats[away]['scored'].append(row['away_goals']); team_stats[away]['conceded'].append(row['home_goals'])
-        team_stats[away]['away_scored'].append(row['away_goals']); team_stats[away]['away_conceded'].append(row['home_goals'])
-        team_stats[away]['points'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        team_stats[home]['xg'].append(act_h_xg); team_stats[home]['xga'].append(act_a_xg)
+        team_stats[home]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        team_stats[away]['xg'].append(act_a_xg); team_stats[away]['xga'].append(act_h_xg)
+        team_stats[away]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        
+        last_date[home] = m_date; last_date[away] = m_date
 
     X = np.array(features, dtype=np.float32)
-    y_home = np.array(labels_home, dtype=np.float32)
-    y_away = np.array(labels_away, dtype=np.float32)
+    y_h = np.array(labels_home, dtype=np.float32)
+    y_a = np.array(labels_away, dtype=np.float32)
     
-    train_data_home = lgb.Dataset(X, label=y_home)
-    train_data_away = lgb.Dataset(X, label=y_away)
+    params = {'objective': 'regression', 'metric': 'rmse', 'verbose': -1}
+    model_h = lgb.train(params, lgb.Dataset(X, label=y_h), num_boost_round=100)
+    model_a = lgb.train(params, lgb.Dataset(X, label=y_a), num_boost_round=100)
     
-    params = {
-        'objective': 'regression',
-        'metric': 'rmse',
-        'boosting_type': 'gbdt',
-        'num_leaves': 31,
-        'learning_rate': 0.1,
-        'feature_fraction': 0.9,
-        'verbose': -1
-    }
-    
-    model_home = lgb.train(params, train_data_home, num_boost_round=100)
-    model_away = lgb.train(params, train_data_away, num_boost_round=100)
-    
-    joblib.dump(model_home, 'epl_v31_home_goals_model.pkl')
-    joblib.dump(model_away, 'epl_v31_away_goals_model.pkl')
-    print("✅ 多联赛 LightGBM 模型训练完成并保存！特征数量：21")
+    joblib.dump(model_h, 'epl_v31_home_goals_model.pkl')
+    joblib.dump(model_a, 'epl_v31_away_goals_model.pkl')
+    print("✅ V19.0 模型训练完成！核心特征：10个")
 
 if __name__ == "__main__":
     train_models()
