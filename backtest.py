@@ -21,8 +21,7 @@ def dixon_coles_tau(h, a, home_xg, away_xg, rho=-0.1):
     return 1.0
 
 def run_backtest():
-    print("⏳ 启动时光机回测系统 (极简严选版)...")
-    
+    print("⏳ 启动时光机回测系统 (V25.0 终极验证版)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -42,125 +41,109 @@ def run_backtest():
     try:
         model_h = joblib.load('epl_v31_home_goals_model.pkl')
         model_a = joblib.load('epl_v31_away_goals_model.pkl')
-    except: return
+        calibrated_clf = joblib.load('epl_result_classifier.pkl')
+    except: 
+        print("❌ 找不到模型文件，请先运行 train_v31.py。")
+        return
 
     initial_bankroll = 10000.0
     bankroll = initial_bankroll
     bet_amount = 100.0 
     records = []
-    team_stats = {}
+    team_stats, elo = {}, {}
     backtest_start_date = df['date'].max() - pd.Timedelta(days=365)
     
     for idx, row in df.iterrows():
-        home, away, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
+        h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
         
-        for t in [home, away]:
-            if t not in team_stats: 
-                team_stats[t] = {'xg':[], 'xga':[], 'pts':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[]}
+        for t in [h, a]:
+            if t not in team_stats: team_stats[t] = {'xg':[], 'opp_elo':[], 'pts':[]}
+            if t not in elo: elo[t] = 1500
                 
         if m_date >= backtest_start_date:
-            # 特征提取
-            h_all_xg = np.mean(team_stats[home]['xg'][-5:]) if team_stats[home]['xg'] else league_avg_goals
-            h_home_xg = np.mean(team_stats[home]['home_xg'][-5:]) if team_stats[home]['home_xg'] else league_avg_goals
-            h_home_xga = np.mean(team_stats[home]['home_xga'][-5:]) if team_stats[home]['home_xga'] else league_avg_goals
-            h_pts = np.mean(team_stats[home]['pts'][-5:]) if team_stats[home]['pts'] else 1.0
-            h_trend = (np.mean(team_stats[home]['pts'][-3:]) - np.mean(team_stats[home]['pts'][-5:])) if len(team_stats[home]['pts']) >= 5 else 0.0
+            h_xg = np.mean(team_stats[h]['xg'][-5:]) if team_stats[h]['xg'] else league_avg_goals
+            a_xg = np.mean(team_stats[a]['xg'][-5:]) if team_stats[a]['xg'] else league_avg_goals
+            h_sos = np.mean(team_stats[h]['opp_elo'][-5:]) if team_stats[h]['opp_elo'] else 1500
+            a_sos = np.mean(team_stats[a]['opp_elo'][-5:]) if team_stats[a]['opp_elo'] else 1500
+            h_pts = np.mean(team_stats[h]['pts'][-5:]) if team_stats[h]['pts'] else 1.0
+            a_pts = np.mean(team_stats[a]['pts'][-5:]) if team_stats[a]['pts'] else 1.0
             
-            a_all_xg = np.mean(team_stats[away]['xg'][-5:]) if team_stats[away]['xg'] else league_avg_goals
-            a_away_xg = np.mean(team_stats[away]['away_xg'][-5:]) if team_stats[away]['away_xg'] else league_avg_goals
-            a_away_xga = np.mean(team_stats[away]['away_xga'][-5:]) if team_stats[away]['away_xga'] else league_avg_goals
-            a_pts = np.mean(team_stats[away]['pts'][-5:]) if team_stats[away]['pts'] else 1.0
-            a_trend = (np.mean(team_stats[away]['pts'][-3:]) - np.mean(team_stats[away]['pts'][-5:])) if len(team_stats[away]['pts']) >= 5 else 0.0
+            h_elo = elo.get(h, 1500)
+            a_elo = elo.get(a, 1500)
             
-            feat = [h_all_xg, a_all_xg, h_home_xg, h_home_xga, a_away_xg, a_away_xga, h_pts, a_pts, h_trend, a_trend]
-            feat = np.clip(np.nan_to_num(feat, nan=0.0, posinf=5.0, neginf=0.0), -5.0, 5.0).reshape(1, -1)
+            # 严格对齐 9 个特征
+            feat = [h_elo, a_elo, h_elo - a_elo, h_sos, a_sos, h_xg, a_xg, h_pts, a_pts]
+            feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000).reshape(1, -1)
             
-            pred_h_xg = max(0.1, model_h.predict(feat)[0])
-            pred_a_xg = max(0.1, model_a.predict(feat)[0])
+            # 使用融合后的分类模型预测概率
+            clf_probs = calibrated_clf.predict_proba(feat)[0]
+            p_a_clf, p_d_clf, p_h_clf = clf_probs[0], clf_probs[1], clf_probs[2]
             
-            prob_matrix = np.zeros((7, 7))
-            for i in range(7):
-                for j in range(7):
-                    prob_matrix[i][j] = poisson.pmf(i, pred_h_xg) * poisson.pmf(j, pred_a_xg) * dixon_coles_tau(i, j, pred_h_xg, pred_a_xg)
-            
-            p_h, p_d, p_a = np.sum(np.tril(prob_matrix, -1)), np.sum(np.diag(prob_matrix)), np.sum(np.triu(prob_matrix, 1))
-            total_p = p_h + p_d + p_a
-            p_h, p_d, p_a = p_h/total_p, p_d/total_p, p_a/total_p
-            
-            # 🌟 动态模拟赔率：根据模型概率反推（加上了庄家抽水）
-            # 如果模型算主胜 50%，模拟赔率大概在 1.9 左右
-            sim_odds_h = 1 / (p_h + 0.05) if p_h > 0.1 else 15.0
-            sim_odds_d = 1 / (p_d + 0.05) if p_d > 0.1 else 15.0
-            sim_odds_a = 1 / (p_a + 0.05) if p_a > 0.1 else 15.0
-            
-            # 🌟 极简严选策略
-            # 1. 只买概率最高的一项
-            probs = [p_h, p_d, p_a]
-            max_p = max(probs)
+            max_p = max(p_h_clf, p_d_clf, p_a_clf)
             bet_choice = ""
             
-            if max_p > 0.55: # 胜率不够 55% 绝对不碰
-                if max_p == p_h and sim_odds_h > 1.3: bet_choice = "主胜"
-                elif max_p == p_d and sim_odds_d > 2.8: bet_choice = "平局"
-                elif max_p == p_a and sim_odds_a > 1.6: bet_choice = "客胜"
+            # 🌟 极简严选：概率必须大于 60% 才下注
+            if max_p > 0.60: 
+                if max_p == p_h_clf: bet_choice = "主胜"
+                elif max_p == p_d_clf: bet_choice = "平局"
+                else: bet_choice = "客胜"
                 
             if bet_choice:
                 actual_res = "主胜" if row['home_goals'] > row['away_goals'] else ("平局" if row['home_goals'] == row['away_goals'] else "客胜")
+                # 回测统一用固定的基准赔率 2.0 (真实环境需要依赖赔率)
+                sim_odds = 2.0 
                 
                 if bet_choice == actual_res:
-                    if bet_choice == "主胜": profit = bet_amount * (sim_odds_h - 1)
-                    elif bet_choice == "平局": profit = bet_amount * (sim_odds_d - 1)
-                    else: profit = bet_amount * (sim_odds_a - 1)
+                    profit = bet_amount * (sim_odds - 1)
                 else:
                     profit = -bet_amount
                     
                 bankroll += profit
                 records.append({
-                    'date': m_date.strftime('%Y-%m-%d'), 'match': f"{home} vs {away}",
+                    'date': m_date.strftime('%Y-%m-%d'), 'match': f"{h} vs {a}",
                     'bet': bet_choice, 'actual': actual_res, 'profit': profit, 'bankroll': bankroll
                 })
+        
+        # 更新 Elo
+        exp_h = 1 / (1 + 10 ** ((elo[a] - (elo[h] + 100)) / 400))
+        score_h = 1 if row['home_goals'] > row['away_goals'] else (0.5 if row['home_goals'] == row['away_goals'] else 0)
+        score_a = 1 - score_h
+        elo[h] += 20 * (score_h - exp_h)
+        elo[a] += 20 * (score_a - (1 - exp_h))
         
         # 更新统计数据
         act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
         act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
-        
-        team_stats[home]['xg'].append(act_h_xg); team_stats[home]['xga'].append(act_a_xg)
-        team_stats[home]['home_xg'].append(act_h_xg); team_stats[home]['home_xga'].append(act_a_xg)
-        team_stats[home]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
-        
-        team_stats[away]['xg'].append(act_a_xg); team_stats[away]['xga'].append(act_h_xg)
-        team_stats[away]['away_xg'].append(act_a_xg); team_stats[away]['away_xga'].append(act_h_xg)
-        team_stats[away]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        team_stats[h]['xg'].append(act_h_xg); team_stats[h]['opp_elo'].append(elo[a])
+        team_stats[h]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        team_stats[a]['xg'].append(act_a_xg); team_stats[a]['opp_elo'].append(elo[h])
+        team_stats[a]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
 
     if not records:
-        print("⚠️ 在过去一年的回测中，由于极度严选，模型没有找到符合条件的比赛。")
+        print("⚠️ 在过去一年的回测中，没有找到胜率大于 60% 的比赛。")
         return
         
     df_rec = pd.DataFrame(records)
     total_bets = len(df_rec)
     win_bets = len(df_rec[df_rec['profit'] > 0])
-    win_rate = (win_bets / total_bets) * 100 if total_bets > 0 else 0
+    win_rate = (win_bets / total_bets) * 100
     total_profit = df_rec['profit'].sum()
-    roi = (total_profit / (total_bets * bet_amount)) * 100 if total_bets > 0 else 0
+    roi = (total_profit / (total_bets * bet_amount)) * 100
     
     print(f"✅ 回测完成！共下注 {total_bets} 场，胜率 {win_rate:.1f}%，总盈亏 {total_profit:+.2f} 元，ROI {roi:+.1f}%")
     
-    # 画图
     plt.figure(figsize=(10, 5))
     plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
     plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
-    plt.title('历史回测资金曲线 (V24.0 极简严选版)')
-    plt.xlabel('下注场次')
-    plt.ylabel('资金')
+    plt.title('历史回测资金曲线 (V25.0 终极验证)')
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.savefig('backtest_roi.png', dpi=120)
     plt.close()
     
-    report = f"""--- 历史回测报告 (V24.0 极简严选版) ---
-回测时间段: {backtest_start_date.strftime('%Y-%m-%d')} 至 {df['date'].max().strftime('%Y-%m-%d')}
+    report = f"""--- 历史回测报告 (V25.0 终极验证版) ---
 回测比赛总数: {len(df[df['date'] >= backtest_start_date])} 场
-实际下注场次: {total_bets} 场 (极简严选)
+实际下注场次: {total_bets} 场 (胜率>60%严选)
 命中场次: {win_bets} 场
 下注胜率: {win_rate:.2f}%
 初始资金: {initial_bankroll:.2f}
