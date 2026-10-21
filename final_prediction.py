@@ -84,7 +84,7 @@ now_ts = pd.Timestamp.now()
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= now_ts) & (df_next_round['datetime_parsed'] <= now_ts + pd.Timedelta(hours=72))]
 if df_next_round.empty: exit()
 
-# 🌟 核心：构建赔率字典
+# 🌟 读取真实赔率字典
 real_odds_dict = {}
 if os.path.exists('real_odds.csv'):
     df_odds = pd.read_csv('real_odds.csv')
@@ -119,19 +119,28 @@ if os.path.exists('xg_data.csv'):
     df_xg['date'] = pd.to_datetime(df_xg['date'])
     df_hist = pd.merge(df_hist, df_xg, on=['date', 'home_team_cn', 'away_team_cn'], how='left', suffixes=('', '_xg'))
 
+# 🌟 核心修复：重新计算 Elo 和 赛程强度 (SoS)，对齐 9 大特征
 league_avg_goals = (df_hist['home_goals'].mean() + df_hist['away_goals'].mean()) / 2
-team_stats = {}
+team_stats, elo = {}, {}
 for _, row in df_hist.iterrows():
     h, a = row['home_team_cn'], row['away_team_cn']
     for t in [h, a]:
-        if t not in team_stats: team_stats[t] = {'xg':[], 'xga':[], 'pts':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[]}
+        if t not in team_stats: team_stats[t] = {'xg':[], 'opp_elo':[], 'pts':[]}
+        if t not in elo: elo[t] = 1500
+        
+    # 更新 Elo
+    exp_h = 1 / (1 + 10 ** ((elo[a] - (elo[h] + 100)) / 400))
+    score_h = 1 if row['home_goals'] > row['away_goals'] else (0.5 if row['home_goals'] == row['away_goals'] else 0)
+    elo[h] += 20 * (score_h - exp_h)
+    elo[a] += 20 * ((1-score_h) - (1-exp_h))
+    
+    # 记录历史
     act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
     act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
-    team_stats[h]['xg'].append(act_h_xg); team_stats[h]['xga'].append(act_a_xg)
-    team_stats[h]['home_xg'].append(act_h_xg); team_stats[h]['home_xga'].append(act_a_xg)
+    
+    team_stats[h]['xg'].append(act_h_xg); team_stats[h]['opp_elo'].append(elo[a])
     team_stats[h]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
-    team_stats[a]['xg'].append(act_a_xg); team_stats[a]['xga'].append(act_h_xg)
-    team_stats[a]['away_xg'].append(act_a_xg); team_stats[a]['away_xga'].append(act_h_xg)
+    team_stats[a]['xg'].append(act_a_xg); team_stats[a]['opp_elo'].append(elo[h])
     team_stats[a]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
 
 knowledge_base = open('knowledge.txt', 'r', encoding='utf-8').read() if os.path.exists('knowledge.txt') else ""
@@ -145,7 +154,6 @@ for league in df_next_round['联赛'].unique():
         m_time = pd.to_datetime(match['datetime_parsed']).strftime('%Y-%m-%d %H:%M')
         m_date = pd.to_datetime(match['datetime_parsed']).date()
         
-        # 1. 严谨获取赔率：直接去字典里找
         odds_row = real_odds_dict.get((h_cn, a_cn))
         
         if odds_row is not None:
@@ -159,23 +167,23 @@ for league in df_next_round['联赛'].unique():
             tl_line, over_odd, under_odd = 2.5, 0.0, 0.0
             has_real = False
 
-        h = team_stats.get(h_cn, {'xg':[], 'xga':[], 'pts':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[]})
-        a = team_stats.get(a_cn, {'xg':[], 'xga':[], 'pts':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[]})
+        # 🌟 核心修复：严格构建 9 大特征
+        h = team_stats.get(h_cn, {'xg':[], 'opp_elo':[], 'pts':[]})
+        a = team_stats.get(a_cn, {'xg':[], 'opp_elo':[], 'pts':[]})
         
-        h_all_xg = np.mean(h['xg'][-5:]) if h['xg'] else league_avg_goals
-        h_home_xg = np.mean(h['home_xg'][-5:]) if h['home_xg'] else league_avg_goals
-        h_home_xga = np.mean(h['home_xga'][-5:]) if h['home_xga'] else league_avg_goals
+        h_xg = np.mean(h['xg'][-5:]) if h['xg'] else league_avg_goals
+        a_xg = np.mean(a['xg'][-5:]) if a['xg'] else league_avg_goals
+        h_sos = np.mean(h['opp_elo'][-5:]) if h['opp_elo'] else 1500
+        a_sos = np.mean(a['opp_elo'][-5:]) if a['opp_elo'] else 1500
         h_pts = np.mean(h['pts'][-5:]) if h['pts'] else 1.0
-        h_trend = (np.mean(h['pts'][-3:]) - np.mean(h['pts'][-5:])) if len(h['pts']) >= 5 else 0.0
-        
-        a_all_xg = np.mean(a['xg'][-5:]) if a['xg'] else league_avg_goals
-        a_away_xg = np.mean(a['away_xg'][-5:]) if a['away_xg'] else league_avg_goals
-        a_away_xga = np.mean(a['away_xga'][-5:]) if a['away_xga'] else league_avg_goals
         a_pts = np.mean(a['pts'][-5:]) if a['pts'] else 1.0
-        a_trend = (np.mean(a['pts'][-3:]) - np.mean(a['pts'][-5:])) if len(a['pts']) >= 5 else 0.0
         
-        feat = [h_all_xg, a_all_xg, h_home_xg, h_home_xga, a_away_xg, a_away_xga, h_pts, a_pts, h_trend, a_trend]
-        feat = np.clip(np.nan_to_num(feat, nan=0.0, posinf=5.0, neginf=0.0), -5.0, 5.0).reshape(1, -1)
+        h_elo = elo.get(h_cn, 1500)
+        a_elo = elo.get(a_cn, 1500)
+        
+        # 严格 9 个特征
+        feat = [h_elo, a_elo, h_elo - a_elo, h_sos, a_sos, h_xg, a_xg, h_pts, a_pts]
+        feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000).reshape(1, -1)
         
         home_xg = max(0.1, model_h.predict(feat)[0])
         away_xg = max(0.1, model_a.predict(feat)[0])
@@ -209,12 +217,10 @@ for league in df_next_round['联赛'].unique():
         predict_choice = "主胜" if p_h > max(p_d, p_a) else ("平局" if p_d > max(p_h, p_a) else "客胜")
         oh, od, oa = (real_h, real_d, real_a) if has_real else (2.0, 3.3, 3.5)
         
-        # 2. 盘口分析与下注建议（恢复了完整逻辑）
         final_rec, bet_amt, split_msg = "观望", 0.0, ""
         ou_msg, hc_msg, ou_rec, hc_rec = "暂未抓取到真实盘口", "暂未抓取到真实盘口", "观望", "观望"
         
         if has_real:
-            # 凯利下注
             kh, kd, ka = (p_h*oh-1)/(oh-1), (p_d*od-1)/(od-1), (p_a*oa-1)/(oa-1)
             max_k = max(kh, kd, ka)
             if max_k > 0.02:
@@ -228,7 +234,6 @@ for league in df_next_round['联赛'].unique():
             else:
                 split_msg = "模型认为无正期望价值"
 
-            # 大小球分析
             if pd.notna(tl_line) and tl_line > 0:
                 prob_over = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + j > tl_line)
                 prob_under = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + j < tl_line)
@@ -236,7 +241,6 @@ for league in df_next_round['联赛'].unique():
                 if prob_over * over_odd > 1.05: ou_rec = "大球 (高价值)"
                 elif prob_under * under_odd > 1.05: ou_rec = "小球 (高价值)"
                 
-            # 亚盘分析
             if pd.notna(hc_line) and hc_line != 0:
                 prob_hc_home = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + hc_line > j)
                 prob_hc_away = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + hc_line < j)
@@ -268,8 +272,8 @@ for league in df_next_round['联赛'].unique():
 
         html_report += f"<hr><h3>{m_time} - {h_cn} vs {a_cn} [{league}]</h3>"
         html_report += f"<img src='cid:chart_{len(img_buffers)-1}' width='600'><br>"
-        html_report += f"<p><b>🧑‍⚖️ 主裁信息：</b>{ref_info['name']} (场均黄牌{ref_info['yellow']}张)</p>"
-        html_report += f"<p><b>🧠 教练风格：</b>{h_cn}[{h_coach['style']}] vs {a_cn}[{a_coach['style']}]</p>"
+        html_report += f"<p><b>💪 Elo 实力：</b>{h_cn} {h_elo:.0f} vs {a_cn} {a_elo:.0f} (差值: {h_elo-a_elo:+.0f})</p>"
+        html_report += f"<p><b>📊 赛程强度：</b>主队近5场对手均强{h_sos:.0f} / 客队近5场对手均强{a_sos:.0f}</p>"
         html_report += f"<p><b>🚨 核心伤停：</b>主队[{h_inj_str}] / 客队[{a_inj_str}]</p>"
         html_report += f"<p><b>⚖️ 亚盘让球：</b>{hc_msg} 推荐：<b>{hc_rec}</b></p>"
         html_report += f"<p><b>⚖️ 大小球：</b>{ou_msg} 推荐：<b>{ou_rec}</b></p>"
