@@ -37,7 +37,8 @@ def send_email(subject, html_content, receiver="308730509@qq.com"):
 def distill_knowledge_base():
     if not os.path.exists('knowledge.txt'): return False
     with open('knowledge.txt', 'r', encoding='utf-8') as f: current_knowledge = f.read()
-    if len(current_knowledge) < 500: return False
+    if len(current_knowledge) < 800: return False # 门槛稍微调高一点，避免频繁提纯
+    
     print(f"⏳ 触发大脑提纯！当前字数: {len(current_knowledge)}")
     distill_prompt = f"""你是一位顶级的足球量化风控总监。请将以下冗长的经验库，提炼成不超过8条的核心铁律。
 要求：分类清晰，语言精炼，直击要害。直接输出提炼后的结果。
@@ -46,9 +47,10 @@ def distill_knowledge_base():
     try:
         dist_resp = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": distill_prompt}], stream=False)
         distilled_text = dist_resp.choices[0].message.content.strip()
-        os.rename('knowledge.txt', f'knowledge_backup_{datetime.now().strftime("%Y%m%d_%H%M")}.txt')
+        
+        # 🌟 核心修改：直接覆盖原文件，不生成任何备份！
         with open('knowledge.txt', 'w', encoding='utf-8') as f:
-            f.write(f"--- 知识库提纯于 {datetime.now().strftime('%Y-%m-%d')} ---\n")
+            f.write(f"--- 知识库提纯于 {datetime.now().strftime('%Y-%m-%d %H:%M')} ---\n")
             f.write(distilled_text)
         print("✅ 提纯完成！")
         return True
@@ -56,7 +58,7 @@ def distill_knowledge_base():
         print(f"⚠️ 提纯失败: {e}")
         return False
 
-print("⏳ 正在启动多联赛深度复盘引擎 (V14.0 多线程结算版)...")
+print("⏳ 正在启动多联赛深度复盘引擎...")
 distill_knowledge_base()
 
 if not os.path.exists('predictions_log.csv'): exit()
@@ -66,7 +68,6 @@ df_log['date'] = pd.to_datetime(df_log['date'])
 today = datetime.now()
 past_3_days = today - timedelta(days=3)
 
-# 确保列存在
 cols_to_check = ['actual_score', 'actual_result', 'is_win', 'bet_amount', 'profit', 
                  'ou_recommend', 'ou_bet_amount', 'over_odd', 'under_odd', 'total_line',
                  'hc_recommend', 'hc_bet_amount', 'h_handicap_odd', 'a_handicap_odd', 'handicap']
@@ -77,8 +78,8 @@ pending_review = df_log[(df_log['date'] >= past_3_days) & (df_log['actual_score'
 
 if pending_review.empty:
     print("✅ 最近 3 天没有需要复盘的新比赛。")
-    html_report = f"""<html><body><div style="text-align: center; padding: 50px;"><h2>💡 今日复盘完成</h2><p>最近 3 天内没有需要复盘的新比赛。</p><p style="color: #27ae60;">（已触发日常知识库清理）</p></div></body></html>"""
-    send_email("💡 多联赛 V14.0 深度复盘报告", html_report)
+    html_report = f"""<html><body><div style="text-align: center; padding: 50px;"><h2>💡 今日复盘完成</h2><p>最近 3 天内没有需要复盘的新比赛。</p></div></body></html>"""
+    send_email("💡 多联赛深度复盘报告", html_report)
     exit()
 
 print(f"⏳ 找到 {len(pending_review)} 场待复盘比赛，正在抓取赛果...")
@@ -131,7 +132,6 @@ for idx, row in pending_review.iterrows():
         hg, ag = res
         actual_res = "主胜" if hg > ag else ("平局" if hg == ag else "客胜")
         
-        # 1. 结算胜平负
         bet = float(row.get('bet_amount', 0))
         profit = 0.0
         is_win = "未下注"
@@ -146,7 +146,6 @@ for idx, row in pending_review.iterrows():
                 profit = -bet
                 is_win = "❌ 失手"
         
-        # 2. 结算大小球
         ou_bet = float(row.get('ou_bet_amount', 0))
         ou_rec = str(row.get('ou_recommend', '观望'))
         ou_profit = 0.0
@@ -164,7 +163,6 @@ for idx, row in pending_review.iterrows():
                 ou_profit = -ou_bet
                 ou_is_win = "❌ 失手"
 
-        # 3. 结算让球盘
         hc_bet = float(row.get('hc_bet_amount', 0))
         hc_rec = str(row.get('hc_recommend', '观望'))
         hc_profit = 0.0
@@ -221,11 +219,7 @@ prompt = f"""你是一位顶级的足球量化风控总监。今天我们进行�
 必须严格包含以下三个模块，多写短句，少写长段，直接输出 Markdown 格式：
 
 ### 📊 一、 战场速览
-（总结表现，尤其是三条战线的盈利/亏损情况，点出红黑榜）
-
 ### 🚨 二、 典型错题本
-（挑出 1-2 场最有代表性的错局，指出是阵型克制？情报缺失？还是模型盲区？）
-
 ### 💡 三、 经验入库
 - [规则1] ...
 - [规则2] ...
@@ -259,8 +253,7 @@ df_bank.to_csv('bankroll.csv', index=False, encoding='utf-8-sig')
 html_content = review_report_md.replace('\n', '<br>').replace('###', '<h3 style="color:#2c3e50;border-left:4px solid #3498db;padding-left:10px;">').replace('- ', '• ')
 
 html_report = f"""
-<html>
-<head><style>
+<html><head><style>
     body {{ font-family: 'Segoe UI', sans-serif; color: #333; line-height: 1.6; background-color: #f9f9f9; padding: 20px; }}
     .container {{ max-width: 800px; margin: auto; background: #fff; padding: 30px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); }}
     .header {{ text-align: center; border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 20px; }}
@@ -268,23 +261,13 @@ html_report = f"""
     .stat-item {{ text-align: center; }}
     .stat-value {{ font-size: 24px; font-weight: bold; color: #0056b3; }}
     .stat-label {{ font-size: 14px; color: #666; }}
-</style></head>
-<body>
+</style></head><body>
 <div class="container">
     <div class="header"><h2>💡 足球量化多联赛深度复盘 (三线结算)</h2><p>{today.strftime('%Y-%m-%d')}</p></div>
     <div class="stats-dashboard">
-        <div class="stat-item">
-            <div class="stat-value">{win_rate:.1f}%</div>
-            <div class="stat-label">赛果胜率 ({correct_count}/{total_count})</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-value" style="color: {'#27ae60' if total_profit >= 0 else '#c0392b'};">{total_profit:+.2f}</div>
-            <div class="stat-label">今日总盈亏</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-value">{bankroll:.2f}</div>
-            <div class="stat-label">当前资金</div>
-        </div>
+        <div class="stat-item"><div class="stat-value">{win_rate:.1f}%</div><div class="stat-label">赛果胜率 ({correct_count}/{total_count})</div></div>
+        <div class="stat-item"><div class="stat-value" style="color: {'#27ae60' if total_profit >= 0 else '#c0392b'};">{total_profit:+.2f}</div><div class="stat-label">今日总盈亏</div></div>
+        <div class="stat-item"><div class="stat-value">{bankroll:.2f}</div><div class="stat-label">当前资金</div></div>
     </div>
     <div class="content">{html_content}</div>
     <div class="footer" style="text-align: center; color: #aaa; font-size: 12px; margin-top: 30px;"><p>系统自动生成 · 职业量化分析</p></div>
@@ -292,5 +275,5 @@ html_report = f"""
 </body></html>
 """
 
-send_email("💡 多联赛 V14.0 深度复盘报告 (三线结算)", html_report)
+send_email("💡 多联赛深度复盘报告 (三线结算)", html_report)
 print("✅ 复盘与提纯检查完毕！")
