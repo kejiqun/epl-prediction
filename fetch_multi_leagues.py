@@ -9,20 +9,28 @@ def fetch_schedule_and_odds():
     all_matches = []
     today = datetime.now()
     
-    # 🌟 核心修改：抛弃日期，直接以 (主队, 客队) 为键构建赔率字典！
-    real_odds = {}
+    print("⏳ 正在读取 PinnWire 真实盘口...")
+    # 🌟 第一步：强行把 PinnWire 的真实盘口全部放进 all_matches
     if os.path.exists('real_odds.csv'):
         df_odds = pd.read_csv('real_odds.csv')
         for _, r in df_odds.iterrows():
-            # 将所有的赔率列全部塞进去
-            real_odds[(r['主队'], r['客队'])] = (
-                r['主胜赔率'], r['平局赔率'], r['客胜赔率'],
-                r['让球盘口'], r['主让胜赔率'], r['客受让胜赔率'],
-                r['大小球盘口'], r['大球赔率'], r['小球赔率']
-            )
+            # 把 PinnWire 的时间格式转成标准 YYYY-MM-DD
+            try:
+                m_date = pd.to_datetime(r['比赛时间']).strftime('%Y-%m-%dT20:00:00Z') # 假设都是晚上8点
+            except:
+                m_date = r['比赛时间']
+                
+            all_matches.append({
+                '联赛': '真实盘口赛事', '比赛时间': m_date, '主队': r['主队'], '客队': r['客队'],
+                '主胜赔率': r['主胜赔率'], '平局赔率': r['平局赔率'], '客胜赔率': r['客胜赔率'],
+                '让球盘口': r.get('让球盘口', 0.0), '主让胜赔率': r.get('主让胜赔率', 0.0), '客受让胜赔率': r.get('客受让胜赔率', 0.0),
+                '大小球盘口': r.get('大小球盘口', 2.5), '大球赔率': r.get('大球赔率', 0.0), '小球赔率': r.get('小球赔率', 0.0)
+            })
+        print(f"✅ 已强行导入 {len(df_odds)} 场 PinnWire 真实比赛。")
 
+    print("⏳ 正在抓取多联赛赛程...")
+    # 🌟 第二步：抓取 ESPN 赛程，如果 ESPN 有的比赛，且上面没抓到的，就补进去
     for league_name, config in LEAGUES.items():
-        print(f"⏳ 正在抓取 {league_name} 赛程...")
         upcoming = []
         for i in range(7): 
             date_str = (today + timedelta(days=i)).strftime('%Y%m%d')
@@ -44,16 +52,11 @@ def fetch_schedule_and_odds():
         for m in upcoming:
             h_cn, a_cn = m['home'], m['away']
             
-            # 🌟 核心修改：只要队名在字典里，直接赋值！
-            if (h_cn, a_cn) in real_odds:
-                odds = real_odds[(h_cn, a_cn)]
-                all_matches.append({
-                    '联赛': m['league'], '比赛时间': m['datetime'], '主队': h_cn, '客队': a_cn,
-                    '主胜赔率': odds[0], '平局赔率': odds[1], '客胜赔率': odds[2],
-                    '让球盘口': odds[3], '主让胜赔率': odds[4], '客受让胜赔率': odds[5],
-                    '大小球盘口': odds[6], '大球赔率': odds[7], '小球赔率': odds[8]
-                })
-            else:
+            # 检查这个比赛是不是已经在 PinnWire 里了（通过主客队名字判断）
+            existing = next((x for x in all_matches if x['主队'] == h_cn and x['客队'] == a_cn), None)
+            
+            if not existing:
+                # 如果不在，说明 PinnWire 没这场的赔率，补 0
                 all_matches.append({
                     '联赛': m['league'], '比赛时间': m['datetime'], '主队': h_cn, '客队': a_cn,
                     '主胜赔率': 0, '平局赔率': 0, '客胜赔率': 0,
@@ -63,6 +66,6 @@ def fetch_schedule_and_odds():
             
     df = pd.DataFrame(all_matches)
     if not df.empty:
-        df = df.drop_duplicates(subset=['比赛时间', '主队', '客队'])
+        df = df.drop_duplicates(subset=['主队', '客队'])
         df.to_csv('daily_matches.csv', index=False, encoding='utf-8-sig')
-        print(f"✅ 赛程与真实盘口融合完毕！")
+        print(f"✅ 赛程与真实盘口融合完毕！包含真实赔率的比赛共 {len(df[df['主胜赔率']>0])} 场")
