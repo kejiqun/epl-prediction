@@ -13,7 +13,8 @@ warnings.filterwarnings('ignore')
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
-def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.08):
+# 🌟 核心升级：引入更符合实战的 Dixon-Coles 参数
+def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
     def dixon_coles_tau(h, a):
         if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
         elif h == 0 and a == 1: return 1 + home_xg * rho
@@ -30,7 +31,7 @@ def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.08):
     return scores
 
 def run_backtest():
-    print("⏳ 启动时光机回测系统 (V36.0 强正则化版)...")
+    print("⏳ 启动时光机回测系统 (V37.0 比分偏置矩阵版)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -117,7 +118,8 @@ def run_backtest():
             
             scores_list = generate_score_matrix(pred_h_xg, pred_a_xg)
             
-            valid_scores = [s for s in scores_list if s[1] > 0.012]
+            # 只要概率大于 1.2% 的比分，才有资格进入 Top3 备选池
+            valid_scores = [s for s in scores_list if s[1] > 0.012] 
             pred_top1 = valid_scores[0][0]
             pred_top3 = [s[0] for s in valid_scores[:3]]
             
@@ -175,7 +177,7 @@ def run_backtest():
         plt.figure(figsize=(10, 5))
         plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
         plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
-        plt.title('历史回测资金曲线 (V36.0 强正则化版)')
+        plt.title('历史回测资金曲线 (V37.0 比分偏置版)')
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.6)
         plt.savefig('backtest_roi.png', dpi=120)
@@ -187,7 +189,7 @@ def run_backtest():
     print(f"✅ 回测完成！下注胜率 {win_rate:.1f}%，ROI {roi:+.1f}%")
     print(f"🎯 比分命中率：首选 {top1_acc:.1f}%，前三 {top3_acc:.1f}%")
     
-    report = f"""--- 历史回测报告 (V36.0 14特征强正则化版) ---
+    report = f"""--- 历史回测报告 (V37.0 比分偏置版) ---
 总预测场次: {total_predicted} 场
 首选比分精准命中率: {top1_acc:.2f}%
 Top3比分包含命中率: {top3_acc:.2f}%
