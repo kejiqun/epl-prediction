@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
+import xgboost as xgb
 from sklearn.calibration import CalibratedClassifierCV
 import joblib
 import os
@@ -21,7 +22,7 @@ def calculate_elo(df):
     return df, elo
 
 def train_models():
-    print("⏳ 开始训练 V27.0 模型 (10大特征)...")
+    print("⏳ 开始训练 V33.0 集成模型 (LGB + XGB)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -32,7 +33,7 @@ def train_models():
     df['away_team_cn'] = df['away_team'].apply(translate_team_name)
     
     df, final_elo = calculate_elo(df)
-    joblib.dump(final_elo, 'elo_dict.pkl') # 存下最终的 Elo 字典
+    joblib.dump(final_elo, 'elo_dict.pkl')
     
     if os.path.exists('xg_data.csv'):
         df_xg = pd.read_csv('xg_data.csv')
@@ -49,7 +50,6 @@ def train_models():
             if t not in team_stats: team_stats[t] = {'xg':[], 'opp_elo':[], 'pts':[]}
             if t not in last_date: last_date[t] = None
         
-        # 休息天数计算
         h_rest = (m_date - last_date[h]).days if last_date[h] else 7
         a_rest = (m_date - last_date[a]).days if last_date[a] else 7
         rest_diff = h_rest - a_rest
@@ -61,7 +61,6 @@ def train_models():
         h_pts = np.mean(team_stats[h]['pts'][-5:]) if team_stats[h]['pts'] else 1.0
         a_pts = np.mean(team_stats[a]['pts'][-5:]) if team_stats[a]['pts'] else 1.0
         
-        # 严格 10 个特征
         feat = [row['home_elo'], row['away_elo'], row['home_elo'] - row['away_elo'], h_sos, a_sos, h_xg, a_xg, h_pts, a_pts, rest_diff]
         feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000)
         features.append(feat)
@@ -86,18 +85,28 @@ def train_models():
     y_a = np.array(labels_away, dtype=np.float32)
     y_res = np.array(labels_result, dtype=np.int32)
     
+    # 1. 训练 LightGBM
     params_reg = {'objective': 'regression', 'metric': 'rmse', 'verbose': -1}
-    model_h = lgb.train(params_reg, lgb.Dataset(X, label=y_h), num_boost_round=100)
-    model_a = lgb.train(params_reg, lgb.Dataset(X, label=y_a), num_boost_round=100)
+    model_h_lgb = lgb.train(params_reg, lgb.Dataset(X, label=y_h), num_boost_round=100)
+    model_a_lgb = lgb.train(params_reg, lgb.Dataset(X, label=y_a), num_boost_round=100)
     
+    # 2. 训练 XGBoost
+    model_h_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1)
+    model_a_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1)
+    model_h_xgb.fit(X, y_h)
+    model_a_xgb.fit(X, y_a)
+    
+    # 3. 训练分类器 (胜平负)
     clf = lgb.LGBMClassifier(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, verbose=-1)
     calibrated_clf = CalibratedClassifierCV(clf, method='isotonic', cv=3)
     calibrated_clf.fit(X, y_res)
     
-    joblib.dump(model_h, 'epl_v31_home_goals_model.pkl')
-    joblib.dump(model_a, 'epl_v31_away_goals_model.pkl')
+    joblib.dump(model_h_lgb, 'epl_v31_home_goals_model_lgb.pkl')
+    joblib.dump(model_a_lgb, 'epl_v31_away_goals_model_lgb.pkl')
+    joblib.dump(model_h_xgb, 'epl_v31_home_goals_model_xgb.pkl')
+    joblib.dump(model_a_xgb, 'epl_v31_away_goals_model_xgb.pkl')
     joblib.dump(calibrated_clf, 'epl_result_classifier.pkl')
-    print("✅ V27.0 模型训练完成！特征数量：10")
+    print("✅ V33.0 集成模型训练完成！(LGB + XGB)")
 
 if __name__ == "__main__":
     train_models()
