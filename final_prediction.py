@@ -56,33 +56,19 @@ def get_match_weather(home_team, date_str):
     except: pass
     return "未知", 0
 
-# 🌟 深水区核心：更高级的比分矩阵生成器
 def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.08):
-    # rho是Dixon-Coles修正参数，-0.08是更贴近现代足球的均值，修正0-0, 1-0, 0-1, 1-1的概率
     def dixon_coles_tau(h, a):
         if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
         elif h == 0 and a == 1: return 1 + home_xg * rho
         elif h == 1 and a == 0: return 1 + away_xg * rho
         elif h == 1 and a == 1: return 1 - rho
         return 1.0
-
     matrix = np.zeros((max_goals + 1, max_goals + 1))
     for i in range(max_goals + 1):
         for j in range(max_goals + 1):
-            base_prob = poisson.pmf(i, home_xg) * poisson.pmf(j, away_xg)
-            matrix[i][j] = base_prob * dixon_coles_tau(i, j)
-    
-    # 归一化矩阵，保证所有概率和为1
-    total_p = np.sum(matrix)
-    matrix = matrix / total_p
-    
-    # 提取所有比分及其概率
-    scores = []
-    for i in range(max_goals + 1):
-        for j in range(max_goals + 1):
-            scores.append((f"{i}-{j}", matrix[i][j]))
-    
-    # 按概率降序排列
+            matrix[i][j] = poisson.pmf(i, home_xg) * poisson.pmf(j, away_xg) * dixon_coles_tau(i, j)
+    matrix = matrix / np.sum(matrix)
+    scores = [(f"{i}-{j}", matrix[i][j]) for i in range(max_goals + 1) for j in range(max_goals + 1)]
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores, matrix
 
@@ -103,13 +89,27 @@ def ai_adjust_probabilities(home_cn, away_cn, p_h, p_d, p_a, injury_info, odds_t
     except: pass
     return p_h, p_d, p_a, "AI未干预"
 
+# 🌟 战役三：动态凯利（根据近期胜率调节仓位）
 bankroll = 10000.0
+kelly_multiplier = 0.5 # 默认基础倍率
 if os.path.exists('bankroll.csv'):
-    try: bankroll = pd.read_csv('bankroll.csv').iloc[-1]['当前资金']
+    try:
+        df_bank = pd.read_csv('bankroll.csv')
+        bankroll = df_bank.iloc[-1]['当前资金']
+        # 统计近10场的盈亏情况
+        recent = df_bank.tail(10)
+        if '盈亏' in recent.columns:
+            wins = len(recent[recent['盈亏'] > 0])
+            win_rate = wins / len(recent)
+            if win_rate < 0.4:
+                kelly_multiplier = 0.3 # 连黑，自动收缩仓位（0.5 -> 0.3）
+                print("⚠️ 近期状态低迷，自动启动防守模式，削减下注金额。")
+            elif win_rate > 0.6:
+                kelly_multiplier = 0.7 # 连红，适当加大仓位
+                print("🔥 近期状态火热，自动启动进攻模式，增加下注金额。")
     except: pass
 
 if not os.path.exists('daily_matches.csv'): exit()
-
 df_next_round = pd.read_csv('daily_matches.csv')
 df_next_round['主队'] = df_next_round['主队'].apply(translate_team_name)
 df_next_round['客队'] = df_next_round['客队'].apply(translate_team_name)
@@ -119,22 +119,22 @@ df_next_round['match_date_str'] = df_next_round['datetime_parsed'].dt.strftime('
 tomorrow = datetime.now() + timedelta(days=1)
 start_of_tomorrow = tomorrow.replace(hour=0, minute=0, second=0, microsecond=0)
 end_of_tomorrow = start_of_tomorrow + timedelta(days=1)
-
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= start_of_tomorrow) & (df_next_round['datetime_parsed'] < end_of_tomorrow)]
 df_next_round = df_next_round.sort_values('datetime_parsed')
+if df_next_round.empty: exit()
 
-if df_next_round.empty: 
-    print("⚠️ 明天没有比赛。")
-    exit()
-
+# 读取赔率
 real_odds_dict = {}
 if os.path.exists('real_odds.csv'):
     for _, r in pd.read_csv('real_odds.csv').iterrows():
         try: real_odds_dict[(pd.to_datetime(r['比赛时间']).strftime('%Y-%m-%d'), r['主队'], r['客队'])] = r
         except: pass
+
+# 🌟 战役一：国彩对比报警逻辑
+manual_odds_dict = {}
 if os.path.exists('manual_odds.csv'):
     for _, r in pd.read_csv('manual_odds.csv').iterrows():
-        try: real_odds_dict[(str(r['比赛日期']).strip(), r['主队'], r['客队'])] = r
+        try: manual_odds_dict[(str(r['比赛日期']).strip(), r['主队'], r['客队'])] = r
         except: pass
 
 ref_dict, coach_dict = {}, {}
@@ -202,18 +202,33 @@ for league in df_next_round['联赛'].unique():
         m_time = pd.to_datetime(match['datetime_parsed']).strftime('%m月%d日 %H:%M')
         m_date = pd.to_datetime(match['datetime_parsed']).date()
         
+        # 获取国外锐利盘口
         odds_row = real_odds_dict.get((match_date_str, h_cn, a_cn))
+        # 获取国内手动盘口
+        manual_row = manual_odds_dict.get((match_date_str, h_cn, a_cn))
         
-        if odds_row is not None:
-            real_h, real_d, real_a = odds_row['主胜赔率'], odds_row['平局赔率'], odds_row['客胜赔率']
-            hc_line, hc_h_odd, hc_a_odd = odds_row.get('让球盘口', 0.0), odds_row.get('主让胜赔率', 0.0), odds_row.get('客受让胜赔率', 0.0)
-            tl_line, over_odd, under_odd = odds_row.get('大小球盘口', 2.5), odds_row.get('大球赔率', 0.0), odds_row.get('小球赔率', 0.0)
+        # 优先使用手动填写的，因为那是你要买的真实赔率
+        use_odds = manual_row if manual_row is not None else odds_row
+        has_real = False
+        
+        if use_odds is not None:
+            real_h, real_d, real_a = use_odds['主胜赔率'], use_odds['平局赔率'], use_odds['客胜赔率']
+            hc_line, hc_h_odd, hc_a_odd = use_odds.get('让球盘口', 0.0), use_odds.get('主让胜赔率', 0.0), use_odds.get('客受让胜赔率', 0.0)
+            tl_line, over_odd, under_odd = use_odds.get('大小球盘口', 2.5), use_odds.get('大球赔率', 0.0), use_odds.get('小球赔率', 0.0)
             has_real = True
+            
+            # 🌟 战役一：国彩对比报警
+            trap_warning = ""
+            if manual_row is not None and odds_row is not None:
+                diff_h = abs(manual_row['主胜赔率'] - odds_row['主胜赔率']) / odds_row['主胜赔率']
+                if diff_h > 0.15: # 赔率差异超过 15%
+                    trap_warning = f"⚠️ <b>数据异常：</b>国内赔率({manual_row['主胜赔率']})与国外锐利盘({odds_row['主胜赔率']})差异达 {diff_h*100:.1f}%，疑似机构在设陷阱或存在信息差。"
         else:
             real_h, real_d, real_a = 0, 0, 0
             hc_line, hc_h_odd, hc_a_odd = 0.0, 0.0, 0.0
             tl_line, over_odd, under_odd = 2.5, 0.0, 0.0
             has_real = False
+            trap_warning = ""
 
         h = team_stats.get(h_cn, {'xg':[], 'opp_elo':[], 'pts':[]})
         a = team_stats.get(a_cn, {'xg':[], 'opp_elo':[], 'pts':[]})
@@ -242,7 +257,13 @@ for league in df_next_round['联赛'].unique():
         home_xg *= max(0.6, 1 - h_impact * 0.1) 
         away_xg *= max(0.6, 1 - a_impact * 0.1)
         
-        # 🌟 使用新版比分矩阵生成器
+        # 🌟 战役二：天气实战因素加权
+        w_text, w_temp = get_match_weather(h_cn, match_date_str)
+        if "雨" in w_text or "雪" in w_text:
+            home_xg *= 0.9
+            away_xg *= 0.9
+            print(f"🌧️ 预警：{h_cn} 遭遇 {w_text}，自动削减双方预期进球。")
+
         scores_list, prob_matrix = generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.08)
         
         p_h, p_d, p_a = np.sum(np.tril(prob_matrix, -1)), np.sum(np.diag(prob_matrix)), np.sum(np.triu(prob_matrix, 1))
@@ -273,7 +294,8 @@ for league in df_next_round['联赛'].unique():
             if max_k > 0.02:
                 b_choice = "主胜" if max_k == kh else ("平局" if max_k == kd else "客胜")
                 if (b_choice == "主胜" and p_h > 0.25) or (b_choice == "平局" and p_d > 0.25) or (b_choice == "客胜" and p_a > 0.25):
-                    safe_k = min(max_k * 0.5, 0.05)
+                    # 使用动态凯利倍率
+                    safe_k = min(max_k * kelly_multiplier, 0.05)
                     bet_amt, final_rec = bankroll * safe_k, b_choice
                     split_msg = f"推荐下注 {bet_amt:.2f}元"
                 else: split_msg = "概率不足，建议空仓观望"
@@ -303,13 +325,11 @@ for league in df_next_round['联赛'].unique():
                 '让球': hc_rec, '大小球': ou_rec
             })
 
-        # 🌟 提取更专业的比分推荐（过滤掉极低概率的比分，确保推荐合理）
-        valid_scores = [s for s in scores_list if s[1] > 0.015] # 只保留概率大于1.5%的比分
+        valid_scores = [s for s in scores_list if s[1] > 0.015]
         top3 = valid_scores[:3]
         top3_str = " | ".join([f"<b>{s[0]}</b> ({s[1]*100:.1f}%)" for s in top3])
         best_score = top3[0][0]
 
-        w_text, w_temp = get_match_weather(h_cn, match_date_str)
         venue = f"{h_cn}主场" 
 
         prompt = f"""资深专家，点评(150字内)：比赛：{h_cn} vs {a_cn}。倾向：{predict_choice}。伤停：{injury_info}。大小球/让球：{ou_msg} / {hc_msg}。AI理由：{ai_reason}。以“推荐关注：{final_rec}”结尾。"""
@@ -340,12 +360,11 @@ for league in df_next_round['联赛'].unique():
         plt.tight_layout()
         buf = io.BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); buf.seek(0); img_buffers.append(buf); plt.close(fig)
 
-        # 新增比分命中记录，供回测使用
         prediction_logs.append({
             'date': m_date.strftime('%Y-%m-%d'), 'league': league, 'home_team': h_cn, 'away_team': a_cn,
             'predicted_result': final_rec, 'bet_amount': round(bet_amt, 2),
             'pred_prob_h': round(p_h, 4), 'pred_prob_d': round(p_d, 4), 'pred_prob_a': round(p_a, 4),
-            'predicted_score': best_score, 'top3_scores': top3_str.replace("<b>", "").replace("</b>", ""), # 存入原始字符串供回测比对
+            'predicted_score': best_score, 'top3_scores': top3_str.replace("<b>", "").replace("</b>", ""),
             'odds_h': oh, 'odds_d': od, 'odds_a': oa, 'home_injuries': h_inj_str, 'away_injuries': a_inj_str
         })
 
@@ -362,6 +381,8 @@ for league in df_next_round['联赛'].unique():
                 <span style="font-size: 14px; color: #856404; font-weight: bold;">🎯 首选比分：<span style="font-size: 20px; color: #d9534f;">{best_score}</span></span>
                 <span style="font-size: 12px; color: #666;">防冷补充: {top3_str}</span>
             </div>
+
+            {f"<div style='background-color: #f8d7da; color: #721c24; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; font-weight: bold;'>{trap_warning}</div>" if trap_warning else ""}
 
             <div style="display: flex; flex-wrap: wrap; font-size: 13px; line-height: 1.8; color: #444; margin-bottom: 10px;">
                 <div style="width: 50%;">💪 <b>Elo:</b> 主 {h_elo:.0f} / 客 {a_elo:.0f}</div>
@@ -388,7 +409,7 @@ for league in df_next_round['联赛'].unique():
         """
 
 final_html = "<html><body style='background-color: #f4f7f6; padding: 15px; font-family: \"Helvetica Neue\", Arial, sans-serif;'><div style='max-width: 850px; margin: auto;'>"
-final_html += "<h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; font-size: 24px;'>⚽ 明日赛事量化预测 (V31.0 比分精算版)</h1>"
+final_html += "<h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; font-size: 24px;'>⚽ 明日赛事量化预测 (V32.0 实战闭环版)</h1>"
 
 if jczq_picks_list:
     df_picks = pd.DataFrame(jczq_picks_list)
@@ -411,4 +432,4 @@ if os.path.exists('predictions_log.csv'):
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("V31.0 明日赛事量化预测 (比分精算版)", final_html, img_buffers)
+send_rich_email("V32.0 明日赛事量化预测 (实战闭环版)", final_html, img_buffers)
