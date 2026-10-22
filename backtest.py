@@ -20,29 +20,19 @@ def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.08):
         elif h == 1 and a == 0: return 1 + away_xg * rho
         elif h == 1 and a == 1: return 1 - rho
         return 1.0
-
     matrix = np.zeros((max_goals + 1, max_goals + 1))
     for i in range(max_goals + 1):
         for j in range(max_goals + 1):
-            base_prob = poisson.pmf(i, home_xg) * poisson.pmf(j, away_xg)
-            matrix[i][j] = base_prob * dixon_coles_tau(i, j)
-    
-    total_p = np.sum(matrix)
-    matrix = matrix / total_p
-    
-    scores = []
-    for i in range(max_goals + 1):
-        for j in range(max_goals + 1):
-            scores.append((f"{i}-{j}", matrix[i][j]))
+            matrix[i][j] = poisson.pmf(i, home_xg) * poisson.pmf(j, away_xg) * dixon_coles_tau(i, j)
+    matrix = matrix / np.sum(matrix)
+    scores = [(f"{i}-{j}", matrix[i][j]) for i in range(max_goals + 1) for j in range(max_goals + 1)]
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores
 
 def run_backtest():
-    print("⏳ 启动时光机回测系统 (V31.1 强制更新版)...")
+    print("⏳ 启动时光机回测系统 (V33.0 集成模型版)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
-    if not os.path.exists(history_file): 
-        print("❌ 找不到历史数据")
-        return
+    if not os.path.exists(history_file): return
         
     df = pd.read_csv(history_file)
     df['date'] = pd.to_datetime(df['date'])
@@ -58,8 +48,10 @@ def run_backtest():
     league_avg_goals = (df['home_goals'].mean() + df['away_goals'].mean()) / 2
     
     try:
-        model_h = joblib.load('epl_v31_home_goals_model.pkl')
-        model_a = joblib.load('epl_v31_away_goals_model.pkl')
+        model_h_lgb = joblib.load('epl_v31_home_goals_model_lgb.pkl')
+        model_a_lgb = joblib.load('epl_v31_away_goals_model_lgb.pkl')
+        model_h_xgb = joblib.load('epl_v31_home_goals_model_xgb.pkl')
+        model_a_xgb = joblib.load('epl_v31_away_goals_model_xgb.pkl')
         calibrated_clf = joblib.load('epl_result_classifier.pkl')
         elo_dict = joblib.load('elo_dict.pkl')
     except Exception as e: 
@@ -102,11 +94,18 @@ def run_backtest():
             feat = [h_elo, a_elo, h_elo - a_elo, h_sos, a_sos, h_xg, a_xg, h_pts, a_pts, rest_diff]
             feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000).reshape(1, -1)
             
-            pred_h_xg = max(0.1, model_h.predict(feat)[0])
-            pred_a_xg = max(0.1, model_a.predict(feat)[0])
+            # 🌟 集成预测
+            pred_h_xg_lgb = model_h_lgb.predict(feat)[0]
+            pred_h_xg_xgb = model_h_xgb.predict(feat)[0]
+            pred_h_xg = max(0.1, (pred_h_xg_lgb + pred_h_xg_xgb) / 2.0)
+            
+            pred_a_xg_lgb = model_a_lgb.predict(feat)[0]
+            pred_a_xg_xgb = model_a_xgb.predict(feat)[0]
+            pred_a_xg = max(0.1, (pred_a_xg_lgb + pred_a_xg_xgb) / 2.0)
+            
             scores_list = generate_score_matrix(pred_h_xg, pred_a_xg)
             
-            valid_scores = [s for s in scores_list if s[1] > 0.015]
+            valid_scores = [s for s in scores_list if s[1] > 0.012] # 放宽阈值
             pred_top1 = valid_scores[0][0]
             pred_top3 = [s[0] for s in valid_scores[:3]]
             
@@ -148,7 +147,6 @@ def run_backtest():
         
         last_date[h] = m_date; last_date[a] = m_date
 
-    # 🌟 除零保护 & 强制输出
     total_bets = len(records)
     win_rate = 0.0
     roi = 0.0
@@ -164,7 +162,7 @@ def run_backtest():
         plt.figure(figsize=(10, 5))
         plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
         plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
-        plt.title('历史回测资金曲线 (V31.1)')
+        plt.title('历史回测资金曲线 (V33.0 集成版)')
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.6)
         plt.savefig('backtest_roi.png', dpi=120)
@@ -176,8 +174,7 @@ def run_backtest():
     print(f"✅ 回测完成！下注胜率 {win_rate:.1f}%，ROI {roi:+.1f}%")
     print(f"🎯 比分命中率：首选 {top1_acc:.1f}%，前三 {top3_acc:.1f}%")
     
-    # 强制生成带版本号和新数据的报告
-    report = f"""--- 历史回测报告 (V31.1 强制更新版) ---
+    report = f"""--- 历史回测报告 (V33.0 集成版) ---
 总预测场次: {total_predicted} 场
 首选比分精准命中率: {top1_acc:.2f}%
 Top3比分包含命中率: {top3_acc:.2f}%
