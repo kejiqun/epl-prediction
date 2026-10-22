@@ -1,183 +1,860 @@
-<html><body><h2>⚽ V29.0 真实数据预测 (竞彩狙击版)</h2>
-    <div style='background-color: #fff3cd; border: 2px solid #ffc107; padding: 20px; border-radius: 8px; margin-bottom: 20px;'>
-        <h3 style='color: #856404; margin-top: 0;'>🎯 今日竞彩狙击清单 (仅限有高价值比赛)</h3>
-        <p style='color: #856404;'>系统已为您过滤掉所有无效比赛，以下比赛经模型精算具有真实盈利空间。请按照此清单去彩票店挑选！</p>
-        <table border="1" class="dataframe table table-striped">
+<html><body style='background-color: #f4f7f6; padding: 20px; font-family: "Helvetica Neue", Arial, sans-serif;'><div style='max-width: 800px; margin: auto;'><h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 15px;'>⚽ 明日赛事量化预测 (V30.0 臻美版)</h1>
+    <style>
+        #pick_table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        #pick_table th { background-color: #3498db; color: white; padding: 10px; text-align: center; }
+        #pick_table td { padding: 8px; border-bottom: 1px solid #eee; text-align: center; }
+        #pick_table tr:nth-child(even) { background-color: #f9f9f9; }
+    </style>
+    
+    <div style='background-color: #fff; border-top: 5px solid #f39c12; padding: 25px; border-radius: 10px; margin-bottom: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);'>
+        <h3 style='color: #d35400; margin-top: 0; font-size: 22px; text-align: center;'>🎯 今日竞彩狙击清单 (高价值提取)</h3>
+        <p style='text-align: center; color: #7f8c8d; font-size: 14px;'>系统已过滤无效比赛，以下为具备量化盈利空间的标的：</p>
+        <table class="dataframe table table-hover" id="pick_table">
   <thead>
     <tr style="text-align: center;">
       <th>比赛时间</th>
       <th>赛事</th>
       <th>对阵</th>
-      <th>胜平负推荐</th>
-      <th>推荐金额</th>
-      <th>让球推荐</th>
-      <th>大小球推荐</th>
+      <th>推荐</th>
+      <th>金额</th>
+      <th>让球</th>
+      <th>大小球</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>2026-10-24 19:30</td>
-      <td>英超</td>
-      <td>阿斯顿维拉 vs 曼城</td>
+      <td>10月23日 00:45</td>
+      <td>欧联</td>
+      <td>萨格勒布迪纳摩 vs 奈梅亨</td>
       <td>平局</td>
-      <td>503.06</td>
-      <td>观望</td>
-      <td>小球 (高价值)</td>
-    </tr>
-    <tr>
-      <td>2026-10-24 22:00</td>
-      <td>英超</td>
-      <td>阿森纳 vs 埃弗顿</td>
-      <td>平局</td>
-      <td>467.34</td>
-      <td>客队赢盘 (高价值)</td>
-      <td>观望</td>
-    </tr>
-    <tr>
-      <td>2026-10-24 22:00</td>
-      <td>英超</td>
-      <td>考文垂 vs 富勒姆</td>
-      <td>客胜</td>
-      <td>447.84</td>
-      <td>观望</td>
-      <td>小球 (高价值)</td>
-    </tr>
-    <tr>
-      <td>2026-10-24 20:00</td>
-      <td>西甲</td>
-      <td>巴列卡诺 vs 埃尔切</td>
-      <td>平局</td>
-      <td>100.61</td>
+      <td>283.72</td>
       <td>观望</td>
       <td>观望</td>
     </tr>
     <tr>
-      <td>2026-10-24 22:15</td>
-      <td>西甲</td>
-      <td>桑坦德竞技 vs 西班牙人</td>
-      <td>主胜</td>
-      <td>503.06</td>
-      <td>观望</td>
-      <td>观望</td>
-    </tr>
-    <tr>
-      <td>2026-10-24 21:30</td>
-      <td>德甲</td>
-      <td>奥格斯堡 vs 柏林联合</td>
-      <td>平局</td>
-      <td>190.22</td>
-      <td>观望</td>
-      <td>观望</td>
-    </tr>
-    <tr>
-      <td>2026-10-24 21:30</td>
-      <td>德甲</td>
-      <td>美因茨 vs 云达不莱梅</td>
-      <td>平局</td>
-      <td>217.79</td>
-      <td>观望</td>
-      <td>观望</td>
-    </tr>
-    <tr>
-      <td>2026-10-24 21:30</td>
-      <td>德甲</td>
-      <td>莱比锡红牛 vs 艾禾斯堡</td>
-      <td>平局</td>
-      <td>475.09</td>
-      <td>客队赢盘 (高价值)</td>
-      <td>小球 (高价值)</td>
-    </tr>
-    <tr>
-      <td>2026-10-24 21:30</td>
-      <td>德甲</td>
-      <td>帕德博恩 vs 汉堡</td>
-      <td>主胜</td>
-      <td>503.06</td>
-      <td>观望</td>
-      <td>观望</td>
-    </tr>
-    <tr>
-      <td>2026-10-24 21:00</td>
-      <td>意甲</td>
-      <td>卡利亚里 vs 博洛尼亚</td>
-      <td>主胜</td>
-      <td>503.06</td>
-      <td>观望</td>
-      <td>观望</td>
-    </tr>
-    <tr>
-      <td>2026-10-24 21:00</td>
-      <td>意甲</td>
-      <td>科莫 vs 萨索洛</td>
-      <td>平局</td>
-      <td>355.64</td>
-      <td>客队赢盘 (高价值)</td>
-      <td>小球 (高价值)</td>
-    </tr>
-    <tr>
-      <td>2026-10-23 00:45</td>
+      <td>10月23日 00:45</td>
       <td>欧联</td>
       <td>尤文图斯 vs 雷恩</td>
       <td>平局</td>
       <td>408.74</td>
-      <td>客队赢盘 (高价值)</td>
+      <td>客队赢盘</td>
       <td>观望</td>
     </tr>
     <tr>
-      <td>2026-10-23 00:45</td>
+      <td>10月23日 00:45</td>
       <td>欧联</td>
       <td>莱赫波兹南 vs 桑德兰</td>
       <td>主胜</td>
       <td>503.06</td>
-      <td>主队赢盘 (高价值)</td>
+      <td>主队赢盘</td>
       <td>观望</td>
     </tr>
     <tr>
-      <td>2026-10-23 03:00</td>
-      <td>欧联</td>
-      <td>伯恩茅斯 vs AC米兰</td>
-      <td>主胜</td>
-      <td>276.69</td>
-      <td>主队赢盘 (高价值)</td>
-      <td>观望</td>
-    </tr>
-    <tr>
-      <td>2026-10-23 03:00</td>
-      <td>欧联</td>
-      <td>贝西克塔斯 vs 水晶宫</td>
-      <td>客胜</td>
-      <td>503.06</td>
-      <td>客队赢盘 (高价值)</td>
-      <td>观望</td>
-    </tr>
-    <tr>
-      <td>2026-10-23 03:00</td>
-      <td>欧联</td>
-      <td>凯尔特人 vs 塞尔塔</td>
-      <td>主胜</td>
-      <td>503.06</td>
-      <td>主队赢盘 (高价值)</td>
-      <td>观望</td>
-    </tr>
-    <tr>
-      <td>2026-10-23 03:00</td>
+      <td>10月23日 03:00</td>
       <td>欧联</td>
       <td>利勒斯特罗姆 vs 皇家社会</td>
       <td>主胜</td>
       <td>503.06</td>
-      <td>主队赢盘 (高价值)</td>
+      <td>主队赢盘</td>
       <td>观望</td>
     </tr>
     <tr>
-      <td>2026-10-23 03:00</td>
+      <td>10月23日 03:00</td>
+      <td>欧联</td>
+      <td>伯恩茅斯 vs AC米兰</td>
+      <td>平局</td>
+      <td>128.23</td>
+      <td>主队赢盘</td>
+      <td>观望</td>
+    </tr>
+    <tr>
+      <td>10月23日 03:00</td>
+      <td>欧联</td>
+      <td>凯尔特人 vs 塞尔塔</td>
+      <td>主胜</td>
+      <td>503.06</td>
+      <td>主队赢盘</td>
+      <td>观望</td>
+    </tr>
+    <tr>
+      <td>10月23日 03:00</td>
+      <td>欧联</td>
+      <td>贝西克塔斯 vs 水晶宫</td>
+      <td>客胜</td>
+      <td>445.57</td>
+      <td>客队赢盘</td>
+      <td>观望</td>
+    </tr>
+    <tr>
+      <td>10月23日 03:00</td>
       <td>欧联</td>
       <td>霍芬海姆 vs 里昂</td>
       <td>平局</td>
-      <td>227.25</td>
-      <td>主队赢盘 (高价值)</td>
+      <td>159.59</td>
+      <td>主队赢盘</td>
       <td>观望</td>
     </tr>
   </tbody>
 </table>
     </div>
-    <hr><h3>2026-10-24 03:00 - 伊普斯维奇 vs 诺丁汉森林 [英超]</h3><img src='cid:chart_0' width='600'><br><p><b>💪 Elo 实力：</b>伊普斯维奇 1426 vs 诺丁汉森林 1562 (差值: -136)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 6 天</p><p><b>🚨 核心伤停：</b>主队[Burns,Hirst,Szmodics,Al-Hamadi] / 客队[Morato,Hutchinson,Bakwa,Igor Jesus]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 19.0% | 平局 28.0% | 客胜 53.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：客胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>主队进攻核心伤停严重，主场优势被大幅削弱，机构心理上对主胜信心不足；客队虽伤停4人，但阵容深度与整体实力占优，机构更倾向客队掌控节奏。平局基准上调至28%属风险对冲，客胜56.4%方向合理但置信度需降。盘口缺失下机构难做诱盘，维持客胜方向。推荐关注：技术倾向：客胜</p><hr><h3>2026-10-24 19:30 - 阿斯顿维拉 vs 曼城 [英超]</h3><img src='cid:chart_1' width='600'><br><p><b>💪 Elo 实力：</b>阿斯顿维拉 1692 vs 曼城 1814 (差值: -121)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[Bailey,Iling Jr,Manzambi,Watkins] / 客队[O'Reilly,Matheus N.,Alleyne,Semenyo,Rodrigo,Reijnders,Kovačić,Phillips]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>盘口 2.0，模型大球概率 31.3%。 推荐：<b>小球 (高价值)</b></p><p><b>🎯 赛果概率：</b>主胜 23.3% | 平局 36.0% | 客胜 40.7%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>平局</span> 推荐下注 503.06元</p></div><p><b>🧠 AI点评：</b>维拉锋线核心Watkins、Bailey缺阵，攻击力受损；曼城虽伤8人但深度足够。模型客胜概率下调至40.7%，平局上调至36%，机构对客胜信心松动。盘口缺失下，曼城热度易被高估，平局赔率有保护空间。推荐关注：平局</p><hr><h3>2026-10-24 22:00 - 阿森纳 vs 埃弗顿 [英超]</h3><img src='cid:chart_2' width='600'><br><p><b>💪 Elo 实力：</b>阿森纳 1782 vs 埃弗顿 1573 (差值: +209)</p><p><b>⏱️ 休息天数：</b>主队 6 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[Saliba,Hincapie,Saka,Martinelli,Nwaneri,Fábio Vieira,Nelson,G.Jesus,Tzolis] / 客队[Beto]</p><p><b>⚖️ 亚盘让球：</b>主队让 -1.25 球，模型主赢盘 31.8%。 推荐：<b>客队赢盘 (高价值)</b></p><p><b>⚖️ 大小球：</b>盘口 2.0，模型大球概率 43.9%。 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 50.0% | 平局 30.0% | 客胜 20.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>平局</span> 推荐下注 467.34元</p></div><p><b>🧠 AI点评：</b>阿森纳9人伤停含整条攻击线，机构仍开-1.25深盘，实为利用豪门主场声望制造主队拉力，但模型主赢盘仅31.8%暴露穿盘乏力。大小球2.0偏浅，机构对进球预期谨慎。埃弗顿仅缺Beto，韧性被低估，平局溢价合理。推荐关注：平局。</p><hr><h3>2026-10-24 22:00 - 考文垂 vs 富勒姆 [英超]</h3><img src='cid:chart_3' width='600'><br><p><b>💪 Elo 实力：</b>考文垂 1529 vs 富勒姆 1559 (差值: -30)</p><p><b>⏱️ 休息天数：</b>主队 5 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[Wright,Markelo] / 客队[Larsson]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>盘口 2.0，模型大球概率 32.7%。 推荐：<b>小球 (高价值)</b></p><p><b>🎯 赛果概率：</b>主胜 20.0% | 平局 32.0% | 客胜 48.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>客胜</span> 推荐下注 447.84元</p></div><p><b>🧠 AI点评：</b>资深点评：富勒姆实力占优，客胜基础概率51.4%合理，但裁判未公布、盘口缺失、情报不全触发熔断，机构恐借信息差制造主队不败假象，平局概率上浮至32%正是心理保护。客队伤停影响有限，主队锋线受损，双选平/客更稳妥。推荐关注：客胜。</p><hr><h3>2026-10-25 00:30 - 切尔西 vs 热刺 [英超]</h3><img src='cid:chart_4' width='600'><br><p><b>💪 Elo 实力：</b>切尔西 1699 vs 热刺 1536 (差值: +164)</p><p><b>⏱️ 休息天数：</b>主队 8 天 vs 客队 6 天</p><p><b>🚨 核心伤停：</b>主队[Martinez,Jörgensen,James,Chalobah,Gittens,Marc Guiu] / 客队[Marmoush,Sávio,Pedro Porro,Romero,Robertson,Xavi,Bentancur,Odobert,Bergvall,Moore,Richarlison,Mudryk]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 62.0% | 平局 28.0% | 客胜 10.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>伤停名单冗长（双方各超6人），但热刺客场损失更重（Romero、Bentancur、Richarlison等中轴缺阵），机构心理上会借“伤病潮”制造主队不稳假象，压低主胜信心、抬高平局防范。然而切尔西主场基本面仍占优，AI从74.3%调至62%属理性降热而非否定。建议留主胜，比分放宽防1-1。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-24 03:00 - 阿拉维斯 vs 马拉加 [西甲]</h3><img src='cid:chart_5' width='600'><br><p><b>💪 Elo 实力：</b>阿拉维斯 1500 vs 马拉加 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 56.6% | 平局 24.9% | 客胜 18.5%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>双方无伤停，情报清晰，阿拉维斯主场基础概率占优。机构心理上，缺盘口与裁判数据反降低市场热度，主队不易过热，利于正路打出。AI维持原始分布合理，无熔断项。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-24 20:00 - 巴列卡诺 vs 埃尔切 [西甲]</h3><img src='cid:chart_6' width='600'><br><p><b>💪 Elo 实力：</b>巴列卡诺 1500 vs 埃尔切 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>盘口 2.0，模型大球概率 52.7%。 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 55.0% | 平局 27.0% | 客胜 18.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>平局</span> 推荐下注 100.61元</p></div><p><b>🧠 AI点评：</b>专家点评：主队无伤停且坐拥主场，模型主胜55%但盘口缺失、裁判未定，信息不完整使机构倾向保守。埃尔切客场韧性常被低估，平局概率上调至27%反映机构对主胜信心松动。低不确定性下不宜追主胜，推荐关注：平局。</p><hr><h3>2026-10-24 22:15 - 桑坦德竞技 vs 西班牙人 [西甲]</h3><img src='cid:chart_7' width='600'><br><p><b>💪 Elo 实力：</b>桑坦德竞技 1500 vs 西班牙人 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>盘口 2.0，模型大球概率 52.7%。 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 55.0% | 平局 27.0% | 客胜 18.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>主胜</span> 推荐下注 503.06元</p></div><p><b>🧠 AI点评：</b>情报缺失下模型仍给主胜55%，说明基础面支撑较强，但熔断机制压置信度，机构此时若开浅盘更可能是诱导客队关注、掩护主胜。桑坦德无伤停且主场，西班牙人客场管控力存疑，平局上浮是烟雾。推荐关注：主胜</p><hr><h3>2026-10-25 00:30 - 瓦伦西亚 vs 比利亚雷亚尔 [西甲]</h3><img src='cid:chart_8' width='600'><br><p><b>💪 Elo 实力：</b>瓦伦西亚 1500 vs 比利亚雷亚尔 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 54.0% | 平局 28.0% | 客胜 18.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>信息不完整下AI仅微调概率，主胜54%仍具优势，反映机构对瓦伦西亚主场基本面认可，但裁判与盘口缺失令平局概率上浮，需防机构借信息真空营造主队不稳假象。无伤停下攻守平衡，主队主场韧性可信，客队黄潜客场管控力有限。建议谨慎看待平局分流，主胜仍为技术首选。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-25 03:00 - 马德里竞技 vs 拉科鲁尼亚 [西甲]</h3><img src='cid:chart_9' width='600'><br><p><b>💪 Elo 实力：</b>马德里竞技 1500 vs 拉科鲁尼亚 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 55.0% | 平局 27.0% | 客胜 18.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>专家点评：主队无伤停且基础胜率56.6%本占优，但盘口缺失、裁判未定触发情报熔断，机构借此压低主胜至55%、上浮平局至27%，意在诱导观望、分散主胜热度。拉科无伤停亦无拉力，机构平局修正实为保护主胜仓位。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-24 02:30 - 斯图加特 vs 门兴格拉德巴赫 [德甲]</h3><img src='cid:chart_10' width='600'><br><p><b>💪 Elo 实力：</b>斯图加特 1500 vs 门兴格拉德巴赫 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 55.0% | 平局 27.0% | 客胜 18.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>伤停双清削弱信息差，机构缺裁判与盘口轨迹难做局，主胜概率被主动压至55%属防御性降热，平局上浮至27%暗吸筹码分流。方向可存但勿重注，建议主胜+平双选过渡，谨防机构借信息真空诱主。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-24 21:30 - 奥格斯堡 vs 柏林联合 [德甲]</h3><img src='cid:chart_11' width='600'><br><p><b>💪 Elo 实力：</b>奥格斯堡 1500 vs 柏林联合 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>盘口 3.0，模型大球概率 30.4%。 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 54.8% | 平局 26.8% | 客胜 18.4%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>平局</span> 推荐下注 190.22元</p></div><p><b>🧠 AI点评：</b>奥格斯堡主场对柏林联合，双方无伤停，模型主胜56.6%但盘口缺失、裁判未定，情报不足。机构心理上，无真实盘口时主胜热度易被放大，德甲平局概率上浮1.9个百分点，客队韧性不可低估。主胜倾向可留但置信度不升级，比分方差放宽。推荐关注：平局</p><hr><h3>2026-10-24 21:30 - 科隆 vs 沙尔克04 [德甲]</h3><img src='cid:chart_12' width='600'><br><p><b>💪 Elo 实力：</b>科隆 1500 vs 沙尔克04 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 56.0% | 平局 26.0% | 客胜 18.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>情报无缺口但盘口缺失，机构大概率借“伤停干净”造主队热度，主胜56%低置信度实为诱盘风险。沙尔克无伤病+德甲平局上浮，机构心理偏向防冷，主胜不宜重注。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-24 21:30 - 美因茨 vs 云达不莱梅 [德甲]</h3><img src='cid:chart_13' width='600'><br><p><b>💪 Elo 实力：</b>美因茨 1500 vs 云达不莱梅 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>盘口 2.0，模型大球概率 52.7%。 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 55.0% | 平局 27.0% | 客胜 18.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>平局</span> 推荐下注 217.79元</p></div><p><b>🧠 AI点评：</b>情报缺失触发熔断，机构对主胜信心不足。无伤停下平局基准上浮至27%，德甲场景易出默契球。盘口未明示，机构或借主队主场造热吸筹，实则防范平局赔付。主胜55%概率未达凯利阈值，建议防冷。推荐关注：平局</p><hr><h3>2026-10-24 21:30 - 莱比锡红牛 vs 艾禾斯堡 [德甲]</h3><img src='cid:chart_14' width='600'><br><p><b>💪 Elo 实力：</b>莱比锡红牛 1500 vs 艾禾斯堡 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>主队让 -1.5 球，模型主赢盘 33.1%。 推荐：<b>客队赢盘 (高价值)</b></p><p><b>⚖️ 大小球：</b>盘口 3.0，模型大球概率 30.4%。 推荐：<b>小球 (高价值)</b></p><p><b>🎯 赛果概率：</b>主胜 54.3% | 平局 27.2% | 客胜 18.5%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>平局</span> 推荐下注 475.09元</p></div><p><b>🧠 AI点评：</b>情报熔断下模型仅微调，主胜置信降级，机构对深盘-1.5赢盘概率仅33.1%，暴露其利用主场声望造热、掩护平局赔付的心理。推荐关注：平局</p><hr><h3>2026-10-24 21:30 - 帕德博恩 vs 汉堡 [德甲]</h3><img src='cid:chart_15' width='600'><br><p><b>💪 Elo 实力：</b>帕德博恩 1500 vs 汉堡 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>盘口 2.0，模型大球概率 52.7%。 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 55.0% | 平局 27.0% | 客胜 18.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>主胜</span> 推荐下注 503.06元</p></div><p><b>🧠 AI点评：</b>专家点评：伤停零缺口，主胜基础概率56.6%扎实；但裁判未公布与盘口缺失构成轻度不确定性，德甲平局溢价上浮，机构借此制造主队不稳假象，实则汉堡客胜仅18.5%缺乏拉力，主胜仍是心理压制方向。推荐关注：主胜</p><hr><h3>2026-10-25 00:30 - 多特蒙德 vs 法兰克福 [德甲]</h3><img src='cid:chart_16' width='600'><br><p><b>💪 Elo 实力：</b>多特蒙德 1500 vs 法兰克福 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 54.0% | 平局 27.0% | 客胜 19.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>情报完整但盘口缺失，机构对多特主场优势持谨慎态度，平局上浮至27%暴露对法兰克福客场韧性的防范。主胜概率下调属风控前置，非真实看衰。伤停无异常下，机构心理偏向主队但不敢造势，建议观望或双选。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-24 02:45 - 都灵 vs 蒙扎 [意甲]</h3><img src='cid:chart_17' width='600'><br><p><b>💪 Elo 实力：</b>都灵 1500 vs 蒙扎 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 52.0% | 平局 29.0% | 客胜 19.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>都灵主场对蒙扎，无伤停下主胜基础概率56.6%，但裁判未公布、盘口缺失，机构惯用“信息真空”制造犹豫盘，诱导散户追主胜。AI熔断降概率至52%、平局升至29%，属理性风控。机构心理上，缺盘口时往往压低主胜赔付或造平局保护，主胜不可裸押，宜防平。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-24 21:00 - 卡利亚里 vs 博洛尼亚 [意甲]</h3><img src='cid:chart_18' width='600'><br><p><b>💪 Elo 实力：</b>卡利亚里 1500 vs 博洛尼亚 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>盘口 2.0，模型大球概率 52.7%。 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 52.0% | 平局 30.0% | 客胜 18.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>主胜</span> 推荐下注 503.06元</p></div><p><b>🧠 AI点评：</b>模型基础面尚可，但盘口轨迹与裁判信息双缺失，机构观望情绪浓，主胜56.6%被压至52%，平局上抬至30%，典型意甲“信息真空期”诱平格局。无伤停下主队热度易被放大，机构乐见平局分流。建议轻仓主胜，防平。推荐关注：主胜</p><hr><h3>2026-10-24 21:00 - 科莫 vs 萨索洛 [意甲]</h3><img src='cid:chart_19' width='600'><br><p><b>💪 Elo 实力：</b>科莫 1500 vs 萨索洛 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>主队让 -1.25 球，模型主赢盘 33.1%。 推荐：<b>客队赢盘 (高价值)</b></p><p><b>⚖️ 大小球：</b>盘口 3.0，模型大球概率 30.4%。 推荐：<b>小球 (高价值)</b></p><p><b>🎯 赛果概率：</b>主胜 54.8% | 平局 26.8% | 客胜 18.4%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>平局</span> 推荐下注 355.64元</p></div><p><b>🧠 AI点评：</b>情报熔断下主胜方向遭降级，机构对科莫让-1.25深盘仅给33.1%赢盘率，明显诱导主队热度。大小球3.0盘配30.4%大球概率，机构看穿进攻效率不足。无伤停无裁判信号，平局概率被主动上浮，实为机构真实防范方向。**推荐关注：平局**</p><hr><h3>2026-10-25 00:00 - 那不勒斯 vs 罗马 [意甲]</h3><img src='cid:chart_20' width='600'><br><p><b>💪 Elo 实力：</b>那不勒斯 1500 vs 罗马 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 55.0% | 平局 27.0% | 客胜 18.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>本场无伤停干扰，机构缺乏盘口与裁判信息，主动压低主胜置信度至55%，属典型风险规避。罗马非豪门客场、双教练攻守平衡，机构防平局冷门，平局上浮至27%反映其真实担忧。主胜微降至55%仍属优势方向，但让球与大小球缺失下不宜重注。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-25 02:45 - 拉齐奥 vs 帕尔马 [意甲]</h3><img src='cid:chart_21' width='600'><br><p><b>💪 Elo 实力：</b>拉齐奥 1500 vs 帕尔马 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 54.8% | 平局 27.8% | 客胜 17.4%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>专家点评：拉齐奥主场基础概率占优，但盘口与裁判信息双缺失触及风控阈值，机构借此压低主胜置信、上浮意甲平局溢价，实为规避单边风险。主队不败格局下，主胜仍具技术倾向。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-23 00:45 - 亚拉腊-亚美尼亚 vs 阿尔克马尔 [欧联]</h3><img src='cid:chart_22' width='600'><br><p><b>💪 Elo 实力：</b>亚拉腊-亚美尼亚 1500 vs 阿尔克马尔 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 52.0% | 平局 28.0% | 客胜 20.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>亚拉腊主场战力尚可，但无盘口轨迹印证机构真实态度，平局上浮3.1%暴露对主场优势的保留。阿尔克马尔非豪门客场，机构借情报缺失制造模糊，主胜微降实为诱导分流。双方攻守均衡、无伤停，技术面仍偏主队不败。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-23 00:45 - 萨格勒布迪纳摩 vs 奈梅亨 [欧联]</h3><img src='cid:chart_23' width='600'><br><p><b>💪 Elo 实力：</b>萨格勒布迪纳摩 1500 vs 奈梅亨 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>主队让 -1 球，模型主赢盘 33.1%。 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 56.6% | 平局 24.9% | 客胜 18.5%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>观望</span> 模型认为无正期望价值</p></div><p><b>🧠 AI点评：</b>主队让一球但模型赢盘率仅33.1%，说明机构对深盘信心不足，利用主场名气造热嫌疑明显。伤停无异常、盘口缺失下AI维持原值偏保守，实则暗藏主队小胜即止的机构心理。推荐关注：观望</p><hr><h3>2026-10-23 00:45 - 费伦茨瓦罗斯 vs Torreense [欧联]</h3><img src='cid:chart_24' width='600'><br><p><b>💪 Elo 实力：</b>费伦茨瓦罗斯 1500 vs Torreense 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 55.0% | 平局 27.0% | 客胜 18.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>情报熔断下主胜仅剩基准优势，机构缺盘口与裁判数据难验市场信号，平局概率上浮至27%正是机构对冲心理的体现。主胜下调1.6pct、客胜微调，双选降级说明机构不愿单边暴露。费伦茨无伤停但缺联赛背景支撑，Torreense同样无伤停却未获数据倾斜，机构对主胜信心有限。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-23 00:45 - 尤文图斯 vs 雷恩 [欧联]</h3><img src='cid:chart_25' width='600'><br><p><b>💪 Elo 实力：</b>尤文图斯 1500 vs 雷恩 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>主队让 -1 球，模型主赢盘 33.1%。 推荐：<b>客队赢盘 (高价值)</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 50.0% | 平局 30.0% | 客胜 20.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>平局</span> 推荐下注 408.74元</p></div><p><b>🧠 AI点评：</b>情报缺失下模型主动降主胜、提平局，机构对尤文大胜信心不足，-1盘赢盘仅33.1%印证让球阻力。尤文主场对非豪门本应强势，但裁判与盘口轨迹空白令机构观望，平局上浮至30%是真实防范。推荐关注：平局</p><hr><h3>2026-10-23 00:45 - 莱赫波兹南 vs 桑德兰 [欧联]</h3><img src='cid:chart_26' width='600'><br><p><b>💪 Elo 实力：</b>莱赫波兹南 1500 vs 桑德兰 1382 (差值: +118)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 5 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[Danso,Brobbey,Isidor]</p><p><b>⚖️ 亚盘让球：</b>主队让 1 球，模型主赢盘 83.6%。 推荐：<b>主队赢盘 (高价值)</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 52.0% | 平局 30.0% | 客胜 18.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>主胜</span> 推荐下注 503.06元</p></div><p><b>🧠 AI点评：</b>主队无伤停且客队三将缺阵，基本面支撑明确，模型主赢盘83.6%显示机构对让1球信心充足。但盘口轨迹与裁判信息缺失，机构心理上易借不确定性制造主队阻力、诱导客队关注。AI主动降置信、禁裸押，恰是防机构“示弱诱下”陷阱。建议轻仓跟方向，推荐关注：主胜。</p><hr><h3>2026-10-23 00:45 - OFI克里特 vs 勒沃库森 [欧联]</h3><img src='cid:chart_27' width='600'><br><p><b>💪 Elo 实力：</b>OFI克里特 1500 vs 勒沃库森 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 52.0% | 平局 29.0% | 客胜 19.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>专家点评：此单AI逻辑严谨，因情报缺失触发熔断，主动下调主胜至52%、抬升平局至29%，体现风控意识。机构心理看，勒沃库森豪门客场易吸筹，主胜高赔暗藏诱导，平局上浮恰是防范信号。无伤停信息下，主胜非稳胆，建议走让球线规避单边风险。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-23 00:45 - 格拉茨风暴 vs 马赛 [欧联]</h3><img src='cid:chart_28' width='600'><br><p><b>💪 Elo 实力：</b>格拉茨风暴 1500 vs 马赛 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 54.0% | 平局 27.0% | 客胜 19.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>情报缺失下主胜从56.6%降至54.0%、平局升至27.0%，机构对主队信心实质弱化，低置信主胜易成诱饵。格拉茨主场有韧性但马赛实力不俗，无盘口验证时机构乐见主胜热度沉淀。建议谨慎，推荐关注：技术倾向：主胜</p><hr><h3>2026-10-23 00:45 - 圣吉尔联 vs 贝尔谢巴夏普尔 [欧联]</h3><img src='cid:chart_29' width='600'><br><p><b>💪 Elo 实力：</b>圣吉尔联 1500 vs 贝尔谢巴夏普尔 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 54.1% | 平局 27.6% | 客胜 18.3%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>情报熔断下机构必压主胜热度、抬平局分流，主队无伤停但客队亦齐整且实力偏弱，主胜基础概率仅56.6%略超阈值，机构心理上会借“无盘口轨迹”制造观望，实则防守性微调主胜、上浮平局。整体高不确定，不宜重仓。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-23 03:00 - 伯恩茅斯 vs AC米兰 [欧联]</h3><img src='cid:chart_30' width='600'><br><p><b>💪 Elo 实力：</b>伯恩茅斯 1528 vs AC米兰 1500 (差值: +28)</p><p><b>⏱️ 休息天数：</b>主队 5 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[Scott,Kroupi.Jr,Enes Ünal] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>主队让 -1 球，模型主赢盘 39.2%。 推荐：<b>主队赢盘 (高价值)</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 58.0% | 平局 29.0% | 客胜 13.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>主胜</span> 推荐下注 276.69元</p></div><p><b>🧠 AI点评：</b>情报严重缺失（裁判、盘口、休息差均未知），模型已触发熔断降级，主胜从64%压至58%、平局上调至29%，机构在此类信息真空下惯于制造主队让球陷阱诱导资金追米兰，实则主队3人伤停已被过度定价。推荐关注：主胜</p><hr><h3>2026-10-23 03:00 - 贝西克塔斯 vs 水晶宫 [欧联]</h3><img src='cid:chart_31' width='600'><br><p><b>💪 Elo 实力：</b>贝西克塔斯 1500 vs 水晶宫 1612 (差值: -112)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 5 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[Devenny,Esse,Uche,Timber]</p><p><b>⚖️ 亚盘让球：</b>主队让 -1 球，模型主赢盘 10.5%。 推荐：<b>客队赢盘 (高价值)</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 25.3% | 平局 30.0% | 客胜 44.7%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>客胜</span> 推荐下注 503.06元</p></div><p><b>🧠 AI点评：</b>专家点评：主队让-1球但模型主赢盘仅10.5%，机构深盘诱导主队意图明显；水晶宫4人伤停细节不明反成心理烟雾，欧战客场平局溢价被刻意放大。主队无伤停却基础概率仅25.3%，机构借“情报熔断”制造观望情绪，实则客队实力被低估。推荐关注：客胜。</p><hr><h3>2026-10-23 03:00 - 凯尔特人 vs 塞尔塔 [欧联]</h3><img src='cid:chart_32' width='600'><br><p><b>💪 Elo 实力：</b>凯尔特人 1500 vs 塞尔塔 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>主队让 1 球，模型主赢盘 81.3%。 推荐：<b>主队赢盘 (高价值)</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 56.6% | 平局 24.9% | 客胜 18.5%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>主胜</span> 推荐下注 503.06元</p></div><p><b>🧠 AI点评：</b>双方无伤停，基本面透明，主队让1球且模型赢盘率81.3%属强信心区间。机构未开真实盘口，留出心理博弈空间——塞尔塔无伤病却受让深盘，暗示其战意或轮换存疑。凯尔特人主场攻守均衡，无风格偏移下大概率按实力碾压。缺失项仅2项未触发熔断，模型维持基础概率不微调，说明信号干净、冷门概率低。推荐关注：主胜</p><hr><h3>2026-10-23 03:00 - 乔治罗尼亚 vs 安德莱赫特 [欧联]</h3><img src='cid:chart_33' width='600'><br><p><b>💪 Elo 实力：</b>乔治罗尼亚 1500 vs 安德莱赫特 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 52.0% | 平局 28.0% | 客胜 20.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>情报熔断下主胜压至52%、平局托底28%，机构对安德莱赫特豪门客场形象存忌惮，主胜水位刻意保留阻力，实则暗防主队。无盘口轨迹更显机构观望，主队无伤停且攻守平衡，客队欧战光环易吸筹，主胜低调可博。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-23 03:00 - 利勒斯特罗姆 vs 皇家社会 [欧联]</h3><img src='cid:chart_34' width='600'><br><p><b>💪 Elo 实力：</b>利勒斯特罗姆 1500 vs 皇家社会 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>主队让 1 球，模型主赢盘 81.3%。 推荐：<b>主队赢盘 (高价值)</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 55.0% | 平局 28.0% | 客胜 17.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>主胜</span> 推荐下注 503.06元</p></div><p><b>🧠 AI点评：</b>专家点评：皇家社会豪门客场，机构却给主队让1球且主赢盘81.3%，盘口与AI“封顶主胜55%”明显背离，属典型深盘诱导。裁判未公布、盘口轨迹缺失，情报熔断下机构借“无伤停”造热客队，平局溢价暗藏冷意。主队让球方被低看反是保护。推荐关注：主胜</p><hr><h3>2026-10-23 03:00 - 采列 vs 萨尔茨堡红牛 [欧联]</h3><img src='cid:chart_35' width='600'><br><p><b>💪 Elo 实力：</b>采列 1500 vs 萨尔茨堡红牛 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 51.0% | 平局 29.0% | 客胜 20.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>专家点评：采列主场无伤停，红牛客战虽强但裁判未定、盘口缺失，AI已按豪门客场规则压低主胜至51%、抬升平局至29%，属风控微调而非真实信心。机构心理上，红牛名气易吸筹，主胜若维持中低位反显保护。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-23 03:00 - 奥林匹亚科斯 vs 布拉格斯巴达 [欧联]</h3><img src='cid:chart_36' width='600'><br><p><b>💪 Elo 实力：</b>奥林匹亚科斯 1500 vs 布拉格斯巴达 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 55.0% | 平局 27.0% | 客胜 18.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>伤停干净却无盘口轨迹与裁判信息，情报熔断下AI主动降主胜、抬平局，属理性防冷。机构心理看，奥林匹亚科斯主场声望足，但无真实盘口支撑，机构易借“干净伤停”造主队热度，实则平局暗藏分流意图。技术面主胜仍占优但置信度降级，不宜裸押。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-23 03:00 - 奥莫尼亚 vs 本菲卡 [欧联]</h3><img src='cid:chart_37' width='600'><br><p><b>💪 Elo 实力：</b>奥莫尼亚 1500 vs 本菲卡 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 50.0% | 平局 31.0% | 客胜 19.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>情报熔断触发合理，盘口缺失下机构必借豪门题材造热本菲卡，主胜50%实为诱盘保护。平局31%暗含机构对冷平的真实忌惮，客胜19%低置显信心不足。推荐关注：技术倾向：主胜</p><hr><h3>2026-10-23 03:00 - 霍芬海姆 vs 里昂 [欧联]</h3><img src='cid:chart_38' width='600'><br><p><b>💪 Elo 实力：</b>霍芬海姆 1500 vs 里昂 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>主队让 -1 球，模型主赢盘 33.1%。 推荐：<b>主队赢盘 (高价值)</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 52.0% | 平局 29.0% | 客胜 19.0%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>平局</span> 推荐下注 227.25元</p></div><p><b>🧠 AI点评：</b>情报熔断下主胜52%缺乏盘口验证，机构对霍村信心存疑；里昂客胜19%被压制，平局29%暗合德甲分层逻辑。让-1球主赢盘仅33.1%，机构诱主嫌疑浓，穿盘乏力。推荐关注：平局。</p><hr><h3>2026-10-23 03:00 - 比尔森胜利 vs 索菲亚列夫斯基 [欧联]</h3><img src='cid:chart_39' width='600'><br><p><b>💪 Elo 实力：</b>比尔森胜利 1500 vs 索菲亚列夫斯基 1500 (差值: +0)</p><p><b>⏱️ 休息天数：</b>主队 7 天 vs 客队 7 天</p><p><b>🚨 核心伤停：</b>主队[无] / 客队[无]</p><p><b>⚖️ 亚盘让球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>⚖️ 大小球：</b>暂未抓取到真实盘口 推荐：<b>观望</b></p><p><b>🎯 赛果概率：</b>主胜 54.8% | 平局 26.5% | 客胜 18.7%</p><div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>技术倾向：主胜</span> (无真实盘口，禁止实盘)</p></div><p><b>🧠 AI点评：</b>比尔森主场战力稳定，索菲亚列夫斯基欧战客场韧性有限，无伤停下主队攻守平衡更占优。机构未给盘口轨迹，实为规避主胜热度、诱导平局分流，主胜降权反显真实倾向。推荐关注：技术倾向：主胜</p></body></html>
+    
+    <div style="background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 10px 20px; border-radius: 8px; margin-top: 30px; margin-bottom: 20px;">
+        <h2 style="margin: 0; font-size: 24px;">🏆 欧联</h2>
+    </div>
+    
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 00:45</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">亚拉腊-亚美尼亚主场</span>
+            </div>
+            
+            <img src='cid:chart_0' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">技术倾向：主胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">(无真实盘口，仅供观赛)</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>推荐关注：技术倾向：主胜。</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 00:45</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">萨格勒布迪纳摩主场</span>
+            </div>
+            
+            <img src='cid:chart_1' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (主让 -1)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">平局</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">推荐下注 283.72元</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>主队无伤缺、基础胜率56.6%遭55%上限压缩至54%，平局下限提至28%，客胜18%。让-1球缺盘口轨迹支撑，单边重注被禁，置信度下调。奈梅亨无伤停亦无休息差劣势，客队具备守平韧性。AI已明确防范平局，主让-1下主胜打穿难度增大。推荐关注：平局</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 00:45</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">费伦茨瓦罗斯主场</span>
+            </div>
+            
+            <img src='cid:chart_2' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">技术倾向：主胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">(无真实盘口，仅供观赛)</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>情报熔断下强行主胜风险偏高。三项关键情报缺失，基础胜率仅56.6%且已降级至52%，平局溢价至28%，单一维度无共振，凯利下注缺乏支撑。建议观望为主，谨防平局。推荐关注：技术倾向：主胜</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 00:45</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">尤文图斯主场</span>
+            </div>
+            
+            <img src='cid:chart_3' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">客队赢盘 (主让 -1)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">平局</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">推荐下注 408.74元</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>主让-1盘口下伤停虽净，但裁判与盘口轨迹双缺失触发熔断降级，主胜概率封顶52%取上限附近，平局上调至30%下限区形成溢价保护。尤文主场强但非碾压格局，雷恩无伤停具备搅局韧性，单边主胜风险偏高。推荐关注：平局。</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 00:45</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">莱赫波兹南主场</span>
+            </div>
+            
+            <img src='cid:chart_4' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-0</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-0</b> (13.2%) | <b>1-1</b> (12.4%) | <b>2-0</b> (12.0%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1382</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 5 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[Danso,Brobbey,Isidor]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">主队赢盘 (主让 1)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">主胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">推荐下注 503.06元</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>专家点评：主队无伤停且基础胜率57.4%，客队三将缺阵本应强化主胜，但情报缺失触发“熔断”铁律，主胜下调至52%、平局升至28%，置信度降级合理。让1球下主胜仍可期，但需防小胜走盘。推荐关注：主胜</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 00:45</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">OFI克里特主场</span>
+            </div>
+            
+            <img src='cid:chart_5' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">技术倾向：主胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">(无真实盘口，仅供观赛)</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>专家点评：情报熔断机制执行到位，裁判与盘口双缺失下主动降级主胜置信度，符合高不确定性场景纪律。主队无伤停但客队豪门底蕴未定价，平局上浮至29%合理。推荐关注：技术倾向：主胜</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 00:45</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">格拉茨风暴主场</span>
+            </div>
+            
+            <img src='cid:chart_6' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">技术倾向：主胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">(无真实盘口，仅供观赛)</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>情报熔断触发，多维缺失下主胜置信降级至50%，平局升至28%。格拉茨主场无伤停，马赛豪门客场韧性存疑但无让球盘支撑。禁单边裸押，建议观望或等让球线明朗。推荐关注：技术倾向：主胜</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 00:45</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">圣吉尔联主场</span>
+            </div>
+            
+            <img src='cid:chart_7' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">技术倾向：主胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">(无真实盘口，仅供观赛)</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>情报熔断致盘口与裁判信息缺失，主胜基础权重虽存但封顶52%，平局升至29%反映不确定性溢价。无伤停扰动，主场优势仍为技术支点。推荐关注：技术倾向：主胜</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 03:00</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">奥莫尼亚主场</span>
+            </div>
+            
+            <img src='cid:chart_8' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">技术倾向：主胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">(无真实盘口，仅供观赛)</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>点评：情报缺口≥3触发熔断，单边主胜高置信被否，强行将56.6%压至55%以下、平局抬至30%，属规则机械矫正而非真实信号。奥莫尼亚主场对本菲卡豪门，实力差距客观存在，主胜55%仍偏高，平局30%略显防御性堆叠。未开盘口下双选1-1/0-1合理，但“技术倾向主胜”与降级双选自相矛盾。推荐关注：技术倾向：主胜</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 03:00</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">奥林匹亚科斯主场</span>
+            </div>
+            
+            <img src='cid:chart_9' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">技术倾向：主胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">(无真实盘口，仅供观赛)</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>专家点评：奥林匹亚科斯主场底蕴深厚，布拉格斯巴达客战稳定性存疑。双方均无伤停，信息透明度低致盘口缺失，AI熔断机制合理压制主胜置信度至52%，平局风险升至28%。建议谨慎关注主胜，防范闷平。推荐关注：技术倾向：主胜</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 03:00</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">采列主场</span>
+            </div>
+            
+            <img src='cid:chart_10' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">技术倾向：主胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">(无真实盘口，仅供观赛)</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>情报熔断下强行主胜需谨慎。萨尔茨堡豪门客场底蕴深厚，虽无伤停但实力差距客观，主胜52%仅微弱优势，平局29%不可忽视。双选倾向合理，单博主胜风险偏高，建议防平。推荐关注：技术倾向：主胜</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 03:00</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">利勒斯特罗姆主场</span>
+            </div>
+            
+            <img src='cid:chart_11' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">主队赢盘 (主让 1)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">主胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">推荐下注 503.06元</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>基础概率主胜56.6%虽高，但情报熔断触发——盘口轨迹缺失、裁判未公布，多维缺失≥2项，禁单边主胜。皇家社会豪门客场韧性足，按铁律主胜封顶55%后大幅下调至45%，平局升至30%，客胜上修至25%。比分倾向1-1/0-1双峰，方向优先让球线，禁裸押胜平负。推荐关注：主胜</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 03:00</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">伯恩茅斯主场</span>
+            </div>
+            
+            <img src='cid:chart_12' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">2-0</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>2-0</b> (12.9%) | <b>1-0</b> (12.5%) | <b>1-1</b> (11.0%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1528 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 5 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[Scott,Kroupi.Jr,Enes Ünal] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">主队赢盘 (主让 -1)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">平局</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">推荐下注 128.23元</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>资深点评：主队3人伤停且裁判未定、无盘口轨迹，情报熔断下强推主胜风险极高。AC米兰豪门客场韧性强，模型已下调主胜至55%、上调平局至30%，防冷逻辑正确。主让-1缺盘口支撑，单边主胜不宜。推荐关注：平局。</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 03:00</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">凯尔特人主场</span>
+            </div>
+            
+            <img src='cid:chart_13' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">主队赢盘 (主让 1)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">主胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">推荐下注 503.06元</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>盘口与裁判信息缺失致信号降级，主让1球下主胜概率仅54%，平局上浮至28%，属弱信号。虽无伤停与休息差，但让球门槛偏高，主队穿盘存疑。建议轻仓关注主胜，忌重注。推荐关注：主胜</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 03:00</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">贝西克塔斯主场</span>
+            </div>
+            
+            <img src='cid:chart_14' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (12.5%) | <b>1-2</b> (9.6%) | <b>0-1</b> (8.7%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1612</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 5 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[Devenny,Esse,Uche,Timber]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">客队赢盘 (主让 -1)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">客胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">推荐下注 445.57元</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>客队4人伤停但豪门底蕴犹在，主让-1盘口未开且情报缺失≥3项触发熔断，单边胜负受限。模型上浮平局至30%、主胜28%、客胜42%，平局下限28%封顶主胜55%，英超中下游主场对Big6平局基准28%-32%亦支撑此结构。客胜概率仍占优，推荐关注：客胜。</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 03:00</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">霍芬海姆主场</span>
+            </div>
+            
+            <img src='cid:chart_15' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">主队赢盘 (主让 -1)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">平局</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">推荐下注 159.59元</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>专家点评：情报熔断机制触发合理，主胜概率下调至52%仍属优势区间，但平局上浮至28%值得警惕。无伤停与盘口缺失削弱单边信心，德甲场景平局基准上浮具备逻辑支撑。主让-1下主胜穿盘风险偏高，双选倾向降级审慎。推荐关注：平局</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 03:00</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">乔治罗尼亚主场</span>
+            </div>
+            
+            <img src='cid:chart_16' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">技术倾向：主胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">(无真实盘口，仅供观赛)</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>乔治罗尼亚主场对安德莱赫特，虽无伤停，但盘口与裁判信息缺失致情报熔断，数据可信度受限。豪门客场管控规则下，主胜概率由56.6%压至50%，平局升至30%，单边重注风险高。建议仅作技术性关注，不宜重仓。推荐关注：技术倾向：主胜</p>
+        </div>
+        
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
+                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ 10月23日 03:00</h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">比尔森胜利主场</span>
+            </div>
+            
+            <img src='cid:chart_17' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+
+            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
+                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">1-1</span> 
+                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: <b>1-1</b> (11.9%) | <b>2-0</b> (10.2%) | <b>1-0</b> (10.1%))</span>
+                </p>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
+                <tr>
+                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 1500 vs 客 1500</td>
+                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> 小雨 / 10.8℃</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 7 天 vs 客 7 天</td>
+                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> 未公布</td>
+                </tr>
+                <tr>
+                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[无] / 客队[无]</td>
+                </tr>
+            </table>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">观望 (未开出)</b></div>
+            </div>
+
+            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
+                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">技术倾向：主胜</span></p>
+                <p style="margin: 5px 0 0 0; color: #666;">(无真实盘口，仅供观赛)</p>
+            </div>
+
+            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>情报熔断下主胜仅50%，平局升至28%，无盘口裁判佐证，单边风险高。降级双选主胜/平局更稳妥，技术面仍倾向主胜。推荐关注：技术倾向：主胜</p>
+        </div>
+        </div></body></html>
