@@ -58,7 +58,6 @@ def run_backtest():
         print(f"❌ 找不到模型文件: {e}")
         return
 
-    # 联赛风格系数
     league_xg_weights = {
         '英超': 0.05, '西甲': 0.0, '德甲': 0.15, '意甲': -0.15, '法甲': -0.05,
         '欧冠': 0.0, '欧联': 0.0
@@ -74,40 +73,39 @@ def run_backtest():
     total_predicted = 0
     top1_hits = 0
     top3_hits = 0
-    goals_hit = 0 # 总进球数命中统计
+    goals_hit = 0 
 
     for idx, row in df.iterrows():
-        h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
-        # 获取该场比赛的联赛名称 (如果没有，默认英超)
+        h_team, a_team, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
         league_name = row.get('league', '英超')
         
-        for t in [h, a]:
+        for t in [h_team, a_team]:
             if t not in team_stats: 
                 team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[]}
             if t not in last_date: last_date[t] = None
                 
         if m_date >= backtest_start_date:
-            h_rest = (m_date - last_date[h]).days if last_date[h] else 7
-            a_rest = (m_date - last_date[a]).days if last_date[a] else 7
+            h_rest = (m_date - last_date[h_team]).days if last_date[h_team] else 7
+            a_rest = (m_date - last_date[a_team]).days if last_date[a_team] else 7
             rest_diff = h_rest - a_rest
             
-            h_xg = np.mean(team_stats[h]['xg'][-5:]) if team_stats[h]['xg'] else league_avg_goals
-            a_xg = np.mean(team_stats[a]['xg'][-5:]) if team_stats[a]['xg'] else league_avg_goals
-            h_xga = np.mean(team_stats[h]['xga'][-5:]) if team_stats[h]['xga'] else league_avg_goals
-            a_xga = np.mean(team_stats[a]['xga'][-5:]) if team_stats[a]['xga'] else league_avg_goals
+            h_xg = np.mean(team_stats[h_team]['xg'][-5:]) if team_stats[h_team]['xg'] else league_avg_goals
+            a_xg = np.mean(team_stats[a_team]['xg'][-5:]) if team_stats[a_team]['xg'] else league_avg_goals
+            h_xga = np.mean(team_stats[h_team]['xga'][-5:]) if team_stats[h_team]['xga'] else league_avg_goals
+            a_xga = np.mean(team_stats[a_team]['xga'][-5:]) if team_stats[a_team]['xga'] else league_avg_goals
             
-            h_home_xg = np.mean(team_stats[h]['home_xg'][-3:]) if team_stats[h]['home_xg'] else h_xg
-            h_home_xga = np.mean(team_stats[h]['home_xga'][-3:]) if team_stats[h]['home_xga'] else h_xga
-            a_away_xg = np.mean(team_stats[a]['away_xg'][-3:]) if team_stats[a]['away_xg'] else a_xg
-            a_away_xga = np.mean(team_stats[a]['away_xga'][-3:]) if team_stats[a]['away_xga'] else a_xga
+            h_home_xg = np.mean(team_stats[h_team]['home_xg'][-3:]) if team_stats[h_team]['home_xg'] else h_xg
+            h_home_xga = np.mean(team_stats[h_team]['home_xga'][-3:]) if team_stats[h_team]['home_xga'] else h_xga
+            a_away_xg = np.mean(team_stats[a_team]['away_xg'][-3:]) if team_stats[a_team]['away_xg'] else a_xg
+            a_away_xga = np.mean(team_stats[a_team]['away_xga'][-3:]) if team_stats[a_team]['away_xga'] else a_xga
             
-            h_sos = np.mean(team_stats[h]['opp_elo'][-5:]) if team_stats[h]['opp_elo'] else 1500
-            a_sos = np.mean(team_stats[a]['opp_elo'][-5:]) if team_stats[a]['opp_elo'] else 1500
-            h_pts = np.mean(team_stats[h]['pts'][-5:]) if team_stats[h]['pts'] else 1.0
-            a_pts = np.mean(team_stats[a]['pts'][-5:]) if team_stats[a]['pts'] else 1.0
+            h_sos = np.mean(team_stats[h_team]['opp_elo'][-5:]) if team_stats[h_team]['opp_elo'] else 1500
+            a_sos = np.mean(team_stats[a_team]['opp_elo'][-5:]) if team_stats[a_team]['opp_elo'] else 1500
+            h_pts = np.mean(team_stats[h_team]['pts'][-5:]) if team_stats[h_team]['pts'] else 1.0
+            a_pts = np.mean(team_stats[a_team]['pts'][-5:]) if team_stats[a_team]['pts'] else 1.0
             
-            h_elo = elo_dict.get(h, 1500)
-            a_elo = elo_dict.get(a, 1500)
+            h_elo = elo_dict.get(h_team, 1500)
+            a_elo = elo_dict.get(a_team, 1500)
             
             feat = [
                 h_elo, a_elo, h_elo - a_elo, 
@@ -124,7 +122,6 @@ def run_backtest():
             pred_a_xg_xgb = model_a_xgb.predict(feat)[0]
             pred_a_xg = max(0.1, (pred_a_xg_lgb + pred_a_xg_xgb) / 2.0)
             
-            # 🌟 应用联赛微调
             xg_adj = league_xg_weights.get(league_name, 0.0)
             pred_h_xg += (xg_adj / 2)
             pred_a_xg += (xg_adj / 2)
@@ -135,12 +132,23 @@ def run_backtest():
             pred_top1 = valid_scores[0][0]
             pred_top3 = [s[0] for s in valid_scores[:3]]
             
-            # 获取总进球数 Top 2 推荐
+            # 🌟 修复后的总进球数计算
             goal_probs = {}
-            for i in range(7):
-                prob = sum(prob_matrix[h][a] for h in range(i+1) if h <= 7 and (i-h) <= 7)
-                goal_probs[str(i)] = prob
-            goal_probs['7+'] = sum(prob_matrix[h][a] for h in range(8) for a in range(8) if h+a >= 7)
+            for total_g in range(8): # 0-7球
+                prob = 0
+                for hg in range(total_g + 1):
+                    ag = total_g - hg
+                    if hg <= 7 and ag <= 7:
+                        prob += prob_matrix[hg][ag]
+                goal_probs[str(total_g)] = prob
+                
+            prob_7_plus = 0
+            for hg in range(8):
+                for ag in range(8):
+                    if hg + ag >= 7:
+                        prob_7_plus += prob_matrix[hg][ag]
+            goal_probs['7+'] = prob_7_plus
+            
             sorted_goals = sorted(goal_probs.items(), key=lambda x: x[1], reverse=True)
             pred_goal_top2 = [k for k, v in sorted_goals[:2]]
             
@@ -176,16 +184,16 @@ def run_backtest():
         act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
         act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
         
-        team_stats[h]['xg'].append(act_h_xg); team_stats[h]['xga'].append(act_a_xg)
-        team_stats[a]['xg'].append(act_a_xg); team_stats[a]['xga'].append(act_h_xg)
-        team_stats[h]['home_xg'].append(act_h_xg); team_stats[h]['home_xga'].append(act_a_xg)
-        team_stats[a]['away_xg'].append(act_a_xg); team_stats[a]['away_xga'].append(act_h_xg)
+        team_stats[h_team]['xg'].append(act_h_xg); team_stats[h_team]['xga'].append(act_a_xg)
+        team_stats[a_team]['xg'].append(act_a_xg); team_stats[a_team]['xga'].append(act_h_xg)
+        team_stats[h_team]['home_xg'].append(act_h_xg); team_stats[h_team]['home_xga'].append(act_a_xg)
+        team_stats[a_team]['away_xg'].append(act_a_xg); team_stats[a_team]['away_xga'].append(act_h_xg)
         
-        team_stats[h]['opp_elo'].append(elo_dict.get(a, 1500)); team_stats[a]['opp_elo'].append(elo_dict.get(h, 1500))
-        team_stats[h]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
-        team_stats[a]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        team_stats[h_team]['opp_elo'].append(elo_dict.get(a_team, 1500)); team_stats[a_team]['opp_elo'].append(elo_dict.get(h_team, 1500))
+        team_stats[h_team]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        team_stats[a_team]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
         
-        last_date[h] = m_date; last_date[a] = m_date
+        last_date[h_team] = m_date; last_date[a_team] = m_date
 
     total_bets = len(records)
     win_rate = 0.0
