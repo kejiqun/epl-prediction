@@ -80,36 +80,29 @@ df_next_round = pd.read_csv('daily_matches.csv')
 df_next_round['主队'] = df_next_round['主队'].apply(translate_team_name)
 df_next_round['客队'] = df_next_round['客队'].apply(translate_team_name)
 df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
-# 提取比赛的具体日期 (YYYY-MM-DD)
 df_next_round['match_date_str'] = df_next_round['datetime_parsed'].dt.strftime('%Y-%m-%d')
 
 now_ts = pd.Timestamp.now()
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= now_ts) & (df_next_round['datetime_parsed'] <= now_ts + pd.Timedelta(hours=72))]
 if df_next_round.empty: exit()
 
-# 🌟 核心升级：构建带“日期”防呆锁的赔率字典
 real_odds_dict = {}
-# 1. 先读 API 抓的 (它自带了比赛时间)
 if os.path.exists('real_odds.csv'):
     df_odds = pd.read_csv('real_odds.csv')
     for _, r in df_odds.iterrows():
         try:
-            # 统一 API 日期格式为 YYYY-MM-DD
             api_date = pd.to_datetime(r['比赛时间']).strftime('%Y-%m-%d')
             real_odds_dict[(api_date, r['主队'], r['客队'])] = r
         except: pass
 
-# 2. 再读你手动填的 (强行覆盖同名且同日期比赛)
 if os.path.exists('manual_odds.csv'):
     df_manual = pd.read_csv('manual_odds.csv')
     for _, r in df_manual.iterrows():
         try:
-            # 强制要求 manual_odds.csv 必须有“比赛日期”这一列
             manual_date = str(r['比赛日期']).strip()
             real_odds_dict[(manual_date, r['主队'], r['客队'])] = r
-            print(f"✅ 成功加载人工赔率: {manual_date} {r['主队']} vs {r['客队']}")
         except Exception as e:
-            print(f"⚠️ 人工赔率读取失败，请检查是否漏了日期列: {e}")
+            pass
 
 ref_dict, coach_dict = {}, {}
 if os.path.exists('referee_stats.csv'):
@@ -161,17 +154,18 @@ knowledge_base = open('knowledge.txt', 'r', encoding='utf-8').read() if os.path.
 model_h, model_a = joblib.load('epl_v31_home_goals_model.pkl'), joblib.load('epl_v31_away_goals_model.pkl')
 calibrated_clf = joblib.load('epl_result_classifier.pkl')
 
-html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V28.1 真实数据预测 (日期防呆匹配版)</h2>", [], []
+# 🌟 新增：专门存放狙击清单的列表
+jczq_picks_list = []
+html_report, prediction_logs, img_buffers = "", [], []
 
+# 先跑循环，计算数据并收集清单
 for league in df_next_round['联赛'].unique():
-    html_report += f"<h2 style='color:blue;'>🏆 {league}</h2>"
     for _, match in df_next_round[df_next_round['联赛'] == league].iterrows():
         h_cn, a_cn = match['主队'], match['客队']
-        match_date_str = match['match_date_str'] # 使用严格的时间戳去匹配
+        match_date_str = match['match_date_str']
         m_time = pd.to_datetime(match['datetime_parsed']).strftime('%Y-%m-%d %H:%M')
         m_date = pd.to_datetime(match['datetime_parsed']).date()
         
-        # 🌟 双重匹配：日期 + 队名
         odds_row = real_odds_dict.get((match_date_str, h_cn, a_cn))
         
         if odds_row is not None:
@@ -185,12 +179,12 @@ for league in df_next_round['联赛'].unique():
             tl_line, over_odd, under_odd = 2.5, 0.0, 0.0
             has_real = False
 
-        # ... 后面获取特征、算概率、算凯利的逻辑跟上一版完全一样，保持不变 ...
         h = team_stats.get(h_cn, {'xg':[], 'opp_elo':[], 'pts':[]})
         a = team_stats.get(a_cn, {'xg':[], 'opp_elo':[], 'pts':[]})
         h_rest = (pd.Timestamp(m_date) - last_date[h_cn]).days if h_cn in last_date else 7
         a_rest = (pd.Timestamp(m_date) - last_date[a_cn]).days if a_cn in last_date else 7
         rest_diff = h_rest - a_rest
+        
         h_xg = np.mean(h['xg'][-5:]) if h['xg'] else league_avg_goals
         a_xg = np.mean(a['xg'][-5:]) if a['xg'] else league_avg_goals
         h_sos = np.mean(h['opp_elo'][-5:]) if h['opp_elo'] else 1500
@@ -206,6 +200,7 @@ for league in df_next_round['联赛'].unique():
         
         home_xg = max(0.1, model_h.predict(feat)[0])
         away_xg = max(0.1, model_a.predict(feat)[0])
+        
         h_impact = injury_impact.get(h_cn, 0)
         a_impact = injury_impact.get(a_cn, 0)
         home_xg *= max(0.6, 1 - h_impact * 0.1) 
@@ -269,6 +264,19 @@ for league in df_next_round['联赛'].unique():
             final_rec = f"技术倾向：{predict_choice}"
             split_msg = "(无真实盘口，禁止实盘)"
 
+        # 🌟 如果触发了买入条件，记录进狙击清单
+        if bet_amt > 0 or "高价值" in ou_rec or "高价值" in hc_rec:
+            jczq_picks_list.append({
+                '比赛时间': m_time,
+                '赛事': league,
+                '对阵': f"{h_cn} vs {a_cn}",
+                '胜平负推荐': final_rec if bet_amt > 0 else "观望",
+                '推荐金额': round(bet_amt, 2) if bet_amt > 0 else 0,
+                '让球推荐': hc_rec,
+                '大小球推荐': ou_rec
+            })
+
+        # 生成邮件内容（按原有逻辑）
         top_scores = sorted([(f"{i}-{j}", prob_matrix[i][j]) for i in range(7) for j in range(7)], key=lambda x: x[1], reverse=True)[:3]
         top3_str = ", ".join([f"{s[0]}({s[1]*100:.1f}%)" for s in top_scores])
 
@@ -296,7 +304,39 @@ for league in df_next_round['联赛'].unique():
         html_report += f"<div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>{final_rec}</span> {split_msg}</p></div>"
         html_report += f"<p><b>🧠 AI点评：</b>{ai_comment}</p>"
 
-html_report += "</body></html>"
+# 🌟 汇总最终邮件与清单文件
+final_html = "<html><body><h2>⚽ V29.0 真实数据预测 (竞彩狙击版)</h2>"
 
-open('dashboard.html', 'w', encoding='utf-8').write(html_report)
-send_rich_email("V28.1 真实数据预测 (日期防呆版)", html_report, img_buffers)
+# 如果清单里有货，就放在邮件最顶端
+if jczq_picks_list:
+    df_picks = pd.DataFrame(jczq_picks_list)
+    df_picks.to_csv('daily_jczq_picks.csv', index=False, encoding='utf-8-sig') # 保存为 CSV 文件
+    
+    picks_html = df_picks.to_html(index=False, border=1, justify='center', classes='table table-striped')
+    final_html += f"""
+    <div style='background-color: #fff3cd; border: 2px solid #ffc107; padding: 20px; border-radius: 8px; margin-bottom: 20px;'>
+        <h3 style='color: #856404; margin-top: 0;'>🎯 今日竞彩狙击清单 (仅限有高价值比赛)</h3>
+        <p style='color: #856404;'>系统已为您过滤掉所有无效比赛，以下比赛经模型精算具有真实盈利空间。请按照此清单去彩票店挑选！</p>
+        {picks_html}
+    </div>
+    """
+else:
+    final_html += """
+    <div style='background-color: #f8d7da; border: 2px solid #f5c6cb; padding: 20px; border-radius: 8px; margin-bottom: 20px;'>
+        <h3 style='color: #721c24; margin-top: 0;'>🛑 今日无狙击目标</h3>
+        <p style='color: #721c24;'>系统扫描了今日所有比赛，因无赔率或凯利指标不足，模型未发现有高价值的投资机会。建议今日空仓观望，保存实力。</p>
+    </div>
+    """
+    # 生成一个空的 CSV 防止后续报错
+    pd.DataFrame(columns=['比赛时间', '赛事', '对阵', '胜平负推荐', '推荐金额', '让球推荐', '大小球推荐']).to_csv('daily_jczq_picks.csv', index=False, encoding='utf-8-sig')
+
+final_html += html_report + "</body></html>"
+
+log_df = pd.DataFrame(prediction_logs)
+if os.path.exists('predictions_log.csv'):
+    old = pd.read_csv('predictions_log.csv')
+    log_df = pd.concat([old, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
+log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
+
+open('dashboard.html', 'w', encoding='utf-8').write(final_html)
+send_rich_email("V29.0 每日战报与竞彩狙击清单", final_html, img_buffers)
