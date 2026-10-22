@@ -18,10 +18,8 @@ from email.header import Header
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 from team_mapping import translate_team_name
 
-# 设置更美观的绘图风格
 plt.style.use('seaborn-v0_8-darkgrid')
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
@@ -87,24 +85,21 @@ if os.path.exists('bankroll.csv'):
     try: bankroll = pd.read_csv('bankroll.csv').iloc[-1]['当前资金']
     except: pass
 
-if not os.path.exists('daily_matches.csv'): exit()
+if not os.exists('daily_matches.csv'): exit()
 df_next_round = pd.read_csv('daily_matches.csv')
 df_next_round['主队'] = df_next_round['主队'].apply(translate_team_name)
 df_next_round['客队'] = df_next_round['客队'].apply(translate_team_name)
 df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
 df_next_round['match_date_str'] = df_next_round['datetime_parsed'].dt.strftime('%Y-%m-%d')
 
-# 🌟 核心需求1：只抓明天（次日）的比赛，并严格按时间升序排列
 tomorrow = datetime.now() + timedelta(days=1)
 start_of_tomorrow = tomorrow.replace(hour=0, minute=0, second=0, microsecond=0)
 end_of_tomorrow = start_of_tomorrow + timedelta(days=1)
 
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= start_of_tomorrow) & (df_next_round['datetime_parsed'] < end_of_tomorrow)]
-df_next_round = df_next_round.sort_values('datetime_parsed') # 按时间排序
+df_next_round = df_next_round.sort_values('datetime_parsed')
 
-if df_next_round.empty: 
-    print("⚠️ 明天没有比赛。")
-    exit()
+if df_next_round.empty: exit()
 
 real_odds_dict = {}
 if os.path.exists('real_odds.csv'):
@@ -170,10 +165,9 @@ jczq_picks_list = []
 html_report, prediction_logs, img_buffers = "", [], []
 
 for league in df_next_round['联赛'].unique():
-    # 联赛头部设计
     html_report += f"""
-    <div style="background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 10px 20px; border-radius: 8px; margin-top: 30px; margin-bottom: 20px;">
-        <h2 style="margin: 0; font-size: 24px;">🏆 {league}</h2>
+    <div style="background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 8px 15px; border-radius: 8px; margin-top: 25px; margin-bottom: 15px;">
+        <h2 style="margin: 0; font-size: 20px;">🏆 {league}</h2>
     </div>
     """
     for _, match in df_next_round[df_next_round['联赛'] == league].iterrows():
@@ -289,120 +283,107 @@ for league in df_next_round['联赛'].unique():
         top3_str = " | ".join([f"<b>{s[0]}</b> ({s[1]*100:.1f}%)" for s in top_scores])
         best_score = top_scores[0][0]
 
-        # 获取天气
         w_text, w_temp = get_match_weather(h_cn, match_date_str)
-        # 模拟场地数据（后续可从API接）
         venue = f"{h_cn}主场" 
 
         prompt = f"""资深专家，点评(150字内)：比赛：{h_cn} vs {a_cn}。倾向：{predict_choice}。伤停：{injury_info}。大小球/让球：{ou_msg} / {hc_msg}。AI理由：{ai_reason}。以“推荐关注：{final_rec}”结尾。"""
         try: ai_comment = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False).choices[0].message.content.strip()
         except: ai_comment = "AI解析失败"
 
-        # 🌟 核心需求2：图表大升级
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
+        # 🌟 视觉升级：缩短图表高度，让单场比赛一屏可见
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 3.2))
         fig.patch.set_facecolor('#f8f9fa')
         
-        # 左图：胜平负概率 - 渐变柱状图
+        # 左图：胜平负概率
         labels = ['主胜', '平局', '客胜']
         probs = [p_h*100, p_d*100, p_a*100]
         colors = ['#4e79a7', '#f28e2b', '#e15759']
-        bars = ax1.bar(labels, probs, color=colors, width=0.5, edgecolor='white', linewidth=1.5)
+        bars = ax1.bar(labels, probs, color=colors, width=0.5, edgecolor='white', linewidth=1)
         ax1.set_ylim(0, 100)
-        ax1.set_ylabel('胜率 (%)', fontsize=12, color='#555')
-        ax1.set_title(f"{h_cn} vs {a_cn} - 赛果概率", fontsize=14, fontweight='bold', color='#333')
+        ax1.set_title(f"{h_cn} vs {a_cn} - 赛果概率", fontsize=12, fontweight='bold', color='#333')
         for bar in bars:
             yval = bar.get_height()
-            ax1.text(bar.get_x() + bar.get_width()/2, yval + 2, f'{yval:.1f}%', ha='center', va='bottom', fontsize=12, fontweight='bold')
-        ax1.spines['top'].set_visible(False)
-        ax1.spines['right'].set_visible(False)
+            ax1.text(bar.get_x() + bar.get_width()/2, yval + 2, f'{yval:.1f}%', ha='center', va='bottom', fontsize=11, fontweight='bold')
+        ax1.tick_params(axis='both', labelsize=10)
         
-        # 右图：xG 对比 - 高级横向条形图/进度条效果
-        ax2.barh(['客队 xG', '主队 xG'], [away_xg, home_xg], color=['#59a14f', '#e15759'], height=0.5)
+        # 右图：xG 对比
+        ax2.barh(['客队', '主队'], [away_xg, home_xg], color=['#59a14f', '#e15759'], height=0.4)
         ax2.set_xlim(0, max(home_xg, away_xg) + 1)
-        ax2.set_title("真实预期进球 (xG)", fontsize=14, fontweight='bold', color='#333')
-        ax2.text(home_xg + 0.1, 1, f'{home_xg:.2f}', va='center', fontsize=12, fontweight='bold')
-        ax2.text(away_xg + 0.1, 0, f'{away_xg:.2f}', va='center', fontsize=12, fontweight='bold')
-        ax2.spines['top'].set_visible(False)
-        ax2.spines['right'].set_visible(False)
+        ax2.set_title("预期进球 (xG)", fontsize=12, fontweight='bold', color='#333')
+        ax2.text(home_xg + 0.1, 1, f'{home_xg:.2f}', va='center', fontsize=11, fontweight='bold')
+        ax2.text(away_xg + 0.1, 0, f'{away_xg:.2f}', va='center', fontsize=11, fontweight='bold')
+        ax2.tick_params(axis='both', labelsize=10)
 
         plt.tight_layout()
         buf = io.BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); buf.seek(0); img_buffers.append(buf); plt.close(fig)
 
-        # 🌟 核心需求3：精美排版与信息补齐
+        # 🌟 视觉升级：精简头部与信息网格，收紧留白
         html_report += f"""
-        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
-                <h3 style="margin: 0; color: #333; font-size: 20px;">⏰ {m_time}</h3>
-                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 14px;">{venue}</span>
+        <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; margin-bottom: 20px; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 8px; margin-bottom: 10px;">
+                <h3 style="margin: 0; color: #2c3e50; font-size: 18px;">⏰ {m_time} <span style="color: #000; margin-left: 10px; font-size: 20px;">{h_cn} vs {a_cn}</span></h3>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 3px 10px; border-radius: 15px; font-weight: bold; font-size: 12px;">{venue}</span>
             </div>
             
-            <img src='cid:chart_{len(img_buffers)-1}' width='100%' style='border-radius: 8px; margin-bottom: 15px;'>
+            <img src='cid:chart_{len(img_buffers)-1}' width='100%' style='border-radius: 5px; margin-bottom: 10px;'>
 
-            <div style="background-color: #fff3cd; border-left: 5px solid #ffc107; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
-                <p style="margin: 0; font-size: 16px; font-weight: bold; color: #856404;">
-                    🎯 首选比分：<span style="font-size: 24px; color: #d9534f;">{best_score}</span> 
-                    <span style="font-size: 14px; font-weight: normal; margin-left: 10px;">(其他高频比分: {top3_str})</span>
-                </p>
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 14px; color: #856404; font-weight: bold;">🎯 首选比分：<span style="font-size: 20px; color: #d9534f;">{best_score}</span></span>
+                <span style="font-size: 12px; color: #666;">其他高频: {top3_str}</span>
             </div>
 
-            <table style="width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.6;">
-                <tr>
-                    <td style="padding: 8px 0; width: 50%;">💪 <b>Elo 实力:</b> 主 {h_elo:.0f} vs 客 {a_elo:.0f}</td>
-                    <td style="padding: 8px 0; width: 50%;">🌤️ <b>天气:</b> {w_text} / {w_temp}℃</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px 0;">⏱️ <b>休息天数:</b> 主 {h_rest} 天 vs 客 {a_rest} 天</td>
-                    <td style="padding: 8px 0;">🧑‍⚖️ <b>主裁:</b> {ref_info['name']}</td>
-                </tr>
-                <tr>
-                    <td colspan="2" style="padding: 8px 0; color: #d9534f;"><b>🚨 核心伤停:</b> 主队[{h_inj_str}] / 客队[{a_inj_str}]</td>
-                </tr>
-            </table>
-
-            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
-                <div><span style="color: #666; font-size: 14px;">亚盘推荐</span><br><b style="font-size: 18px; color: #1e3c72;">{hc_rec} ({hc_msg})</b></div>
-                <div><span style="color: #666; font-size: 14px;">大小球推荐</span><br><b style="font-size: 18px; color: #1e3c72;">{ou_rec} ({ou_msg})</b></div>
+            <div style="display: flex; flex-wrap: wrap; font-size: 13px; line-height: 1.8; color: #444; margin-bottom: 10px;">
+                <div style="width: 50%;">💪 <b>Elo:</b> 主 {h_elo:.0f} / 客 {a_elo:.0f}</div>
+                <div style="width: 50%;">🌤️ <b>天气:</b> {w_text} {w_temp}℃</div>
+                <div style="width: 50%;">⏱️ <b>休息:</b> 主 {h_rest} 天 / 客 {a_rest} 天</div>
+                <div style="width: 50%;">🧑‍⚖️ <b>裁判:</b> {ref_info['name']}</div>
+                <div style="width: 100%; color: #d9534f; margin-top: 5px;"><b>🚨 伤停:</b> 主[{h_inj_str}] / 客[{a_inj_str}]</div>
             </div>
 
-            <div style="margin-top: 15px; padding: 15px; border: 2px dashed #ccc; border-radius: 8px; text-align: center;">
-                <p style="margin: 0; font-size: 16px;"><b>💡 最终结论：</b><span style="font-size: 26px; color: #d9534f; font-weight: bold;">{final_rec}</span></p>
-                <p style="margin: 5px 0 0 0; color: #666;">{split_msg}</p>
+            <div style="background-color: #f8f9fa; padding: 8px; border-radius: 6px; display: flex; justify-content: space-around; text-align: center; font-size: 13px;">
+                <div><span style="color: #666;">亚盘</span> <b style="color: #1e3c72;">{hc_rec} ({hc_msg})</b></div>
+                <div><span style="color: #666;">大小球</span> <b style="color: #1e3c72;">{ou_rec} ({ou_msg})</b></div>
             </div>
 
-            <p style="margin-top: 15px; color: #444; font-size: 14px; line-height: 1.5;"><b>🧠 AI点评：</b>{ai_comment}</p>
+            <div style="margin-top: 12px; padding: 10px; border: 1px dashed #ccc; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; background-color: #fafafa;">
+                <div>
+                    <span style="font-size: 15px;"><b>💡 最终结论：</b><span style="font-size: 22px; color: #d9534f; font-weight: bold; margin-right: 10px;">{final_rec}</span></span>
+                    <span style="font-size: 13px; color: #666;">{split_msg}</span>
+                </div>
+            </div>
+
+            <p style="margin-top: 10px; margin-bottom: 0; color: #555; font-size: 13px; line-height: 1.5;"><b>🧠 AI点评：</b>{ai_comment}</p>
         </div>
         """
 
-final_html = "<html><body style='background-color: #f4f7f6; padding: 20px; font-family: \"Helvetica Neue\", Arial, sans-serif;'><div style='max-width: 800px; margin: auto;'>"
-final_html += "<h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 15px;'>⚽ 明日赛事量化预测 (V30.0 臻美版)</h1>"
+final_html = "<html><body style='background-color: #f4f7f6; padding: 15px; font-family: \"Helvetica Neue\", Arial, sans-serif;'><div style='max-width: 850px; margin: auto;'>"
+final_html += "<h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; font-size: 24px;'>⚽ 明日赛事量化预测 (V30.1 极简紧凑版)</h1>"
 
 if jczq_picks_list:
     df_picks = pd.DataFrame(jczq_picks_list)
     df_picks.to_csv('daily_jczq_picks.csv', index=False, encoding='utf-8-sig')
     picks_html = df_picks.to_html(index=False, border=0, justify='center', classes='table table-hover', table_id='pick_table')
     
-    # 为表格加点 CSS 样式
     css = """
     <style>
-        #pick_table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
-        #pick_table th { background-color: #3498db; color: white; padding: 10px; text-align: center; }
-        #pick_table td { padding: 8px; border-bottom: 1px solid #eee; text-align: center; }
+        #pick_table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+        #pick_table th { background-color: #3498db; color: white; padding: 8px; text-align: center; }
+        #pick_table td { padding: 6px; border-bottom: 1px solid #eee; text-align: center; }
         #pick_table tr:nth-child(even) { background-color: #f9f9f9; }
     </style>
     """
     final_html += css
     final_html += f"""
-    <div style='background-color: #fff; border-top: 5px solid #f39c12; padding: 25px; border-radius: 10px; margin-bottom: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);'>
-        <h3 style='color: #d35400; margin-top: 0; font-size: 22px; text-align: center;'>🎯 今日竞彩狙击清单 (高价值提取)</h3>
-        <p style='text-align: center; color: #7f8c8d; font-size: 14px;'>系统已过滤无效比赛，以下为具备量化盈利空间的标的：</p>
+    <div style='background-color: #fff; border-top: 5px solid #f39c12; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);'>
+        <h3 style='color: #d35400; margin-top: 0; font-size: 18px; text-align: center;'>🎯 今日竞彩狙击清单</h3>
         {picks_html}
     </div>
     """
 else:
     final_html += """
-    <div style='background-color: #fdf2f2; border-top: 5px solid #e74c3c; padding: 25px; border-radius: 10px; margin-bottom: 30px; text-align: center;'>
-        <h3 style='color: #c0392b; margin-top: 0; font-size: 22px;'>🛑 今日无狙击目标</h3>
-        <p style='color: #c0392b;'>系统扫描了所有明日比赛，因无赔率或期望价值不足，建议空仓观望，保存实力。</p>
+    <div style='background-color: #fdf2f2; border-top: 5px solid #e74c3c; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center;'>
+        <h3 style='color: #c0392b; margin-top: 0; font-size: 18px;'>🛑 今日无狙击目标</h3>
+        <p style='color: #c0392b; font-size: 14px;'>系统扫描了所有明日比赛，因无赔率或期望价值不足，建议空仓观望。</p>
     </div>
     """
     pd.DataFrame(columns=['比赛时间', '赛事', '对阵', '推荐', '金额', '让球', '大小球']).to_csv('daily_jczq_picks.csv', index=False, encoding='utf-8-sig')
@@ -417,4 +398,4 @@ if os.path.exists('predictions_log.csv'):
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("V30.0 明日赛事量化预测 (臻美版)", final_html, img_buffers)
+send_rich_email("V30.1 明日赛事量化预测 (极简紧凑版)", final_html, img_buffers)
