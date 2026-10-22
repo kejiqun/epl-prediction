@@ -84,11 +84,19 @@ now_ts = pd.Timestamp.now()
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= now_ts) & (df_next_round['datetime_parsed'] <= now_ts + pd.Timedelta(hours=72))]
 if df_next_round.empty: exit()
 
+# 🌟 核心升级：优先读取人工填写的真实赔率
 real_odds_dict = {}
+# 1. 先读 API 抓的
 if os.path.exists('real_odds.csv'):
     df_odds = pd.read_csv('real_odds.csv')
     for _, r in df_odds.iterrows():
         real_odds_dict[(r['主队'], r['客队'])] = r
+# 2. 再读你手动填的（覆盖 API 的同名比赛）
+if os.path.exists('manual_odds.csv'):
+    df_manual = pd.read_csv('manual_odds.csv')
+    for _, r in df_manual.iterrows():
+        real_odds_dict[(r['主队'], r['客队'])] = r
+    print("✅ 已融合人工输入的赔率数据。")
 
 ref_dict, coach_dict = {}, {}
 if os.path.exists('referee_stats.csv'):
@@ -127,7 +135,7 @@ for _, row in df_hist.iterrows():
         if t not in last_date: last_date[t] = None
     act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
     act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
-    team_stats[h]['xg'].append(act_h_xg); team_stats[h]['opp_elo'].append(1500) # 简化计算
+    team_stats[h]['xg'].append(act_h_xg); team_stats[h]['opp_elo'].append(1500) 
     team_stats[h]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
     team_stats[a]['xg'].append(act_a_xg); team_stats[a]['opp_elo'].append(1500)
     team_stats[a]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
@@ -140,7 +148,7 @@ knowledge_base = open('knowledge.txt', 'r', encoding='utf-8').read() if os.path.
 model_h, model_a = joblib.load('epl_v31_home_goals_model.pkl'), joblib.load('epl_v31_away_goals_model.pkl')
 calibrated_clf = joblib.load('epl_result_classifier.pkl')
 
-html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V27.0 真实数据预测 (疲劳战意量化版)</h2>", [], []
+html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V28.0 真实数据预测 (人工兜底实战版)</h2>", [], []
 
 for league in df_next_round['联赛'].unique():
     html_report += f"<h2 style='color:blue;'>🏆 {league}</h2>"
@@ -290,4 +298,4 @@ if os.path.exists('predictions_log.csv'):
     log_df = pd.concat([old, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html_report)
-send_rich_email("V27.0 真实数据预测 (疲劳战意量化版)", html_report, img_buffers)
+send_rich_email("V28.0 真实数据预测 (人工兜底实战版)", html_report, img_buffers)
