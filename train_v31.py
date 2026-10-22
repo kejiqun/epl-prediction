@@ -68,32 +68,41 @@ def train_models():
         feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000)
         features.append(feat)
         
-        labels_home.append(row['home_goals'])
-        labels_away.append(row['away_goals'])
-        if row['home_goals'] > row['away_goals']: labels_result.append(2)
-        elif row['home_goals'] == row['away_goals']: labels_result.append(1)
+        # 🌟 核心修复：对标签进行清洗，防止 NaN 和 inf 污染模型
+        h_goals = row['home_goals'] if pd.notna(row['home_goals']) else 0.0
+        a_goals = row['away_goals'] if pd.notna(row['away_goals']) else 0.0
+        
+        labels_home.append(float(h_goals))
+        labels_away.append(float(a_goals))
+        
+        if h_goals > a_goals: labels_result.append(2)
+        elif h_goals == a_goals: labels_result.append(1)
         else: labels_result.append(0)
         
-        act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
-        act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
+        act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else h_goals
+        act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else a_goals
         team_stats[h]['xg'].append(act_h_xg); team_stats[h]['opp_elo'].append(row['away_elo'])
-        team_stats[h]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        team_stats[h]['pts'].append(3 if h_goals > a_goals else (1 if h_goals == a_goals else 0))
         team_stats[a]['xg'].append(act_a_xg); team_stats[a]['opp_elo'].append(row['home_elo'])
-        team_stats[a]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        team_stats[a]['pts'].append(3 if a_goals > h_goals else (1 if h_goals == a_goals else 0))
         
         last_date[h] = m_date; last_date[a] = m_date
 
     X = np.array(features, dtype=np.float32)
-    y_h = np.array(labels_home, dtype=np.float32)
-    y_a = np.array(labels_away, dtype=np.float32)
+    # 🌟 强制使用 nan_to_num 确保标签绝对干净
+    y_h = np.nan_to_num(np.array(labels_home, dtype=np.float32), nan=0.0, posinf=10.0, neginf=0.0)
+    y_a = np.nan_to_num(np.array(labels_away, dtype=np.float32), nan=0.0, posinf=10.0, neginf=0.0)
     y_res = np.array(labels_result, dtype=np.int32)
+    
+    print(f"📊 数据检查：标签 y_h 中 NaN 数量为 {np.isnan(y_h).sum()}")
+    print(f"📊 数据检查：标签 y_a 中 NaN 数量为 {np.isnan(y_a).sum()}")
     
     # 1. 训练 LightGBM
     params_reg = {'objective': 'regression', 'metric': 'rmse', 'verbose': -1}
     model_h_lgb = lgb.train(params_reg, lgb.Dataset(X, label=y_h), num_boost_round=100)
     model_a_lgb = lgb.train(params_reg, lgb.Dataset(X, label=y_a), num_boost_round=100)
     
-    # 2. 训练 XGBoost
+    # 2. 训练 XGBoost (加入 tree_method='exact' 增强稳定性)
     model_h_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1, tree_method='exact')
     model_a_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1, tree_method='exact')
     model_h_xgb.fit(X, y_h)
