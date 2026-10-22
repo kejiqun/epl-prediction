@@ -16,32 +16,35 @@ TEAM_MAPPING = {
     'Sunderland': '桑德兰', 'Burnley': '伯恩利', 'Sheffield United': '谢菲尔德联', 'Luton': '卢顿', 'Luton Town': '卢顿', 'Watford': '沃特福德', 'Norwich': '诺维奇', 'Norwich City': '诺维奇',
     'Fleetwood Town': '弗利特伍德', 'Bradford City': '布拉德福德', 'Peterborough United': '彼得堡联',
 
-    # ================= 西甲 =================
+    # ================= 西甲及西乙 =================
     'Real Madrid': '皇家马德里', 'Barcelona': '巴塞罗那', 'Atletico Madrid': '马德里竞技', 'Girona': '赫罗纳',
     'Athletic Bilbao': '毕尔巴鄂竞技', 'Athletic Club': '毕尔巴鄂竞技', 'Real Sociedad': '皇家社会', 'Real Betis': '皇家贝蒂斯',
     'Villarreal': '比利亚雷亚尔', 'Valencia': '瓦伦西亚', 'Sevilla': '塞维利亚', 'Osasuna': '奥萨苏纳', 'Getafe': '赫塔菲',
     'Celta Vigo': '塞尔塔', 'Mallorca': '马洛卡', 'Las Palmas': '拉斯帕尔马斯', 'Rayo Vallecano': '巴列卡诺', 'Alaves': '阿拉维斯',
     'Cadiz': '加的斯', 'Granada': '格拉纳达', 'Almeria': '阿尔梅里亚', 'Levante': '莱万特', 'Malaga': '马拉加', 'Deportivo': '拉科鲁尼亚',
+    'Racing Santander': '桑坦德竞技', 'Espanyol': '西班牙人', 'Elche': '埃尔切', 'Real Zaragoza': '皇家萨拉戈萨', 'Sporting Gijon': '希洪竞技',
 
-    # ================= 德甲 =================
+    # ================= 德甲及德乙 =================
     'Bayern Munich': '拜仁慕尼黑', 'Borussia Dortmund': '多特蒙德', 'Bayer Leverkusen': '勒沃库森', 'RB Leipzig': '莱比锡红牛',
     'VfB Stuttgart': '斯图加特', 'Eintracht Frankfurt': '法兰克福', 'SC Freiburg': '弗赖堡', 'TSG Hoffenheim': '霍芬海姆',
     'FC Augsburg': '奥格斯堡', 'Werder Bremen': '云达不莱梅', 'VfL Wolfsburg': '沃尔夫斯堡', 'Borussia Monchengladbach': '门兴格拉德巴赫',
-    'Mainz': '美因茨', 'Mainz 05': '美因茨', 'Union Berlin': '柏林联合', 'VfL Bochum': '波鸿', 'FC Cologne': '科隆', 'Heidenheim': '海登海姆',
-    'Darmstadt': '达姆施塔特', 'Schalke 04': '沙尔克04', 'Hamburg SV': '汉堡', 'SV Elversberg': '艾禾斯堡',
+    'Mainz': '美因茨', 'Mainz 05': '美因茨', 'Union Berlin': '柏林联合', 'FC Union Berlin': '柏林联合', 'VfL Bochum': '波鸿', 'FC Cologne': '科隆', 'Heidenheim': '海登海姆',
+    'Darmstadt': '达姆施塔特', 'Schalke 04': '沙尔克04', 'Hamburg SV': '汉堡', 'SV Elversberg': '艾禾斯堡', 'Fortuna Dusseldorf': '杜塞尔多夫',
 
-    # ================= 意甲 =================
+    # ================= 意甲及意乙 =================
     'Inter Milan': '国际米兰', 'Inter': '国际米兰', 'AC Milan': 'AC米兰', 'Milan': 'AC米兰', 'Juventus': '尤文图斯',
     'Napoli': '那不勒斯', 'Atalanta': '亚特兰大', 'AS Roma': '罗马', 'Roma': '罗马', 'Lazio': '拉齐奥', 'Fiorentina': '佛罗伦萨',
     'Bologna': '博洛尼亚', 'Torino': '都灵', 'Monza': '蒙扎', 'Genoa': '热那亚', 'Lecce': '莱切', 'Sassuolo': '萨索洛',
     'Udinese': '乌迪内斯', 'Cagliari': '卡利亚里', 'Empoli': '恩波利', 'Verona': '维罗纳', 'Frosinone': '弗洛西诺内', 'Salernitana': '萨勒尼塔纳',
+    'Sampdoria': '桑普多利亚', 'Palermo': '巴勒莫',
 
-    # ================= 法甲 =================
+    # ================= 法甲及法乙 =================
     'Paris Saint-Germain': '巴黎圣日耳曼', 'PSG': '巴黎圣日耳曼', 'Marseille': '马赛', 'Monaco': '摩纳哥',
     'Lille': '里尔', 'Nice': '尼斯', 'Lens': '朗斯', 'Rennes': '雷恩', 'Lyon': '里昂', 'Reims': '兰斯',
     'Montpellier': '蒙彼利埃', 'Toulouse': '图卢兹', 'Strasbourg': '斯特拉斯堡', 'Nantes': '南特', 'Brest': '布雷斯特', 'Le Havre': '勒阿弗尔', 'Como': '科莫',
+    'Saint-Etienne': '圣埃蒂安', 'Bordeaux': '波尔多',
 
-    # ================= 欧战与南美/澳超常客 =================
+    # ================= 欧战常客 =================
     'Ajax': '阿贾克斯', 'PSV': '埃因霍温', 'PSV Eindhoven': '埃因霍温', 'Feyenoord': '费耶诺德', 'AZ Alkmaar': '阿尔克马尔', 'Twente': '特温特',
     'Benfica': '本菲卡', 'Porto': '波尔图', 'FC Porto': '波尔图', 'Sporting CP': '葡萄牙体育', 'Sporting Lisbon': '葡萄牙体育', 'Braga': '布拉加',
     'Celtic': '凯尔特人', 'Rangers': '格拉斯哥流浪者', 'Galatasaray': '加拉塔萨雷', 'Fenerbahce': '费内巴切', 'Besiktas': '贝西克塔斯',
