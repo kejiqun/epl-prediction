@@ -13,7 +13,6 @@ warnings.filterwarnings('ignore')
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
-# 复用矩阵生成器
 def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.08):
     def dixon_coles_tau(h, a):
         if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
@@ -39,9 +38,11 @@ def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.08):
     return scores
 
 def run_backtest():
-    print("⏳ 启动时光机回测系统 (V31.0 包含比分命中率)...")
+    print("⏳ 启动时光机回测系统 (V31.1 强制更新版)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
-    if not os.path.exists(history_file): return
+    if not os.path.exists(history_file): 
+        print("❌ 找不到历史数据")
+        return
         
     df = pd.read_csv(history_file)
     df['date'] = pd.to_datetime(df['date'])
@@ -72,7 +73,6 @@ def run_backtest():
     team_stats, last_date = {}, {}
     backtest_start_date = df['date'].max() - pd.Timedelta(days=365)
     
-    # 🌟 新增：比分预测统计器
     total_predicted = 0
     top1_hits = 0
     top3_hits = 0
@@ -102,12 +102,10 @@ def run_backtest():
             feat = [h_elo, a_elo, h_elo - a_elo, h_sos, a_sos, h_xg, a_xg, h_pts, a_pts, rest_diff]
             feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000).reshape(1, -1)
             
-            # 计算比分矩阵
             pred_h_xg = max(0.1, model_h.predict(feat)[0])
             pred_a_xg = max(0.1, model_a.predict(feat)[0])
             scores_list = generate_score_matrix(pred_h_xg, pred_a_xg)
             
-            # 统计比分命中率
             valid_scores = [s for s in scores_list if s[1] > 0.015]
             pred_top1 = valid_scores[0][0]
             pred_top3 = [s[0] for s in valid_scores[:3]]
@@ -120,7 +118,6 @@ def run_backtest():
             if actual_score in pred_top3:
                 top3_hits += 1
                 
-            # 预测胜平负下注逻辑（保持原有）
             clf_probs = calibrated_clf.predict_proba(feat)[0]
             p_a_clf, p_d_clf, p_h_clf = clf_probs[0], clf_probs[1], clf_probs[2]
             
@@ -142,7 +139,6 @@ def run_backtest():
                 bankroll += profit
                 records.append({'date': m_date.strftime('%Y-%m-%d'), 'profit': profit, 'bankroll': bankroll})
         
-        # 更新统计数据
         act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
         act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
         team_stats[h]['xg'].append(act_h_xg); team_stats[h]['opp_elo'].append(elo_dict.get(a, 1500))
@@ -152,46 +148,48 @@ def run_backtest():
         
         last_date[h] = m_date; last_date[a] = m_date
 
-    if not records:
-        print("⚠️ 没有比赛符合严选条件。")
-        return
-        
-    df_rec = pd.DataFrame(records)
-    total_bets = len(df_rec)
-    win_bets = len(df_rec[df_rec['profit'] > 0])
-    win_rate = (win_bets / total_bets) * 100
-    total_profit = df_rec['profit'].sum()
-    roi = (total_profit / (total_bets * bet_amount)) * 100
+    # 🌟 除零保护 & 强制输出
+    total_bets = len(records)
+    win_rate = 0.0
+    roi = 0.0
+    total_profit = 0.0
     
-    top1_acc = (top1_hits / total_predicted) * 100
-    top3_acc = (top3_hits / total_predicted) * 100
+    if total_bets > 0:
+        df_rec = pd.DataFrame(records)
+        win_bets = len(df_rec[df_rec['profit'] > 0])
+        win_rate = (win_bets / total_bets) * 100
+        total_profit = df_rec['profit'].sum()
+        roi = (total_profit / (total_bets * bet_amount)) * 100
+        
+        plt.figure(figsize=(10, 5))
+        plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
+        plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
+        plt.title('历史回测资金曲线 (V31.1)')
+        plt.legend()
+        plt.grid(True, linestyle='--', alpha=0.6)
+        plt.savefig('backtest_roi.png', dpi=120)
+        plt.close()
+    
+    top1_acc = (top1_hits / total_predicted) * 100 if total_predicted > 0 else 0
+    top3_acc = (top3_hits / total_predicted) * 100 if total_predicted > 0 else 0
     
     print(f"✅ 回测完成！下注胜率 {win_rate:.1f}%，ROI {roi:+.1f}%")
-    print(f"🎯 比分命中率：首选命中率 {top1_acc:.1f}%，前三推荐命中率 {top3_acc:.1f}%")
+    print(f"🎯 比分命中率：首选 {top1_acc:.1f}%，前三 {top3_acc:.1f}%")
     
-    plt.figure(figsize=(10, 5))
-    plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
-    plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
-    plt.title('历史回测资金曲线 (V31.0 比分精算版)')
-    plt.legend()
-    plt.grid(True, linestyle='--', alpha=0.6)
-    plt.savefig('backtest_roi.png', dpi=120)
-    plt.close()
-    
-    report = f"""--- 历史回测报告 (V31.0 比分精算版) ---
+    # 强制生成带版本号和新数据的报告
+    report = f"""--- 历史回测报告 (V31.1 强制更新版) ---
+总预测场次: {total_predicted} 场
+首选比分精准命中率: {top1_acc:.2f}%
+Top3比分包含命中率: {top3_acc:.2f}%
+
 下注胜率: {win_rate:.2f}%
 总收益率 (ROI): {roi:+.2f}%
 总盈亏: {total_profit:+.2f} 元
-
-【比分预测能力评测】
-总预测场次: {total_predicted} 场
-首选比分精准命中: {top1_hits} 场 (命中率 {top1_acc:.2f}%)
-Top3比分包含命中: {top3_hits} 场 (命中率 {top3_acc:.2f}%)
 ========================================
 """
     with open('backtest_report.txt', 'w', encoding='utf-8') as f:
         f.write(report)
-    print("✅ 回测报告已生成。")
+    print("✅ 新报告已强制写入！")
 
 if __name__ == "__main__":
     run_backtest()
