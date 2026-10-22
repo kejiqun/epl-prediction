@@ -1,10 +1,13 @@
+import os
+# 🌟 核心修复：解决 XGBoost 和 LightGBM 的 OpenMP 库冲突
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
 import xgboost as xgb
 from sklearn.calibration import CalibratedClassifierCV
 import joblib
-import os
 from team_mapping import translate_team_name
 
 def calculate_elo(df):
