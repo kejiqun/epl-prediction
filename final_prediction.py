@@ -80,23 +80,36 @@ df_next_round = pd.read_csv('daily_matches.csv')
 df_next_round['主队'] = df_next_round['主队'].apply(translate_team_name)
 df_next_round['客队'] = df_next_round['客队'].apply(translate_team_name)
 df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
+# 提取比赛的具体日期 (YYYY-MM-DD)
+df_next_round['match_date_str'] = df_next_round['datetime_parsed'].dt.strftime('%Y-%m-%d')
+
 now_ts = pd.Timestamp.now()
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= now_ts) & (df_next_round['datetime_parsed'] <= now_ts + pd.Timedelta(hours=72))]
 if df_next_round.empty: exit()
 
-# 🌟 核心升级：优先读取人工填写的真实赔率
+# 🌟 核心升级：构建带“日期”防呆锁的赔率字典
 real_odds_dict = {}
-# 1. 先读 API 抓的
+# 1. 先读 API 抓的 (它自带了比赛时间)
 if os.path.exists('real_odds.csv'):
     df_odds = pd.read_csv('real_odds.csv')
     for _, r in df_odds.iterrows():
-        real_odds_dict[(r['主队'], r['客队'])] = r
-# 2. 再读你手动填的（覆盖 API 的同名比赛）
+        try:
+            # 统一 API 日期格式为 YYYY-MM-DD
+            api_date = pd.to_datetime(r['比赛时间']).strftime('%Y-%m-%d')
+            real_odds_dict[(api_date, r['主队'], r['客队'])] = r
+        except: pass
+
+# 2. 再读你手动填的 (强行覆盖同名且同日期比赛)
 if os.path.exists('manual_odds.csv'):
     df_manual = pd.read_csv('manual_odds.csv')
     for _, r in df_manual.iterrows():
-        real_odds_dict[(r['主队'], r['客队'])] = r
-    print("✅ 已融合人工输入的赔率数据。")
+        try:
+            # 强制要求 manual_odds.csv 必须有“比赛日期”这一列
+            manual_date = str(r['比赛日期']).strip()
+            real_odds_dict[(manual_date, r['主队'], r['客队'])] = r
+            print(f"✅ 成功加载人工赔率: {manual_date} {r['主队']} vs {r['客队']}")
+        except Exception as e:
+            print(f"⚠️ 人工赔率读取失败，请检查是否漏了日期列: {e}")
 
 ref_dict, coach_dict = {}, {}
 if os.path.exists('referee_stats.csv'):
@@ -148,16 +161,18 @@ knowledge_base = open('knowledge.txt', 'r', encoding='utf-8').read() if os.path.
 model_h, model_a = joblib.load('epl_v31_home_goals_model.pkl'), joblib.load('epl_v31_away_goals_model.pkl')
 calibrated_clf = joblib.load('epl_result_classifier.pkl')
 
-html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V28.0 真实数据预测 (人工兜底实战版)</h2>", [], []
+html_report, prediction_logs, img_buffers = "<html><body><h2>⚽ V28.1 真实数据预测 (日期防呆匹配版)</h2>", [], []
 
 for league in df_next_round['联赛'].unique():
     html_report += f"<h2 style='color:blue;'>🏆 {league}</h2>"
     for _, match in df_next_round[df_next_round['联赛'] == league].iterrows():
         h_cn, a_cn = match['主队'], match['客队']
+        match_date_str = match['match_date_str'] # 使用严格的时间戳去匹配
         m_time = pd.to_datetime(match['datetime_parsed']).strftime('%Y-%m-%d %H:%M')
         m_date = pd.to_datetime(match['datetime_parsed']).date()
         
-        odds_row = real_odds_dict.get((h_cn, a_cn))
+        # 🌟 双重匹配：日期 + 队名
+        odds_row = real_odds_dict.get((match_date_str, h_cn, a_cn))
         
         if odds_row is not None:
             real_h, real_d, real_a = odds_row['主胜赔率'], odds_row['平局赔率'], odds_row['客胜赔率']
@@ -170,13 +185,12 @@ for league in df_next_round['联赛'].unique():
             tl_line, over_odd, under_odd = 2.5, 0.0, 0.0
             has_real = False
 
+        # ... 后面获取特征、算概率、算凯利的逻辑跟上一版完全一样，保持不变 ...
         h = team_stats.get(h_cn, {'xg':[], 'opp_elo':[], 'pts':[]})
         a = team_stats.get(a_cn, {'xg':[], 'opp_elo':[], 'pts':[]})
-        
         h_rest = (pd.Timestamp(m_date) - last_date[h_cn]).days if h_cn in last_date else 7
         a_rest = (pd.Timestamp(m_date) - last_date[a_cn]).days if a_cn in last_date else 7
         rest_diff = h_rest - a_rest
-        
         h_xg = np.mean(h['xg'][-5:]) if h['xg'] else league_avg_goals
         a_xg = np.mean(a['xg'][-5:]) if a['xg'] else league_avg_goals
         h_sos = np.mean(h['opp_elo'][-5:]) if h['opp_elo'] else 1500
@@ -192,7 +206,6 @@ for league in df_next_round['联赛'].unique():
         
         home_xg = max(0.1, model_h.predict(feat)[0])
         away_xg = max(0.1, model_a.predict(feat)[0])
-        
         h_impact = injury_impact.get(h_cn, 0)
         a_impact = injury_impact.get(a_cn, 0)
         home_xg *= max(0.6, 1 - h_impact * 0.1) 
@@ -214,9 +227,9 @@ for league in df_next_round['联赛'].unique():
         
         h_inj_str = ','.join(injury_dict.get(h_cn, ['无']))
         a_inj_str = ','.join(injury_dict.get(a_cn, ['无']))
-        injury_info = f"主队伤停: {h_inj_str} (权重{h_impact:.1f}); 客队伤停: {a_inj_str} (权重{a_impact:.1f})"
+        injury_info = f"主队伤停: {h_inj_str}; 客队伤停: {a_inj_str}"
         
-        odds_trend = "暂未获取到盘口轨迹数据"
+        odds_trend = "暂无盘口轨迹数据"
         p_h, p_d, p_a, ai_reason = ai_adjust_probabilities(h_cn, a_cn, p_h, p_d, p_a, injury_info, odds_trend, knowledge_base, ref_info, coach_info)
         
         predict_choice = "主胜" if p_h > max(p_d, p_a) else ("平局" if p_d > max(p_h, p_a) else "客胜")
@@ -235,7 +248,7 @@ for league in df_next_round['联赛'].unique():
                     bet_amt, final_rec = bankroll * safe_k, b_choice
                     split_msg = f"推荐下注 {bet_amt:.2f}元"
                 else:
-                    split_msg = "赔率过低或概率不足，建议空仓观望"
+                    split_msg = "概率不足，建议空仓观望"
             else:
                 split_msg = "模型认为无正期望价值"
 
@@ -260,11 +273,7 @@ for league in df_next_round['联赛'].unique():
         top3_str = ", ".join([f"{s[0]}({s[1]*100:.1f}%)" for s in top_scores])
 
         prompt = f"""资深专家，点评(150字内)：
-        比赛：{h_cn} vs {a_cn}。倾向：{predict_choice}。
-        伤停：{injury_info}
-        赛程：主队休息{h_rest}天，客队休息{a_rest}天。
-        大小球/让球：{ou_msg} / {hc_msg}
-        AI理由：{ai_reason}
+        比赛：{h_cn} vs {a_cn}。倾向：{predict_choice}。伤停：{injury_info}。大小球/让球：{ou_msg} / {hc_msg}。AI理由：{ai_reason}
         请结合机构心理，以“推荐关注：{final_rec}”结尾。"""
         try: ai_comment = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False).choices[0].message.content.strip()
         except: ai_comment = "AI解析失败"
@@ -279,23 +288,15 @@ for league in df_next_round['联赛'].unique():
         html_report += f"<hr><h3>{m_time} - {h_cn} vs {a_cn} [{league}]</h3>"
         html_report += f"<img src='cid:chart_{len(img_buffers)-1}' width='600'><br>"
         html_report += f"<p><b>💪 Elo 实力：</b>{h_cn} {h_elo:.0f} vs {a_cn} {a_elo:.0f} (差值: {h_elo-a_elo:+.0f})</p>"
-        html_report += f"<p><b>📊 赛程强度：</b>主队近5场对手均强{h_sos:.0f} / 客队近5场对手均强{a_sos:.0f}</p>"
         html_report += f"<p><b>⏱️ 休息天数：</b>主队 {h_rest} 天 vs 客队 {a_rest} 天</p>"
         html_report += f"<p><b>🚨 核心伤停：</b>主队[{h_inj_str}] / 客队[{a_inj_str}]</p>"
         html_report += f"<p><b>⚖️ 亚盘让球：</b>{hc_msg} 推荐：<b>{hc_rec}</b></p>"
         html_report += f"<p><b>⚖️ 大小球：</b>{ou_msg} 推荐：<b>{ou_rec}</b></p>"
         html_report += f"<p><b>🎯 赛果概率：</b>主胜 {p_h*100:.1f}% | 平局 {p_d*100:.1f}% | 客胜 {p_a*100:.1f}%</p>"
-        html_report += f"<p><b>🧠 AI修正：</b><span style='color:#d35400;'>{ai_reason}</span></p>"
-        html_report += f"<p><b>🔮 比分推荐：</b>{top3_str}</p>"
         html_report += f"<div style='background-color:#f8f9fa; border:1px solid #ddd; padding:15px; margin-top:10px;'><p><b>💡 最终结论：</b><span style='font-size:22px;color:red;'>{final_rec}</span> {split_msg}</p></div>"
         html_report += f"<p><b>🧠 AI点评：</b>{ai_comment}</p>"
 
 html_report += "</body></html>"
 
-log_df = pd.DataFrame(prediction_logs)
-if os.path.exists('predictions_log.csv'):
-    old = pd.read_csv('predictions_log.csv')
-    log_df = pd.concat([old, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
-log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html_report)
-send_rich_email("V28.0 真实数据预测 (人工兜底实战版)", html_report, img_buffers)
+send_rich_email("V28.1 真实数据预测 (日期防呆版)", html_report, img_buffers)
