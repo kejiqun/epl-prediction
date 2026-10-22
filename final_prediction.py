@@ -56,12 +56,35 @@ def get_match_weather(home_team, date_str):
     except: pass
     return "未知", 0
 
-def dixon_coles_tau(h, a, home_xg, away_xg, rho=-0.1):
-    if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
-    elif h == 0 and a == 1: return 1 + home_xg * rho
-    elif h == 1 and a == 0: return 1 + away_xg * rho
-    elif h == 1 and a == 1: return 1 - rho
-    return 1.0
+# 🌟 深水区核心：更高级的比分矩阵生成器
+def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.08):
+    # rho是Dixon-Coles修正参数，-0.08是更贴近现代足球的均值，修正0-0, 1-0, 0-1, 1-1的概率
+    def dixon_coles_tau(h, a):
+        if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
+        elif h == 0 and a == 1: return 1 + home_xg * rho
+        elif h == 1 and a == 0: return 1 + away_xg * rho
+        elif h == 1 and a == 1: return 1 - rho
+        return 1.0
+
+    matrix = np.zeros((max_goals + 1, max_goals + 1))
+    for i in range(max_goals + 1):
+        for j in range(max_goals + 1):
+            base_prob = poisson.pmf(i, home_xg) * poisson.pmf(j, away_xg)
+            matrix[i][j] = base_prob * dixon_coles_tau(i, j)
+    
+    # 归一化矩阵，保证所有概率和为1
+    total_p = np.sum(matrix)
+    matrix = matrix / total_p
+    
+    # 提取所有比分及其概率
+    scores = []
+    for i in range(max_goals + 1):
+        for j in range(max_goals + 1):
+            scores.append((f"{i}-{j}", matrix[i][j]))
+    
+    # 按概率降序排列
+    scores.sort(key=lambda x: x[1], reverse=True)
+    return scores, matrix
 
 def ai_adjust_probabilities(home_cn, away_cn, p_h, p_d, p_a, injury_info, odds_trend, knowledge, ref_info, coach_info):
     prompt = f"""你是一位量化风控总监。比赛：{home_cn} vs {away_cn}。
@@ -85,7 +108,6 @@ if os.path.exists('bankroll.csv'):
     try: bankroll = pd.read_csv('bankroll.csv').iloc[-1]['当前资金']
     except: pass
 
-# 🌟 核心修复：把 os.exists 改成 os.path.exists
 if not os.path.exists('daily_matches.csv'): exit()
 
 df_next_round = pd.read_csv('daily_matches.csv')
@@ -220,10 +242,8 @@ for league in df_next_round['联赛'].unique():
         home_xg *= max(0.6, 1 - h_impact * 0.1) 
         away_xg *= max(0.6, 1 - a_impact * 0.1)
         
-        prob_matrix = np.zeros((7, 7))
-        for i in range(7):
-            for j in range(7):
-                prob_matrix[i][j] = poisson.pmf(i, home_xg) * poisson.pmf(j, away_xg) * dixon_coles_tau(i, j, home_xg, away_xg)
+        # 🌟 使用新版比分矩阵生成器
+        scores_list, prob_matrix = generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.08)
         
         p_h, p_d, p_a = np.sum(np.tril(prob_matrix, -1)), np.sum(np.diag(prob_matrix)), np.sum(np.triu(prob_matrix, 1))
         total_p = p_h + p_d + p_a
@@ -260,15 +280,15 @@ for league in df_next_round['联赛'].unique():
             else: split_msg = "模型认为无正期望价值"
 
             if pd.notna(tl_line) and tl_line > 0:
-                prob_over = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + j > tl_line)
-                prob_under = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + j < tl_line)
+                prob_over = sum(prob_matrix[i][j] for i in range(8) for j in range(8) if i + j > tl_line)
+                prob_under = sum(prob_matrix[i][j] for i in range(8) for j in range(8) if i + j < tl_line)
                 ou_msg = f"{tl_line} 球"
                 if prob_over * over_odd > 1.05: ou_rec = "大球 (高价值)"
                 elif prob_under * under_odd > 1.05: ou_rec = "小球 (高价值)"
                 
             if pd.notna(hc_line) and hc_line != 0:
-                prob_hc_home = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + hc_line > j)
-                prob_hc_away = sum(prob_matrix[i][j] for i in range(7) for j in range(7) if i + hc_line < j)
+                prob_hc_home = sum(prob_matrix[i][j] for i in range(8) for j in range(8) if i + hc_line > j)
+                prob_hc_away = sum(prob_matrix[i][j] for i in range(8) for j in range(8) if i + hc_line < j)
                 hc_msg = f"主让 {hc_line}"
                 if prob_hc_home * hc_h_odd > 1.05: hc_rec = "主队赢盘"
                 elif prob_hc_away * hc_a_odd > 1.05: hc_rec = "客队赢盘"
@@ -283,9 +303,11 @@ for league in df_next_round['联赛'].unique():
                 '让球': hc_rec, '大小球': ou_rec
             })
 
-        top_scores = sorted([(f"{i}-{j}", prob_matrix[i][j]) for i in range(7) for j in range(7)], key=lambda x: x[1], reverse=True)[:3]
-        top3_str = " | ".join([f"<b>{s[0]}</b> ({s[1]*100:.1f}%)" for s in top_scores])
-        best_score = top_scores[0][0]
+        # 🌟 提取更专业的比分推荐（过滤掉极低概率的比分，确保推荐合理）
+        valid_scores = [s for s in scores_list if s[1] > 0.015] # 只保留概率大于1.5%的比分
+        top3 = valid_scores[:3]
+        top3_str = " | ".join([f"<b>{s[0]}</b> ({s[1]*100:.1f}%)" for s in top3])
+        best_score = top3[0][0]
 
         w_text, w_temp = get_match_weather(h_cn, match_date_str)
         venue = f"{h_cn}主场" 
@@ -294,11 +316,9 @@ for league in df_next_round['联赛'].unique():
         try: ai_comment = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False).choices[0].message.content.strip()
         except: ai_comment = "AI解析失败"
 
-        # 🌟 视觉升级：缩短图表高度，让单场比赛一屏可见
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 3.2))
         fig.patch.set_facecolor('#f8f9fa')
         
-        # 左图：胜平负概率
         labels = ['主胜', '平局', '客胜']
         probs = [p_h*100, p_d*100, p_a*100]
         colors = ['#4e79a7', '#f28e2b', '#e15759']
@@ -310,7 +330,6 @@ for league in df_next_round['联赛'].unique():
             ax1.text(bar.get_x() + bar.get_width()/2, yval + 2, f'{yval:.1f}%', ha='center', va='bottom', fontsize=11, fontweight='bold')
         ax1.tick_params(axis='both', labelsize=10)
         
-        # 右图：xG 对比
         ax2.barh(['客队', '主队'], [away_xg, home_xg], color=['#59a14f', '#e15759'], height=0.4)
         ax2.set_xlim(0, max(home_xg, away_xg) + 1)
         ax2.set_title("预期进球 (xG)", fontsize=12, fontweight='bold', color='#333')
@@ -321,7 +340,15 @@ for league in df_next_round['联赛'].unique():
         plt.tight_layout()
         buf = io.BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); buf.seek(0); img_buffers.append(buf); plt.close(fig)
 
-        # 🌟 视觉升级：精简头部与信息网格，收紧留白
+        # 新增比分命中记录，供回测使用
+        prediction_logs.append({
+            'date': m_date.strftime('%Y-%m-%d'), 'league': league, 'home_team': h_cn, 'away_team': a_cn,
+            'predicted_result': final_rec, 'bet_amount': round(bet_amt, 2),
+            'pred_prob_h': round(p_h, 4), 'pred_prob_d': round(p_d, 4), 'pred_prob_a': round(p_a, 4),
+            'predicted_score': best_score, 'top3_scores': top3_str.replace("<b>", "").replace("</b>", ""), # 存入原始字符串供回测比对
+            'odds_h': oh, 'odds_d': od, 'odds_a': oa, 'home_injuries': h_inj_str, 'away_injuries': a_inj_str
+        })
+
         html_report += f"""
         <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; margin-bottom: 20px; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 8px; margin-bottom: 10px;">
@@ -333,7 +360,7 @@ for league in df_next_round['联赛'].unique():
 
             <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
                 <span style="font-size: 14px; color: #856404; font-weight: bold;">🎯 首选比分：<span style="font-size: 20px; color: #d9534f;">{best_score}</span></span>
-                <span style="font-size: 12px; color: #666;">其他高频: {top3_str}</span>
+                <span style="font-size: 12px; color: #666;">防冷补充: {top3_str}</span>
             </div>
 
             <div style="display: flex; flex-wrap: wrap; font-size: 13px; line-height: 1.8; color: #444; margin-bottom: 10px;">
@@ -361,35 +388,17 @@ for league in df_next_round['联赛'].unique():
         """
 
 final_html = "<html><body style='background-color: #f4f7f6; padding: 15px; font-family: \"Helvetica Neue\", Arial, sans-serif;'><div style='max-width: 850px; margin: auto;'>"
-final_html += "<h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; font-size: 24px;'>⚽ 明日赛事量化预测 (V30.1 极简紧凑版)</h1>"
+final_html += "<h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; font-size: 24px;'>⚽ 明日赛事量化预测 (V31.0 比分精算版)</h1>"
 
 if jczq_picks_list:
     df_picks = pd.DataFrame(jczq_picks_list)
     df_picks.to_csv('daily_jczq_picks.csv', index=False, encoding='utf-8-sig')
     picks_html = df_picks.to_html(index=False, border=0, justify='center', classes='table table-hover', table_id='pick_table')
-    
-    css = """
-    <style>
-        #pick_table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
-        #pick_table th { background-color: #3498db; color: white; padding: 8px; text-align: center; }
-        #pick_table td { padding: 6px; border-bottom: 1px solid #eee; text-align: center; }
-        #pick_table tr:nth-child(even) { background-color: #f9f9f9; }
-    </style>
-    """
+    css = """<style>#pick_table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; } #pick_table th { background-color: #3498db; color: white; padding: 8px; text-align: center; } #pick_table td { padding: 6px; border-bottom: 1px solid #eee; text-align: center; } #pick_table tr:nth-child(even) { background-color: #f9f9f9; }</style>"""
     final_html += css
-    final_html += f"""
-    <div style='background-color: #fff; border-top: 5px solid #f39c12; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);'>
-        <h3 style='color: #d35400; margin-top: 0; font-size: 18px; text-align: center;'>🎯 今日竞彩狙击清单</h3>
-        {picks_html}
-    </div>
-    """
+    final_html += f"""<div style='background-color: #fff; border-top: 5px solid #f39c12; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);'><h3 style='color: #d35400; margin-top: 0; font-size: 18px; text-align: center;'>🎯 今日竞彩狙击清单</h3>{picks_html}</div>"""
 else:
-    final_html += """
-    <div style='background-color: #fdf2f2; border-top: 5px solid #e74c3c; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center;'>
-        <h3 style='color: #c0392b; margin-top: 0; font-size: 18px;'>🛑 今日无狙击目标</h3>
-        <p style='color: #c0392b; font-size: 14px;'>系统扫描了所有明日比赛，因无赔率或期望价值不足，建议空仓观望。</p>
-    </div>
-    """
+    final_html += """<div style='background-color: #fdf2f2; border-top: 5px solid #e74c3c; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center;'><h3 style='color: #c0392b; margin-top: 0; font-size: 18px;'>🛑 今日无狙击目标</h3><p style='color: #c0392b; font-size: 14px;'>系统扫描了所有明日比赛，因无赔率或期望价值不足，建议空仓观望。</p></div>"""
     pd.DataFrame(columns=['比赛时间', '赛事', '对阵', '推荐', '金额', '让球', '大小球']).to_csv('daily_jczq_picks.csv', index=False, encoding='utf-8-sig')
 
 final_html += html_report
@@ -402,4 +411,4 @@ if os.path.exists('predictions_log.csv'):
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("V30.1 明日赛事量化预测 (极简紧凑版)", final_html, img_buffers)
+send_rich_email("V31.0 明日赛事量化预测 (比分精算版)", final_html, img_buffers)
