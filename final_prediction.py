@@ -72,26 +72,24 @@ def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores, matrix
 
-# 🌟 核心升级：提取总进球数概率
-def get_total_goals_recommendation(prob_matrix):
+# 🌟 核心修复：替换引发冲突的变量名
+def get_total_goals_recommendation(prob_matrix, max_goals=7):
     goal_probs = {}
-    for i in range(7): # 0-6球
+    for total_g in range(8):
         prob = 0
-        for h in range(i+1):
-            a = i - h
-            if h <= 7 and a <= 7:
-                prob += prob_matrix[h][a]
-        goal_probs[str(i)] = prob
-    
-    # 7+ 球
+        for hg in range(total_g + 1):
+            ag = total_g - hg
+            if hg <= 7 and ag <= 7:
+                prob += prob_matrix[hg][ag]
+        goal_probs[str(total_g)] = prob
+        
     prob_7_plus = 0
-    for h in range(8):
-        for a in range(8):
-            if h + a >= 7:
-                prob_7_plus += prob_matrix[h][a]
+    for hg in range(8):
+        for ag in range(8):
+            if hg + ag >= 7:
+                prob_7_plus += prob_matrix[hg][ag]
     goal_probs['7+'] = prob_7_plus
     
-    # 排序取最高的两个推荐
     sorted_goals = sorted(goal_probs.items(), key=lambda x: x[1], reverse=True)
     top2_str = " | ".join([f"<b>{k}球</b> ({v*100:.1f}%)" for k, v in sorted_goals[:2]])
     return top2_str
@@ -214,7 +212,6 @@ model_h_xgb = joblib.load('epl_v31_home_goals_model_xgb.pkl')
 model_a_xgb = joblib.load('epl_v31_away_goals_model_xgb.pkl')
 calibrated_clf = joblib.load('epl_result_classifier.pkl')
 
-# 🌟 核心升级：联赛风格系数（微调 xG）
 league_xg_weights = {
     '英超': 0.05, '西甲': 0.0, '德甲': 0.15, '意甲': -0.15, '法甲': -0.05,
     '欧冠': 0.0, '欧联': 0.0
@@ -291,7 +288,6 @@ for league in df_next_round['联赛'].unique():
         pred_a_xg_xgb = model_a_xgb.predict(feat)[0]
         away_xg = max(0.1, (pred_a_xg_lgb + pred_a_xg_xgb) / 2.0)
         
-        # 🌟 应用联赛风格系数
         xg_adj = league_xg_weights.get(league, 0.0)
         home_xg += (xg_adj / 2)
         away_xg += (xg_adj / 2)
@@ -371,7 +367,7 @@ for league in df_next_round['联赛'].unique():
         top3_str = " | ".join([f"<b>{s[0]}</b> ({s[1]*100:.1f}%)" for s in top3])
         best_score = top3[0][0]
 
-        # 🌟 获取总进球数推荐
+        # 🌟 使用修复后的安全函数
         total_goals_rec = get_total_goals_recommendation(prob_matrix)
 
         venue = f"{h_cn}主场" 
