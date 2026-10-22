@@ -162,13 +162,20 @@ team_stats, last_date = {}, {}
 for _, row in df_hist.iterrows():
     h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
     for t in [h, a]:
-        if t not in team_stats: team_stats[t] = {'xg':[], 'opp_elo':[], 'pts':[]}
+        if t not in team_stats: 
+            team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[]}
         if t not in last_date: last_date[t] = None
+        
     act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
     act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
-    team_stats[h]['xg'].append(act_h_xg); team_stats[h]['opp_elo'].append(1500) 
+    
+    team_stats[h]['xg'].append(act_h_xg); team_stats[h]['xga'].append(act_a_xg)
+    team_stats[a]['xg'].append(act_a_xg); team_stats[a]['xga'].append(act_h_xg)
+    team_stats[h]['home_xg'].append(act_h_xg); team_stats[h]['home_xga'].append(act_a_xg)
+    team_stats[a]['away_xg'].append(act_a_xg); team_stats[a]['away_xga'].append(act_h_xg)
+    
+    team_stats[h]['opp_elo'].append(1500); team_stats[a]['opp_elo'].append(1500)
     team_stats[h]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
-    team_stats[a]['xg'].append(act_a_xg); team_stats[a]['opp_elo'].append(1500)
     team_stats[a]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
     last_date[h] = m_date; last_date[a] = m_date
 
@@ -177,7 +184,6 @@ if os.path.exists('elo_dict.pkl'): elo_dict = joblib.load('elo_dict.pkl')
 
 knowledge_base = open('knowledge.txt', 'r', encoding='utf-8').read() if os.path.exists('knowledge.txt') else ""
 
-# 🌟 加载集成模型
 model_h_lgb = joblib.load('epl_v31_home_goals_model_lgb.pkl')
 model_a_lgb = joblib.load('epl_v31_away_goals_model_lgb.pkl')
 model_h_xgb = joblib.load('epl_v31_home_goals_model_xgb.pkl')
@@ -208,7 +214,7 @@ for league in df_next_round['联赛'].unique():
             trap_warning = ""
             if manual_row is not None and odds_row is not None:
                 diff_h = abs(manual_row['主胜赔率'] - odds_row['主胜赔率']) / odds_row['主胜赔率']
-                if diff_h > 0.15: trap_warning = f"⚠️ <b>数据异常：</b>国内赔率({manual_row['主胜赔率']})与国外锐利盘({odds_row['主胜赔率']})差异达 {diff_h*100:.1f}%，疑似机构在设陷阱或存在信息差。"
+                if diff_h > 0.15: trap_warning = f"⚠️ <b>数据异常：</b>国内赔率({manual_row['主胜赔率']})与国外锐利盘({odds_row['主胜赔率']})差异达 {diff_h*100:.1f}%，疑似机构在设陷阱。"
         else:
             real_h, real_d, real_a = 0, 0, 0
             hc_line, hc_h_odd, hc_a_odd = 0.0, 0.0, 0.0
@@ -216,14 +222,22 @@ for league in df_next_round['联赛'].unique():
             has_real = False
             trap_warning = ""
 
-        h = team_stats.get(h_cn, {'xg':[], 'opp_elo':[], 'pts':[]})
-        a = team_stats.get(a_cn, {'xg':[], 'opp_elo':[], 'pts':[]})
+        h = team_stats.get(h_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[]})
+        a = team_stats.get(a_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[]})
         h_rest = (pd.Timestamp(m_date) - last_date[h_cn]).days if h_cn in last_date else 7
         a_rest = (pd.Timestamp(m_date) - last_date[a_cn]).days if a_cn in last_date else 7
         rest_diff = h_rest - a_rest
         
         h_xg = np.mean(h['xg'][-5:]) if h['xg'] else league_avg_goals
         a_xg = np.mean(a['xg'][-5:]) if a['xg'] else league_avg_goals
+        h_xga = np.mean(h['xga'][-5:]) if h['xga'] else league_avg_goals
+        a_xga = np.mean(a['xga'][-5:]) if a['xga'] else league_avg_goals
+        
+        h_home_xg = np.mean(h['home_xg'][-3:]) if h['home_xg'] else h_xg
+        h_home_xga = np.mean(h['home_xga'][-3:]) if h['home_xga'] else h_xga
+        a_away_xg = np.mean(a['away_xg'][-3:]) if a['away_xg'] else a_xg
+        a_away_xga = np.mean(a['away_xga'][-3:]) if a['away_xga'] else a_xga
+        
         h_sos = np.mean(h['opp_elo'][-5:]) if h['opp_elo'] else 1500
         a_sos = np.mean(a['opp_elo'][-5:]) if a['opp_elo'] else 1500
         h_pts = np.mean(h['pts'][-5:]) if h['pts'] else 1.0
@@ -232,10 +246,13 @@ for league in df_next_round['联赛'].unique():
         h_elo = elo_dict.get(h_cn, 1500)
         a_elo = elo_dict.get(a_cn, 1500)
         
-        feat = [h_elo, a_elo, h_elo - a_elo, h_sos, a_sos, h_xg, a_xg, h_pts, a_pts, rest_diff]
+        feat = [
+            h_elo, a_elo, h_elo - a_elo, 
+            h_sos, a_sos, h_xg, a_xg, h_xga, a_xga, 
+            h_home_xg, h_home_xga, a_away_xg, a_away_xga, rest_diff
+        ]
         feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000).reshape(1, -1)
         
-        # 🌟 集成预测 (LGB + XGB)
         pred_h_xg_lgb = model_h_lgb.predict(feat)[0]
         pred_h_xg_xgb = model_h_xgb.predict(feat)[0]
         home_xg = max(0.1, (pred_h_xg_lgb + pred_h_xg_xgb) / 2.0)
@@ -314,7 +331,6 @@ for league in df_next_round['联赛'].unique():
                 '让球': hc_rec, '大小球': ou_rec
             })
 
-        # 放宽阈值到 1.2%
         valid_scores = [s for s in scores_list if s[1] > 0.012]
         top3 = valid_scores[:3]
         top3_str = " | ".join([f"<b>{s[0]}</b> ({s[1]*100:.1f}%)" for s in top3])
@@ -399,7 +415,7 @@ for league in df_next_round['联赛'].unique():
         """
 
 final_html = "<html><body style='background-color: #f4f7f6; padding: 15px; font-family: \"Helvetica Neue\", Arial, sans-serif;'><div style='max-width: 850px; margin: auto;'>"
-final_html += "<h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; font-size: 24px;'>⚽ 明日赛事量化预测 (V33.0 集成进阶版)</h1>"
+final_html += "<h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; font-size: 24px;'>⚽ 明日赛事量化预测 (V34.0 主客场剥离版)</h1>"
 
 if jczq_picks_list:
     df_picks = pd.DataFrame(jczq_picks_list)
@@ -422,4 +438,4 @@ if os.path.exists('predictions_log.csv'):
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("V33.0 明日赛事量化预测 (集成进阶版)", final_html, img_buffers)
+send_rich_email("V34.0 明日赛事量化预测 (主客场剥离版)", final_html, img_buffers)
