@@ -30,7 +30,7 @@ def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.08):
     return scores
 
 def run_backtest():
-    print("⏳ 启动时光机回测系统 (V34.0)...")
+    print("⏳ 启动时光机回测系统 (V36.0 强正则化版)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -175,7 +175,7 @@ def run_backtest():
         plt.figure(figsize=(10, 5))
         plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
         plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
-        plt.title('历史回测资金曲线 (V34.0)')
+        plt.title('历史回测资金曲线 (V36.0 强正则化版)')
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.6)
         plt.savefig('backtest_roi.png', dpi=120)
@@ -187,7 +187,7 @@ def run_backtest():
     print(f"✅ 回测完成！下注胜率 {win_rate:.1f}%，ROI {roi:+.1f}%")
     print(f"🎯 比分命中率：首选 {top1_acc:.1f}%，前三 {top3_acc:.1f}%")
     
-    report = f"""--- 历史回测报告 (V34.0 主客场剥离版) ---
+    report = f"""--- 历史回测报告 (V36.0 14特征强正则化版) ---
 总预测场次: {total_predicted} 场
 首选比分精准命中率: {top1_acc:.2f}%
 Top3比分包含命中率: {top3_acc:.2f}%
