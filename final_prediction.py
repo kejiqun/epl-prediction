@@ -85,7 +85,9 @@ if os.path.exists('bankroll.csv'):
     try: bankroll = pd.read_csv('bankroll.csv').iloc[-1]['当前资金']
     except: pass
 
-if not os.exists('daily_matches.csv'): exit()
+# 🌟 核心修复：把 os.exists 改成 os.path.exists
+if not os.path.exists('daily_matches.csv'): exit()
+
 df_next_round = pd.read_csv('daily_matches.csv')
 df_next_round['主队'] = df_next_round['主队'].apply(translate_team_name)
 df_next_round['客队'] = df_next_round['客队'].apply(translate_team_name)
@@ -99,7 +101,9 @@ end_of_tomorrow = start_of_tomorrow + timedelta(days=1)
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= start_of_tomorrow) & (df_next_round['datetime_parsed'] < end_of_tomorrow)]
 df_next_round = df_next_round.sort_values('datetime_parsed')
 
-if df_next_round.empty: exit()
+if df_next_round.empty: 
+    print("⚠️ 明天没有比赛。")
+    exit()
 
 real_odds_dict = {}
 if os.path.exists('real_odds.csv'):
