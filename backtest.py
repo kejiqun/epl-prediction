@@ -13,7 +13,6 @@ warnings.filterwarnings('ignore')
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
-# 🌟 核心升级：引入更符合实战的 Dixon-Coles 参数
 def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
     def dixon_coles_tau(h, a):
         if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
@@ -28,10 +27,10 @@ def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
     matrix = matrix / np.sum(matrix)
     scores = [(f"{i}-{j}", matrix[i][j]) for i in range(max_goals + 1) for j in range(max_goals + 1)]
     scores.sort(key=lambda x: x[1], reverse=True)
-    return scores
+    return scores, matrix
 
 def run_backtest():
-    print("⏳ 启动时光机回测系统 (V37.0 比分偏置矩阵版)...")
+    print("⏳ 启动时光机回测系统 (V38.0 全能实战版)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -59,6 +58,12 @@ def run_backtest():
         print(f"❌ 找不到模型文件: {e}")
         return
 
+    # 联赛风格系数
+    league_xg_weights = {
+        '英超': 0.05, '西甲': 0.0, '德甲': 0.15, '意甲': -0.15, '法甲': -0.05,
+        '欧冠': 0.0, '欧联': 0.0
+    }
+
     initial_bankroll = 10000.0
     bankroll = initial_bankroll
     bet_amount = 100.0 
@@ -69,9 +74,12 @@ def run_backtest():
     total_predicted = 0
     top1_hits = 0
     top3_hits = 0
+    goals_hit = 0 # 总进球数命中统计
 
     for idx, row in df.iterrows():
         h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
+        # 获取该场比赛的联赛名称 (如果没有，默认英超)
+        league_name = row.get('league', '英超')
         
         for t in [h, a]:
             if t not in team_stats: 
@@ -116,18 +124,35 @@ def run_backtest():
             pred_a_xg_xgb = model_a_xgb.predict(feat)[0]
             pred_a_xg = max(0.1, (pred_a_xg_lgb + pred_a_xg_xgb) / 2.0)
             
-            scores_list = generate_score_matrix(pred_h_xg, pred_a_xg)
+            # 🌟 应用联赛微调
+            xg_adj = league_xg_weights.get(league_name, 0.0)
+            pred_h_xg += (xg_adj / 2)
+            pred_a_xg += (xg_adj / 2)
             
-            # 只要概率大于 1.2% 的比分，才有资格进入 Top3 备选池
-            valid_scores = [s for s in scores_list if s[1] > 0.012] 
+            scores_list, prob_matrix = generate_score_matrix(pred_h_xg, pred_a_xg)
+            
+            valid_scores = [s for s in scores_list if s[1] > 0.012]
             pred_top1 = valid_scores[0][0]
             pred_top3 = [s[0] for s in valid_scores[:3]]
             
+            # 获取总进球数 Top 2 推荐
+            goal_probs = {}
+            for i in range(7):
+                prob = sum(prob_matrix[h][a] for h in range(i+1) if h <= 7 and (i-h) <= 7)
+                goal_probs[str(i)] = prob
+            goal_probs['7+'] = sum(prob_matrix[h][a] for h in range(8) for a in range(8) if h+a >= 7)
+            sorted_goals = sorted(goal_probs.items(), key=lambda x: x[1], reverse=True)
+            pred_goal_top2 = [k for k, v in sorted_goals[:2]]
+            
             actual_score = f"{int(row['home_goals'])}-{int(row['away_goals'])}"
+            actual_total_goals = str(int(row['home_goals'] + row['away_goals']))
+            if int(row['home_goals'] + row['away_goals']) >= 7: actual_total_goals = '7+'
+            
             total_predicted += 1
             
             if actual_score == pred_top1: top1_hits += 1
             if actual_score in pred_top3: top3_hits += 1
+            if actual_total_goals in pred_goal_top2: goals_hit += 1
                 
             clf_probs = calibrated_clf.predict_proba(feat)[0]
             p_a_clf, p_d_clf, p_h_clf = clf_probs[0], clf_probs[1], clf_probs[2]
@@ -177,7 +202,7 @@ def run_backtest():
         plt.figure(figsize=(10, 5))
         plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
         plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
-        plt.title('历史回测资金曲线 (V37.0 比分偏置版)')
+        plt.title('历史回测资金曲线 (V38.0)')
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.6)
         plt.savefig('backtest_roi.png', dpi=120)
@@ -185,14 +210,18 @@ def run_backtest():
     
     top1_acc = (top1_hits / total_predicted) * 100 if total_predicted > 0 else 0
     top3_acc = (top3_hits / total_predicted) * 100 if total_predicted > 0 else 0
+    goals_acc = (goals_hit / total_predicted) * 100 if total_predicted > 0 else 0
     
     print(f"✅ 回测完成！下注胜率 {win_rate:.1f}%，ROI {roi:+.1f}%")
     print(f"🎯 比分命中率：首选 {top1_acc:.1f}%，前三 {top3_acc:.1f}%")
+    print(f"⚽ 总进球数命中率 (Top2推荐): {goals_acc:.1f}%")
     
-    report = f"""--- 历史回测报告 (V37.0 比分偏置版) ---
+    report = f"""--- 历史回测报告 (V38.0 全能实战版) ---
 总预测场次: {total_predicted} 场
 首选比分精准命中率: {top1_acc:.2f}%
 Top3比分包含命中率: {top3_acc:.2f}%
+
+⚽ 总进球数命中率 (Top2推荐): {goals_acc:.2f}%
 
 下注胜率: {win_rate:.2f}%
 总收益率 (ROI): {roi:+.2f}%
