@@ -24,7 +24,7 @@ def calculate_elo(df):
     return df, elo
 
 def train_models():
-    print("⏳ 开始训练 V34.0 深度特征集成模型...")
+    print("⏳ 开始训练 V36.0 强正则化全景模型...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -57,13 +57,12 @@ def train_models():
         a_rest = (m_date - last_date[a]).days if last_date[a] else 7
         rest_diff = h_rest - a_rest
 
-        # 提取近5场整体
+        # 14个完整特征提取
         h_xg = np.mean(team_stats[h]['xg'][-5:]) if team_stats[h]['xg'] else league_avg_goals
         a_xg = np.mean(team_stats[a]['xg'][-5:]) if team_stats[a]['xg'] else league_avg_goals
         h_xga = np.mean(team_stats[h]['xga'][-5:]) if team_stats[h]['xga'] else league_avg_goals
         a_xga = np.mean(team_stats[a]['xga'][-5:]) if team_stats[a]['xga'] else league_avg_goals
         
-        # 提取主客场特定数据
         h_home_xg = np.mean(team_stats[h]['home_xg'][-3:]) if team_stats[h]['home_xg'] else h_xg
         h_home_xga = np.mean(team_stats[h]['home_xga'][-3:]) if team_stats[h]['home_xga'] else h_xga
         a_away_xg = np.mean(team_stats[a]['away_xg'][-3:]) if team_stats[a]['away_xg'] else a_xg
@@ -74,7 +73,6 @@ def train_models():
         h_pts = np.mean(team_stats[h]['pts'][-5:]) if team_stats[h]['pts'] else 1.0
         a_pts = np.mean(team_stats[a]['pts'][-5:]) if team_stats[a]['pts'] else 1.0
         
-        # 14大深度特征
         feat = [
             row['home_elo'], row['away_elo'], row['home_elo'] - row['away_elo'], 
             h_sos, a_sos, h_xg, a_xg, h_xga, a_xga, 
@@ -95,10 +93,8 @@ def train_models():
         act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else h_goals
         act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else a_goals
         
-        # 更新整体统计
         team_stats[h]['xg'].append(act_h_xg); team_stats[h]['xga'].append(act_a_xg)
         team_stats[a]['xg'].append(act_a_xg); team_stats[a]['xga'].append(act_h_xg)
-        # 更新主客场统计
         team_stats[h]['home_xg'].append(act_h_xg); team_stats[h]['home_xga'].append(act_a_xg)
         team_stats[a]['away_xg'].append(act_a_xg); team_stats[a]['away_xga'].append(act_h_xg)
         
@@ -113,16 +109,35 @@ def train_models():
     y_a = np.nan_to_num(np.array(labels_away, dtype=np.float32), nan=0.0, posinf=10.0, neginf=0.0)
     y_res = np.array(labels_result, dtype=np.int32)
     
-    params_reg = {'objective': 'regression', 'metric': 'rmse', 'verbose': -1}
+    # 🌟 强正则化：LGBM 防过拟合参数
+    params_reg = {
+        'objective': 'regression', 
+        'metric': 'rmse', 
+        'verbose': -1,
+        'lambda_l1': 0.1,        # L1 正则，剔除无效特征
+        'lambda_l2': 0.1,        # L2 正则，平滑权重
+        'min_data_in_leaf': 20,  # 叶子节点最小样本，防止死记硬背
+        'feature_fraction': 0.8  # 每次只给模型看 80% 的特征，防过拟合
+    }
     model_h_lgb = lgb.train(params_reg, lgb.Dataset(X, label=y_h), num_boost_round=100)
     model_a_lgb = lgb.train(params_reg, lgb.Dataset(X, label=y_a), num_boost_round=100)
     
-    model_h_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=4, random_state=42, n_jobs=1, tree_method='exact')
-    model_a_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=4, random_state=42, n_jobs=1, tree_method='exact')
+    # 🌟 强正则化：XGB 防过拟合参数
+    model_h_xgb = xgb.XGBRegressor(
+        n_estimators=100, learning_rate=0.05, max_depth=4,
+        reg_alpha=0.1, reg_lambda=1.0, min_child_weight=5,
+        random_state=42, n_jobs=1, tree_method='exact'
+    )
+    model_a_xgb = xgb.XGBRegressor(
+        n_estimators=100, learning_rate=0.05, max_depth=4,
+        reg_alpha=0.1, reg_lambda=1.0, min_child_weight=5,
+        random_state=42, n_jobs=1, tree_method='exact'
+    )
     model_h_xgb.fit(X, y_h)
     model_a_xgb.fit(X, y_a)
     
-    clf = lgb.LGBMClassifier(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, verbose=-1)
+    # 分类器 (胜平负)
+    clf = lgb.LGBMClassifier(n_estimators=100, learning_rate=0.05, max_depth=4, reg_alpha=0.1, reg_lambda=0.1, random_state=42, verbose=-1)
     calibrated_clf = CalibratedClassifierCV(clf, method='isotonic', cv=3)
     calibrated_clf.fit(X, y_res)
     
@@ -131,7 +146,7 @@ def train_models():
     joblib.dump(model_h_xgb, 'epl_v31_home_goals_model_xgb.pkl')
     joblib.dump(model_a_xgb, 'epl_v31_away_goals_model_xgb.pkl')
     joblib.dump(calibrated_clf, 'epl_result_classifier.pkl')
-    print("✅ V34.0 深度特征模型训练完成！")
+    print("✅ V36.0 强正则化全景模型训练完成！(14大特征，防过拟合)")
 
 if __name__ == "__main__":
     train_models()
