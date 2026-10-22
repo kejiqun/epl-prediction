@@ -94,8 +94,8 @@ def train_models():
     model_a_lgb = lgb.train(params_reg, lgb.Dataset(X, label=y_a), num_boost_round=100)
     
     # 2. 训练 XGBoost
-    model_h_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1)
-    model_a_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1)
+    model_h_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1, tree_method='exact')
+    model_a_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1, tree_method='exact')
     model_h_xgb.fit(X, y_h)
     model_a_xgb.fit(X, y_a)
     
