@@ -56,7 +56,6 @@ def get_match_weather(home_team, date_str):
     except: pass
     return "未知", 0
 
-# 🌟 核心升级：引入更符合实战的 Dixon-Coles 参数
 def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
     def dixon_coles_tau(h, a):
         if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
@@ -72,6 +71,30 @@ def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
     scores = [(f"{i}-{j}", matrix[i][j]) for i in range(max_goals + 1) for j in range(max_goals + 1)]
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores, matrix
+
+# 🌟 核心升级：提取总进球数概率
+def get_total_goals_recommendation(prob_matrix):
+    goal_probs = {}
+    for i in range(7): # 0-6球
+        prob = 0
+        for h in range(i+1):
+            a = i - h
+            if h <= 7 and a <= 7:
+                prob += prob_matrix[h][a]
+        goal_probs[str(i)] = prob
+    
+    # 7+ 球
+    prob_7_plus = 0
+    for h in range(8):
+        for a in range(8):
+            if h + a >= 7:
+                prob_7_plus += prob_matrix[h][a]
+    goal_probs['7+'] = prob_7_plus
+    
+    # 排序取最高的两个推荐
+    sorted_goals = sorted(goal_probs.items(), key=lambda x: x[1], reverse=True)
+    top2_str = " | ".join([f"<b>{k}球</b> ({v*100:.1f}%)" for k, v in sorted_goals[:2]])
+    return top2_str
 
 def ai_adjust_probabilities(home_cn, away_cn, p_h, p_d, p_a, injury_info, odds_trend, knowledge, ref_info, coach_info):
     prompt = f"""你是一位量化风控总监。比赛：{home_cn} vs {away_cn}。
@@ -191,6 +214,12 @@ model_h_xgb = joblib.load('epl_v31_home_goals_model_xgb.pkl')
 model_a_xgb = joblib.load('epl_v31_away_goals_model_xgb.pkl')
 calibrated_clf = joblib.load('epl_result_classifier.pkl')
 
+# 🌟 核心升级：联赛风格系数（微调 xG）
+league_xg_weights = {
+    '英超': 0.05, '西甲': 0.0, '德甲': 0.15, '意甲': -0.15, '法甲': -0.05,
+    '欧冠': 0.0, '欧联': 0.0
+}
+
 jczq_picks_list = []
 html_report, prediction_logs, img_buffers = "", [], []
 
@@ -261,6 +290,11 @@ for league in df_next_round['联赛'].unique():
         pred_a_xg_lgb = model_a_lgb.predict(feat)[0]
         pred_a_xg_xgb = model_a_xgb.predict(feat)[0]
         away_xg = max(0.1, (pred_a_xg_lgb + pred_a_xg_xgb) / 2.0)
+        
+        # 🌟 应用联赛风格系数
+        xg_adj = league_xg_weights.get(league, 0.0)
+        home_xg += (xg_adj / 2)
+        away_xg += (xg_adj / 2)
         
         h_impact = injury_impact.get(h_cn, 0)
         a_impact = injury_impact.get(a_cn, 0)
@@ -337,6 +371,9 @@ for league in df_next_round['联赛'].unique():
         top3_str = " | ".join([f"<b>{s[0]}</b> ({s[1]*100:.1f}%)" for s in top3])
         best_score = top3[0][0]
 
+        # 🌟 获取总进球数推荐
+        total_goals_rec = get_total_goals_recommendation(prob_matrix)
+
         venue = f"{h_cn}主场" 
 
         prompt = f"""资深专家，点评(150字内)：比赛：{h_cn} vs {a_cn}。倾向：{predict_choice}。伤停：{injury_info}。大小球/让球：{ou_msg} / {hc_msg}。AI理由：{ai_reason}。以“推荐关注：{final_rec}”结尾。"""
@@ -389,6 +426,10 @@ for league in df_next_round['联赛'].unique():
                 <span style="font-size: 12px; color: #666;">防冷补充: {top3_str}</span>
             </div>
 
+            <div style="background-color: #e8f4fd; border-left: 4px solid #3498db; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; font-size: 14px; color: #2c3e50;">
+                ⚽ <b>总进球数推荐：</b>{total_goals_rec}
+            </div>
+
             {f"<div style='background-color: #f8d7da; color: #721c24; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; font-weight: bold;'>{trap_warning}</div>" if trap_warning else ""}
 
             <div style="display: flex; flex-wrap: wrap; font-size: 13px; line-height: 1.8; color: #444; margin-bottom: 10px;">
@@ -416,7 +457,7 @@ for league in df_next_round['联赛'].unique():
         """
 
 final_html = "<html><body style='background-color: #f4f7f6; padding: 15px; font-family: \"Helvetica Neue\", Arial, sans-serif;'><div style='max-width: 850px; margin: auto;'>"
-final_html += "<h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; font-size: 24px;'>⚽ 明日赛事量化预测 (V37.0 比分偏置版)</h1>"
+final_html += "<h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; font-size: 24px;'>⚽ 明日赛事量化预测 (V38.0 全能实战版)</h1>"
 
 if jczq_picks_list:
     df_picks = pd.DataFrame(jczq_picks_list)
@@ -439,4 +480,4 @@ if os.path.exists('predictions_log.csv'):
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("V37.0 明日赛事量化预测 (比分偏置版)", final_html, img_buffers)
+send_rich_email("V38.0 明日赛事量化预测 (全能实战版)", final_html, img_buffers)
