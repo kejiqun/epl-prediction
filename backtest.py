@@ -13,15 +13,33 @@ warnings.filterwarnings('ignore')
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
-def dixon_coles_tau(h, a, home_xg, away_xg, rho=-0.1):
-    if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
-    elif h == 0 and a == 1: return 1 + home_xg * rho
-    elif h == 1 and a == 0: return 1 + away_xg * rho
-    elif h == 1 and a == 1: return 1 - rho
-    return 1.0
+# 复用矩阵生成器
+def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.08):
+    def dixon_coles_tau(h, a):
+        if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
+        elif h == 0 and a == 1: return 1 + home_xg * rho
+        elif h == 1 and a == 0: return 1 + away_xg * rho
+        elif h == 1 and a == 1: return 1 - rho
+        return 1.0
+
+    matrix = np.zeros((max_goals + 1, max_goals + 1))
+    for i in range(max_goals + 1):
+        for j in range(max_goals + 1):
+            base_prob = poisson.pmf(i, home_xg) * poisson.pmf(j, away_xg)
+            matrix[i][j] = base_prob * dixon_coles_tau(i, j)
+    
+    total_p = np.sum(matrix)
+    matrix = matrix / total_p
+    
+    scores = []
+    for i in range(max_goals + 1):
+        for j in range(max_goals + 1):
+            scores.append((f"{i}-{j}", matrix[i][j]))
+    scores.sort(key=lambda x: x[1], reverse=True)
+    return scores
 
 def run_backtest():
-    print("⏳ 启动时光机回测系统 (V27.0 10大特征版)...")
+    print("⏳ 启动时光机回测系统 (V31.0 包含比分命中率)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -54,6 +72,11 @@ def run_backtest():
     team_stats, last_date = {}, {}
     backtest_start_date = df['date'].max() - pd.Timedelta(days=365)
     
+    # 🌟 新增：比分预测统计器
+    total_predicted = 0
+    top1_hits = 0
+    top3_hits = 0
+
     for idx, row in df.iterrows():
         h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
         
@@ -76,17 +99,35 @@ def run_backtest():
             h_elo = elo_dict.get(h, 1500)
             a_elo = elo_dict.get(a, 1500)
             
-            # 🌟 核心修复：补齐第 10 个特征 rest_diff
             feat = [h_elo, a_elo, h_elo - a_elo, h_sos, a_sos, h_xg, a_xg, h_pts, a_pts, rest_diff]
             feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000).reshape(1, -1)
             
+            # 计算比分矩阵
+            pred_h_xg = max(0.1, model_h.predict(feat)[0])
+            pred_a_xg = max(0.1, model_a.predict(feat)[0])
+            scores_list = generate_score_matrix(pred_h_xg, pred_a_xg)
+            
+            # 统计比分命中率
+            valid_scores = [s for s in scores_list if s[1] > 0.015]
+            pred_top1 = valid_scores[0][0]
+            pred_top3 = [s[0] for s in valid_scores[:3]]
+            
+            actual_score = f"{int(row['home_goals'])}-{int(row['away_goals'])}"
+            total_predicted += 1
+            
+            if actual_score == pred_top1:
+                top1_hits += 1
+            if actual_score in pred_top3:
+                top3_hits += 1
+                
+            # 预测胜平负下注逻辑（保持原有）
             clf_probs = calibrated_clf.predict_proba(feat)[0]
             p_a_clf, p_d_clf, p_h_clf = clf_probs[0], clf_probs[1], clf_probs[2]
             
             max_p = max(p_h_clf, p_d_clf, p_a_clf)
             bet_choice = ""
             
-            if max_p > 0.55: # 设定回测严选胜率阈值
+            if max_p > 0.55: 
                 if max_p == p_h_clf: bet_choice = "主胜"
                 elif max_p == p_d_clf: bet_choice = "平局"
                 else: bet_choice = "客胜"
@@ -94,17 +135,12 @@ def run_backtest():
             if bet_choice:
                 actual_res = "主胜" if row['home_goals'] > row['away_goals'] else ("平局" if row['home_goals'] == row['away_goals'] else "客胜")
                 sim_odds = 2.0 
-                
                 if bet_choice == actual_res:
                     profit = bet_amount * (sim_odds - 1)
                 else:
                     profit = -bet_amount
-                    
                 bankroll += profit
-                records.append({
-                    'date': m_date.strftime('%Y-%m-%d'), 'match': f"{h} vs {a}",
-                    'bet': bet_choice, 'actual': actual_res, 'profit': profit, 'bankroll': bankroll
-                })
+                records.append({'date': m_date.strftime('%Y-%m-%d'), 'profit': profit, 'bankroll': bankroll})
         
         # 更新统计数据
         act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
@@ -127,21 +163,30 @@ def run_backtest():
     total_profit = df_rec['profit'].sum()
     roi = (total_profit / (total_bets * bet_amount)) * 100
     
-    print(f"✅ 回测完成！共下注 {total_bets} 场，胜率 {win_rate:.1f}%，总盈亏 {total_profit:+.2f} 元，ROI {roi:+.1f}%")
+    top1_acc = (top1_hits / total_predicted) * 100
+    top3_acc = (top3_hits / total_predicted) * 100
+    
+    print(f"✅ 回测完成！下注胜率 {win_rate:.1f}%，ROI {roi:+.1f}%")
+    print(f"🎯 比分命中率：首选命中率 {top1_acc:.1f}%，前三推荐命中率 {top3_acc:.1f}%")
     
     plt.figure(figsize=(10, 5))
     plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
     plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
-    plt.title('历史回测资金曲线 (V27.0 十维特征版)')
+    plt.title('历史回测资金曲线 (V31.0 比分精算版)')
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.savefig('backtest_roi.png', dpi=120)
     plt.close()
     
-    report = f"""--- 历史回测报告 (V27.0 十维特征版) ---
+    report = f"""--- 历史回测报告 (V31.0 比分精算版) ---
 下注胜率: {win_rate:.2f}%
 总收益率 (ROI): {roi:+.2f}%
 总盈亏: {total_profit:+.2f} 元
+
+【比分预测能力评测】
+总预测场次: {total_predicted} 场
+首选比分精准命中: {top1_hits} 场 (命中率 {top1_acc:.2f}%)
+Top3比分包含命中: {top3_hits} 场 (命中率 {top3_acc:.2f}%)
 ========================================
 """
     with open('backtest_report.txt', 'w', encoding='utf-8') as f:
