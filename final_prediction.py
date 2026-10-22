@@ -56,7 +56,8 @@ def get_match_weather(home_team, date_str):
     except: pass
     return "未知", 0
 
-def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.08):
+# 🌟 核心升级：引入更符合实战的 Dixon-Coles 参数
+def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
     def dixon_coles_tau(h, a):
         if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
         elif h == 0 and a == 1: return 1 + home_xg * rho
@@ -271,7 +272,7 @@ for league in df_next_round['联赛'].unique():
             home_xg *= 0.9
             away_xg *= 0.9
 
-        scores_list, prob_matrix = generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.08)
+        scores_list, prob_matrix = generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15)
         
         p_h, p_d, p_a = np.sum(np.tril(prob_matrix, -1)), np.sum(np.diag(prob_matrix)), np.sum(np.triu(prob_matrix, 1))
         total_p = p_h + p_d + p_a
@@ -415,7 +416,7 @@ for league in df_next_round['联赛'].unique():
         """
 
 final_html = "<html><body style='background-color: #f4f7f6; padding: 15px; font-family: \"Helvetica Neue\", Arial, sans-serif;'><div style='max-width: 850px; margin: auto;'>"
-final_html += "<h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; font-size: 24px;'>⚽ 明日赛事量化预测 (V36.0 强正则化全景版)</h1>"
+final_html += "<h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; font-size: 24px;'>⚽ 明日赛事量化预测 (V37.0 比分偏置版)</h1>"
 
 if jczq_picks_list:
     df_picks = pd.DataFrame(jczq_picks_list)
@@ -438,4 +439,4 @@ if os.path.exists('predictions_log.csv'):
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("V36.0 明日赛事量化预测 (强正则化全景版)", final_html, img_buffers)
+send_rich_email("V37.0 明日赛事量化预测 (比分偏置版)", final_html, img_buffers)
