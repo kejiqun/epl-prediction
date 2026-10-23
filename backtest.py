@@ -30,7 +30,7 @@ def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
     return scores, matrix
 
 def run_backtest():
-    print("⏳ 启动时光机回测系统 (V38.0 全能实战版)...")
+    print("⏳ 启动时光机回测系统 (V40.0)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -73,7 +73,6 @@ def run_backtest():
     total_predicted = 0
     top1_hits = 0
     top3_hits = 0
-    goals_hit = 0 
 
     for idx, row in df.iterrows():
         h_team, a_team, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
@@ -81,7 +80,7 @@ def run_backtest():
         
         for t in [h_team, a_team]:
             if t not in team_stats: 
-                team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[]}
+                team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'is_draw':[]}
             if t not in last_date: last_date[t] = None
                 
         if m_date >= backtest_start_date:
@@ -116,11 +115,11 @@ def run_backtest():
             
             pred_h_xg_lgb = model_h_lgb.predict(feat)[0]
             pred_h_xg_xgb = model_h_xgb.predict(feat)[0]
-            pred_h_xg = max(0.1, (pred_h_xg_lgb + pred_h_xg_xgb) / 2.0)
+            pred_h_xg = max(0.1, (pred_h_xg_lgb + pred_h_xgb) / 2.0)
             
             pred_a_xg_lgb = model_a_lgb.predict(feat)[0]
             pred_a_xg_xgb = model_a_xgb.predict(feat)[0]
-            pred_a_xg = max(0.1, (pred_a_xg_lgb + pred_a_xg_xgb) / 2.0)
+            pred_a_xg = max(0.1, (pred_a_xg_lgb + pred_a_xgb) / 2.0)
             
             xg_adj = league_xg_weights.get(league_name, 0.0)
             pred_h_xg += (xg_adj / 2)
@@ -132,52 +131,41 @@ def run_backtest():
             pred_top1 = valid_scores[0][0]
             pred_top3 = [s[0] for s in valid_scores[:3]]
             
-            # 🌟 修复后的总进球数计算
-            goal_probs = {}
-            for total_g in range(8): # 0-7球
-                prob = 0
-                for hg in range(total_g + 1):
-                    ag = total_g - hg
-                    if hg <= 7 and ag <= 7:
-                        prob += prob_matrix[hg][ag]
-                goal_probs[str(total_g)] = prob
-                
-            prob_7_plus = 0
-            for hg in range(8):
-                for ag in range(8):
-                    if hg + ag >= 7:
-                        prob_7_plus += prob_matrix[hg][ag]
-            goal_probs['7+'] = prob_7_plus
-            
-            sorted_goals = sorted(goal_probs.items(), key=lambda x: x[1], reverse=True)
-            pred_goal_top2 = [k for k, v in sorted_goals[:2]]
-            
             actual_score = f"{int(row['home_goals'])}-{int(row['away_goals'])}"
-            actual_total_goals = str(int(row['home_goals'] + row['away_goals']))
-            if int(row['home_goals'] + row['away_goals']) >= 7: actual_total_goals = '7+'
-            
             total_predicted += 1
             
             if actual_score == pred_top1: top1_hits += 1
             if actual_score in pred_top3: top3_hits += 1
-            if actual_total_goals in pred_goal_top2: goals_hit += 1
                 
             clf_probs = calibrated_clf.predict_proba(feat)[0]
             p_a_clf, p_d_clf, p_h_clf = clf_probs[0], clf_probs[1], clf_probs[2]
             
             max_p = max(p_h_clf, p_d_clf, p_a_clf)
             bet_choice = ""
+            bet_amt = 100.0
             
             if max_p > 0.55: 
                 if max_p == p_h_clf: bet_choice = "主胜"
                 elif max_p == p_d_clf: bet_choice = "平局"
                 else: bet_choice = "客胜"
-                
+            
+            # 🌟 核心升级：平局熔断与杯赛降权
+            if bet_choice == "平局":
+                h_draw_rate = np.mean(team_stats[h_team]['is_draw'][-5:]) if team_stats[h_team]['is_draw'] else 0.3
+                a_draw_rate = np.mean(team_stats[a_team]['is_draw'][-5:]) if team_stats[a_team]['is_draw'] else 0.3
+                if (h_draw_rate + a_draw_rate) / 2 < 0.25: # 双方近期平局极少
+                    bet_choice = "" # 熔断，直接放弃
+            
             if bet_choice:
+                if league_name in ['欧联', '欧冠']:
+                    bet_amt = bet_amt * 0.8 # 杯赛降权 20%
+                
+                bet_amt = min(bet_amt, 200) # 单场限额 200
+                
                 actual_res = "主胜" if row['home_goals'] > row['away_goals'] else ("平局" if row['home_goals'] == row['away_goals'] else "客胜")
                 sim_odds = 2.0 
-                if bet_choice == actual_res: profit = bet_amount * (sim_odds - 1)
-                else: profit = -bet_amount
+                if bet_choice == actual_res: profit = bet_amt * (sim_odds - 1)
+                else: profit = -bet_amt
                 bankroll += profit
                 records.append({'date': m_date.strftime('%Y-%m-%d'), 'profit': profit, 'bankroll': bankroll})
         
@@ -192,6 +180,9 @@ def run_backtest():
         team_stats[h_team]['opp_elo'].append(elo_dict.get(a_team, 1500)); team_stats[a_team]['opp_elo'].append(elo_dict.get(h_team, 1500))
         team_stats[h_team]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
         team_stats[a_team]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        
+        team_stats[h_team]['is_draw'].append(1 if row['home_goals'] == row['away_goals'] else 0)
+        team_stats[a_team]['is_draw'].append(1 if row['home_goals'] == row['away_goals'] else 0)
         
         last_date[h_team] = m_date; last_date[a_team] = m_date
 
@@ -210,7 +201,7 @@ def run_backtest():
         plt.figure(figsize=(10, 5))
         plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
         plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
-        plt.title('历史回测资金曲线 (V38.0)')
+        plt.title('历史回测资金曲线 (V40.0 防冷版)')
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.6)
         plt.savefig('backtest_roi.png', dpi=120)
@@ -218,18 +209,14 @@ def run_backtest():
     
     top1_acc = (top1_hits / total_predicted) * 100 if total_predicted > 0 else 0
     top3_acc = (top3_hits / total_predicted) * 100 if total_predicted > 0 else 0
-    goals_acc = (goals_hit / total_predicted) * 100 if total_predicted > 0 else 0
     
     print(f"✅ 回测完成！下注胜率 {win_rate:.1f}%，ROI {roi:+.1f}%")
     print(f"🎯 比分命中率：首选 {top1_acc:.1f}%，前三 {top3_acc:.1f}%")
-    print(f"⚽ 总进球数命中率 (Top2推荐): {goals_acc:.1f}%")
     
-    report = f"""--- 历史回测报告 (V38.0 全能实战版) ---
+    report = f"""--- 历史回测报告 (V40.0 防冷版) ---
 总预测场次: {total_predicted} 场
 首选比分精准命中率: {top1_acc:.2f}%
 Top3比分包含命中率: {top3_acc:.2f}%
-
-⚽ 总进球数命中率 (Top2推荐): {goals_acc:.2f}%
 
 下注胜率: {win_rate:.2f}%
 总收益率 (ROI): {roi:+.2f}%
