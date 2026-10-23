@@ -120,7 +120,7 @@ if os.path.exists('bankroll.csv'):
         if '盈亏' in recent.columns:
             wins = len(recent[recent['盈亏'] > 0])
             win_rate = wins / len(recent)
-            if win_rate < 0.4: kelly_multiplier = 0.3
+            if win_rate < 0.4: kelly_multiplier = 0.2 
             elif win_rate > 0.6: kelly_multiplier = 0.7
     except: pass
 
@@ -259,7 +259,6 @@ for league in df_next_round['联赛'].unique():
         a_rest = (pd.Timestamp(m_date) - last_date[a_cn]).days if a_cn in last_date else 7
         rest_diff = h_rest - a_rest
         
-        # 🌟 16大特征提取
         h_recent_matches = sum(1 for d in h['dates'] if (pd.Timestamp(m_date) - d).days <= 14)
         a_recent_matches = sum(1 for d in a['dates'] if (pd.Timestamp(m_date) - d).days <= 14)
         
@@ -326,8 +325,13 @@ for league in df_next_round['联赛'].unique():
         final_rec, bet_amt, split_msg = "观望", 0.0, ""
         ou_msg, hc_msg, ou_rec, hc_rec = "未开出", "未开出", "观望", "观望"
         
+        # 恢复展示的凯利指数
+        kelly_msg = "暂无真实赔率"
+        
         if has_real:
             kh, kd, ka = (p_h*oh-1)/(oh-1), (p_d*od-1)/(od-1), (p_a*oa-1)/(oa-1)
+            kelly_msg = f"主胜 {max(0, kh)*100:.1f}% | 平局 {max(0, kd)*100:.1f}% | 客胜 {max(0, ka)*100:.1f}%"
+            
             max_k = max(kh, kd, ka)
             if max_k > 0.02:
                 b_choice = "主胜" if max_k == kh else ("平局" if max_k == kd else "客胜")
@@ -341,14 +345,14 @@ for league in df_next_round['联赛'].unique():
             if pd.notna(tl_line) and tl_line > 0:
                 prob_over = sum(prob_matrix[i][j] for i in range(8) for j in range(8) if i + j > tl_line)
                 prob_under = sum(prob_matrix[i][j] for i in range(8) for j in range(8) if i + j < tl_line)
-                ou_msg = f"{tl_line} 球"
+                ou_msg = f"盘口{tl_line}，大球{prob_over*100:.1f}% / 小球{prob_under*100:.1f}%"
                 if prob_over * over_odd > 1.05: ou_rec = "大球 (高价值)"
                 elif prob_under * under_odd > 1.05: ou_rec = "小球 (高价值)"
                 
             if pd.notna(hc_line) and hc_line != 0:
                 prob_hc_home = sum(prob_matrix[i][j] for i in range(8) for j in range(8) if i + hc_line > j)
                 prob_hc_away = sum(prob_matrix[i][j] for i in range(8) for j in range(8) if i + hc_line < j)
-                hc_msg = f"主让 {hc_line}"
+                hc_msg = f"主让{hc_line}，主赢盘{prob_hc_home*100:.1f}% / 客赢盘{prob_hc_away*100:.1f}%"
                 if prob_hc_home * hc_h_odd > 1.05: hc_rec = "主队赢盘"
                 elif prob_hc_away * hc_a_odd > 1.05: hc_rec = "客队赢盘"
         else:
@@ -409,6 +413,7 @@ for league in df_next_round['联赛'].unique():
             'odds_h': oh, 'odds_d': od, 'odds_a': oa, 'home_injuries': h_inj_str, 'away_injuries': a_inj_str
         })
 
+        # 🌟 全面恢复核心数据展示
         html_report += f"""
         <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.06);">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
@@ -438,6 +443,11 @@ for league in df_next_round['联赛'].unique():
                 <div style="width: 50%;">⏱️ <b>休息:</b> 主 {h_rest} 天 / 客 {a_rest} 天</div>
                 <div style="width: 50%;">🧑‍⚖️ <b>裁判:</b> {ref_info['name']}</div>
                 <div style="width: 100%; color: #d9534f; margin-top: 5px;"><b>🚨 伤停:</b> 主[{h_inj_str}] / 客[{a_inj_str}]</div>
+            </div>
+
+            <div style="background-color: #fff; padding: 10px; border-radius: 6px; border: 1px solid #eee; font-size: 13px; margin-bottom: 12px;">
+                <p style="margin: 0 0 5px 0;"><b>📊 核心数据 (近5场):</b> 主队 [进 {h_xg*5:.1f} / 失 {h_xga*5:.1f}] | 客队 [进 {a_xg*5:.1f} / 失 {a_xga*5:.1f}]</p>
+                <p style="margin: 0;"><b>💰 凯利建议:</b> {kelly_msg}</p>
             </div>
 
             <div style="display: flex; justify-content: space-around; text-align: center; font-size: 13px; margin-bottom: 15px;">
