@@ -120,7 +120,7 @@ if os.path.exists('bankroll.csv'):
         if '盈亏' in recent.columns:
             wins = len(recent[recent['盈亏'] > 0])
             win_rate = wins / len(recent)
-            if win_rate < 0.4: kelly_multiplier = 0.3
+            if win_rate < 0.4: kelly_multiplier = 0.2 # 极保守
             elif win_rate > 0.6: kelly_multiplier = 0.7
     except: pass
 
@@ -151,23 +151,18 @@ if os.path.exists('manual_odds.csv'):
         except: pass
 
 ref_dict, coach_dict = {}, {}
-# 🌟 修复点 1：适配新的中文表头读取 referee_stats.csv
 if os.path.exists('referee_stats.csv'):
     try:
         df_ref = pd.read_csv('referee_stats.csv')
         for _, r in df_ref.iterrows(): 
             ref_dict[(r['主队'], r['客队'])] = {'name': r['主裁判'], 'yellow': r['场均黄牌'], 'penalty': r['场均点球']}
-    except Exception as e:
-        print(f"⚠️ 裁判数据读取异常 (可能仍为旧版英文表头): {e}")
-
-# 🌟 修复点 2：适配新的中文表头读取 coach_stats.csv
+    except: pass
 if os.path.exists('coach_stats.csv'):
     try:
         df_coach = pd.read_csv('coach_stats.csv')
         for _, r in df_coach.iterrows(): 
             coach_dict[r['球队']] = {'style': r['教练风格']}
-    except Exception as e:
-        print(f"⚠️ 教练数据读取异常: {e}")
+    except: pass
 
 injury_dict, injury_impact = {}, {}
 try:
@@ -197,7 +192,7 @@ for _, row in df_hist.iterrows():
     h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
     for t in [h, a]:
         if t not in team_stats: 
-            team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[]}
+            team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'is_draw':[]}
         if t not in last_date: last_date[t] = None
         
     act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
@@ -211,6 +206,10 @@ for _, row in df_hist.iterrows():
     team_stats[h]['opp_elo'].append(1500); team_stats[a]['opp_elo'].append(1500)
     team_stats[h]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
     team_stats[a]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+    
+    team_stats[h]['is_draw'].append(1 if row['home_goals'] == row['away_goals'] else 0)
+    team_stats[a]['is_draw'].append(1 if row['home_goals'] == row['away_goals'] else 0)
+    
     last_date[h] = m_date; last_date[a] = m_date
 
 elo_dict = {}
@@ -261,8 +260,8 @@ for league in df_next_round['联赛'].unique():
             has_real = False
             trap_warning = ""
 
-        h = team_stats.get(h_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[]})
-        a = team_stats.get(a_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[]})
+        h = team_stats.get(h_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'is_draw':[]})
+        a = team_stats.get(a_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'is_draw':[]})
         h_rest = (pd.Timestamp(m_date) - last_date[h_cn]).days if h_cn in last_date else 7
         a_rest = (pd.Timestamp(m_date) - last_date[a_cn]).days if a_cn in last_date else 7
         rest_diff = h_rest - a_rest
@@ -320,7 +319,6 @@ for league in df_next_round['联赛'].unique():
         total_p = p_h + p_d + p_a
         p_h, p_d, p_a = p_h/total_p, p_d/total_p, p_a/total_p
         
-        # 这里修好了，直接取对应的字典
         ref_info = ref_dict.get((h_cn, a_cn), {'name': '未公布', 'yellow': 0, 'penalty': 0})
         h_coach = coach_dict.get(h_cn, {'style': '攻守平衡'})
         a_coach = coach_dict.get(a_cn, {'style': '攻守平衡'})
@@ -345,9 +343,31 @@ for league in df_next_round['联赛'].unique():
             if max_k > 0.02:
                 b_choice = "主胜" if max_k == kh else ("平局" if max_k == kd else "客胜")
                 if (b_choice == "主胜" and p_h > 0.25) or (b_choice == "平局" and p_d > 0.25) or (b_choice == "客胜" and p_a > 0.25):
-                    safe_k = min(max_k * kelly_multiplier, 0.05)
-                    bet_amt, final_rec = bankroll * safe_k, b_choice
-                    split_msg = f"推荐下注 {bet_amt:.2f}元"
+                    # 🌟 核心升级：平局熔断
+                    if b_choice == "平局":
+                        h_draw_rate = np.mean(h['is_draw'][-5:]) if h['is_draw'] else 0.3
+                        a_draw_rate = np.mean(a['is_draw'][-5:]) if a['is_draw'] else 0.3
+                        if (h_draw_rate + a_draw_rate) / 2 < 0.25:
+                            split_msg = "⚠️ 触发防平局熔断：近期双方极少平局，强行放弃该推荐。"
+                            b_choice = "" # 熔断
+                    
+                    if b_choice:
+                        safe_k = min(max_k * kelly_multiplier, 0.05)
+                        bet_amt = bankroll * safe_k
+                        
+                        # 🌟 核心升级：杯赛降权与限注
+                        if league in ['欧联', '欧冠']:
+                            bet_amt = bet_amt * 0.8
+                            split_msg = f"推荐下注 {bet_amt:.2f}元 (欧战杯赛，自动降权20%)"
+                        else:
+                            split_msg = f"推荐下注 {bet_amt:.2f}元"
+                        
+                        # 硬性单注上限
+                        if bet_amt > 200:
+                            bet_amt = 200.0
+                            split_msg = f"推荐下注 200.00元 (触发风控限注)"
+                        
+                        final_rec = b_choice
                 else: split_msg = "概率不足，建议空仓观望"
             else: split_msg = "模型认为无正期望价值"
 
@@ -489,7 +509,7 @@ final_html = """
 <div class="container">
 """
 
-final_html += "<h1>⚽ 明日赛事量化预测 (V39.0 华尔街日报版)</h1>"
+final_html += "<h1>⚽ 明日赛事量化预测 (V40.0 终极防冷版)</h1>"
 
 if jczq_picks_list:
     df_picks = pd.DataFrame(jczq_picks_list)
@@ -524,4 +544,4 @@ if os.path.exists('predictions_log.csv'):
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("V39.0 明日赛事量化预测 (华尔街日报版)", final_html, img_buffers)
+send_rich_email("V40.0 明日赛事量化预测 (终极防冷版)", final_html, img_buffers)
