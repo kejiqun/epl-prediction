@@ -113,13 +113,14 @@ def run_backtest():
             ]
             feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000).reshape(1, -1)
             
+            # 🌟 核心修复：统一变量名为 pred_h_xg_xgb
             pred_h_xg_lgb = model_h_lgb.predict(feat)[0]
             pred_h_xg_xgb = model_h_xgb.predict(feat)[0]
-            pred_h_xg = max(0.1, (pred_h_xg_lgb + pred_h_xgb) / 2.0)
+            pred_h_xg = max(0.1, (pred_h_xg_lgb + pred_h_xg_xgb) / 2.0)
             
             pred_a_xg_lgb = model_a_lgb.predict(feat)[0]
             pred_a_xg_xgb = model_a_xgb.predict(feat)[0]
-            pred_a_xg = max(0.1, (pred_a_xg_lgb + pred_a_xgb) / 2.0)
+            pred_a_xg = max(0.1, (pred_a_xg_lgb + pred_a_xg_xgb) / 2.0)
             
             xg_adj = league_xg_weights.get(league_name, 0.0)
             pred_h_xg += (xg_adj / 2)
@@ -149,18 +150,17 @@ def run_backtest():
                 elif max_p == p_d_clf: bet_choice = "平局"
                 else: bet_choice = "客胜"
             
-            # 🌟 核心升级：平局熔断与杯赛降权
             if bet_choice == "平局":
                 h_draw_rate = np.mean(team_stats[h_team]['is_draw'][-5:]) if team_stats[h_team]['is_draw'] else 0.3
                 a_draw_rate = np.mean(team_stats[a_team]['is_draw'][-5:]) if team_stats[a_team]['is_draw'] else 0.3
-                if (h_draw_rate + a_draw_rate) / 2 < 0.25: # 双方近期平局极少
-                    bet_choice = "" # 熔断，直接放弃
+                if (h_draw_rate + a_draw_rate) / 2 < 0.25: 
+                    bet_choice = "" 
             
             if bet_choice:
                 if league_name in ['欧联', '欧冠']:
-                    bet_amt = bet_amt * 0.8 # 杯赛降权 20%
+                    bet_amt = bet_amt * 0.8
                 
-                bet_amt = min(bet_amt, 200) # 单场限额 200
+                bet_amt = min(bet_amt, 200)
                 
                 actual_res = "主胜" if row['home_goals'] > row['away_goals'] else ("平局" if row['home_goals'] == row['away_goals'] else "客胜")
                 sim_odds = 2.0 
