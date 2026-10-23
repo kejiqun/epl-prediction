@@ -24,7 +24,7 @@ def calculate_elo(df):
     return df, elo
 
 def train_models():
-    print("⏳ 开始训练 V42.0 巅峰回归模型...")
+    print("⏳ 开始训练 V44.0 终极全面进化模型...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -50,12 +50,17 @@ def train_models():
         h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
         for t in [h, a]:
             if t not in team_stats: 
-                team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[]}
+                team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]}
             if t not in last_date: last_date[t] = None
         
+        # 1. 休息天数差
         h_rest = (m_date - last_date[h]).days if last_date[h] else 7
         a_rest = (m_date - last_date[a]).days if last_date[a] else 7
         rest_diff = h_rest - a_rest
+
+        # 2. 🌟 新增体能特征：近14天比赛场次
+        h_recent_matches = sum(1 for d in team_stats[h]['dates'] if (m_date - d).days <= 14)
+        a_recent_matches = sum(1 for d in team_stats[a]['dates'] if (m_date - d).days <= 14)
 
         h_xg = np.mean(team_stats[h]['xg'][-5:]) if team_stats[h]['xg'] else league_avg_goals
         a_xg = np.mean(team_stats[a]['xg'][-5:]) if team_stats[a]['xg'] else league_avg_goals
@@ -72,10 +77,12 @@ def train_models():
         h_pts = np.mean(team_stats[h]['pts'][-5:]) if team_stats[h]['pts'] else 1.0
         a_pts = np.mean(team_stats[a]['pts'][-5:]) if team_stats[a]['pts'] else 1.0
         
+        # 组装 16 维终极特征
         feat = [
             row['home_elo'], row['away_elo'], row['home_elo'] - row['away_elo'], 
             h_sos, a_sos, h_xg, a_xg, h_xga, a_xga, 
-            h_home_xg, h_home_xga, a_away_xg, a_away_xga, rest_diff
+            h_home_xg, h_home_xga, a_away_xg, a_away_xga, 
+            rest_diff, h_recent_matches, a_recent_matches
         ]
         feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000)
         features.append(feat)
@@ -101,6 +108,10 @@ def train_models():
         team_stats[h]['pts'].append(3 if h_goals > a_goals else (1 if h_goals == a_goals else 0))
         team_stats[a]['pts'].append(3 if a_goals > h_goals else (1 if h_goals == a_goals else 0))
         
+        # 记录比赛日期，用于体能计算
+        team_stats[h]['dates'].append(m_date)
+        team_stats[a]['dates'].append(m_date)
+        
         last_date[h] = m_date; last_date[a] = m_date
 
     X = np.array(features, dtype=np.float32)
@@ -108,7 +119,7 @@ def train_models():
     y_a = np.nan_to_num(np.array(labels_away, dtype=np.float32), nan=0.0, posinf=10.0, neginf=0.0)
     y_res = np.array(labels_result, dtype=np.int32)
     
-    # 🌟 完美恢复 V37 巅峰参数
+    # 🌟 极致双轨引擎
     params_reg = {'objective': 'regression', 'metric': 'rmse', 'verbose': -1}
     model_h_lgb = lgb.train(params_reg, lgb.Dataset(X, label=y_h), num_boost_round=100)
     model_a_lgb = lgb.train(params_reg, lgb.Dataset(X, label=y_a), num_boost_round=100)
@@ -127,7 +138,7 @@ def train_models():
     joblib.dump(model_h_xgb, 'epl_v31_home_goals_model_xgb.pkl')
     joblib.dump(model_a_xgb, 'epl_v31_away_goals_model_xgb.pkl')
     joblib.dump(calibrated_clf, 'epl_result_classifier.pkl')
-    print("✅ V42.0 巅峰回归模型训练完成！")
+    print("✅ V44.0 极客进击模型训练完成！(16大特征，防作弊，双引擎)")
 
 if __name__ == "__main__":
     train_models()
