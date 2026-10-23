@@ -24,7 +24,7 @@ def calculate_elo(df):
     return df, elo
 
 def train_models():
-    print("⏳ 开始训练 V41.0 纯净数学巅峰模型...")
+    print("⏳ 开始训练 V42.0 巅峰回归模型...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -108,19 +108,17 @@ def train_models():
     y_a = np.nan_to_num(np.array(labels_away, dtype=np.float32), nan=0.0, posinf=10.0, neginf=0.0)
     y_res = np.array(labels_result, dtype=np.int32)
     
-    params_reg = {
-        'objective': 'regression', 'metric': 'rmse', 'verbose': -1,
-        'lambda_l1': 0.1, 'lambda_l2': 0.1, 'min_data_in_leaf': 20, 'feature_fraction': 0.8
-    }
+    # 🌟 完美恢复 V37 巅峰参数
+    params_reg = {'objective': 'regression', 'metric': 'rmse', 'verbose': -1}
     model_h_lgb = lgb.train(params_reg, lgb.Dataset(X, label=y_h), num_boost_round=100)
     model_a_lgb = lgb.train(params_reg, lgb.Dataset(X, label=y_a), num_boost_round=100)
     
-    model_h_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.05, max_depth=4, reg_alpha=0.1, reg_lambda=1.0, min_child_weight=5, random_state=42, n_jobs=1, tree_method='exact')
-    model_a_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.05, max_depth=4, reg_alpha=0.1, reg_lambda=1.0, min_child_weight=5, random_state=42, n_jobs=1, tree_method='exact')
+    model_h_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1, tree_method='exact')
+    model_a_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1, tree_method='exact')
     model_h_xgb.fit(X, y_h)
     model_a_xgb.fit(X, y_a)
     
-    clf = lgb.LGBMClassifier(n_estimators=100, learning_rate=0.05, max_depth=4, reg_alpha=0.1, reg_lambda=0.1, random_state=42, verbose=-1)
+    clf = lgb.LGBMClassifier(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, verbose=-1)
     calibrated_clf = CalibratedClassifierCV(clf, method='isotonic', cv=3)
     calibrated_clf.fit(X, y_res)
     
@@ -129,7 +127,7 @@ def train_models():
     joblib.dump(model_h_xgb, 'epl_v31_home_goals_model_xgb.pkl')
     joblib.dump(model_a_xgb, 'epl_v31_away_goals_model_xgb.pkl')
     joblib.dump(calibrated_clf, 'epl_result_classifier.pkl')
-    print("✅ V41.0 纯净数学巅峰模型训练完成！")
+    print("✅ V42.0 巅峰回归模型训练完成！")
 
 if __name__ == "__main__":
     train_models()
