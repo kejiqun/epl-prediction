@@ -13,9 +13,12 @@ def fetch_schedule_and_odds():
     if os.path.exists('manual_matches.csv'):
         print("✅ 侦测到 manual_matches.csv，系统将优先以手动数据为准！")
         try:
-            df_manual = pd.read_csv('manual_matches.csv')
+            # 🌟 增加 encoding='utf-8-sig'，彻底免疫 BOM 头等隐藏字符
+            df_manual = pd.read_csv('manual_matches.csv', encoding='utf-8-sig')
             
-            # 🌟 新增：自动清理过期数据（精确到小时）
+            # 强制清理列名前后可能带的空格
+            df_manual.columns = [c.strip() for c in df_manual.columns]
+            
             df_manual['比赛时间'] = pd.to_datetime(df_manual['比赛时间'])
             # 剔除已经开赛或结束的比赛（留出 2 小时的缓冲防错）
             buffer_time = today - timedelta(hours=2)
@@ -23,10 +26,10 @@ def fetch_schedule_and_odds():
             
             for _, r in df_manual.iterrows():
                 m_time = r['比赛时间']
-                dt_parsed = m_time.tz_localize('Asia/Shanghai').tz_convert('UTC') # 转为 UTC 传下去
+                dt_parsed = m_time.tz_localize('Asia/Shanghai').tz_convert('UTC') 
                 
                 all_matches.append({
-                    '联赛': r['赛事'], '比赛时间': dt_parsed, '主队': translate_team_name(r['主队']), '客队': translate_team_name(r['客队']),
+                    '联赛': r['赛事'].strip(), '比赛时间': dt_parsed, '主队': translate_team_name(r['主队'].strip()), '客队': translate_team_name(r['客队'].strip()),
                     '主胜赔率': r['主胜赔率'], '平局赔率': r['平局赔率'], '客胜赔率': r['客胜赔率'],
                     '让球盘口': 0.0, '主让胜赔率': 0.0, '客受让胜赔率': 0.0,
                     '大小球盘口': 2.5, '大球赔率': 0.0, '小球赔率': 0.0
