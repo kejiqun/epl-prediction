@@ -24,7 +24,7 @@ def calculate_elo(df):
     return df, elo
 
 def train_models():
-    print("⏳ 开始训练 V40.0 防冷防平局模型...")
+    print("⏳ 开始训练 V41.0 纯净数学巅峰模型...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -50,7 +50,7 @@ def train_models():
         h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
         for t in [h, a]:
             if t not in team_stats: 
-                team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'is_draw':[]}
+                team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[]}
             if t not in last_date: last_date[t] = None
         
         h_rest = (m_date - last_date[h]).days if last_date[h] else 7
@@ -101,9 +101,6 @@ def train_models():
         team_stats[h]['pts'].append(3 if h_goals > a_goals else (1 if h_goals == a_goals else 0))
         team_stats[a]['pts'].append(3 if a_goals > h_goals else (1 if h_goals == a_goals else 0))
         
-        team_stats[h]['is_draw'].append(1 if h_goals == a_goals else 0)
-        team_stats[a]['is_draw'].append(1 if h_goals == a_goals else 0)
-        
         last_date[h] = m_date; last_date[a] = m_date
 
     X = np.array(features, dtype=np.float32)
@@ -132,7 +129,7 @@ def train_models():
     joblib.dump(model_h_xgb, 'epl_v31_home_goals_model_xgb.pkl')
     joblib.dump(model_a_xgb, 'epl_v31_away_goals_model_xgb.pkl')
     joblib.dump(calibrated_clf, 'epl_result_classifier.pkl')
-    print("✅ V40.0 防冷防平局模型训练完成！")
+    print("✅ V41.0 纯净数学巅峰模型训练完成！")
 
 if __name__ == "__main__":
     train_models()
