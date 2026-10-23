@@ -155,7 +155,7 @@ ref_dict, coach_dict = {}, {}
 if os.path.exists('referee_stats.csv'):
     for _, r in pd.read_csv('referee_stats.csv').iterrows(): ref_dict[(r['home_team'], r['away_team'])] = {'name': r['referee'], 'yellow': r['avg_yellow_cards'], 'penalty': r['avg_penalties']}
 if os.path.exists('coach_stats.csv'):
-    for _, r in pd.read_csv('coach_stats.csv').iterrows(): coach_dict[r['team']] = {'style': r['coach_style']}
+    for _, r in pd.read_csv('coach_stats.csv').iterrows(): coach_dict[r['球队']] = {'style': r['教练风格']}
 
 injury_dict, injury_impact = {}, {}
 try:
