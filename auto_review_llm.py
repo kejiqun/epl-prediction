@@ -46,13 +46,11 @@ for c in ['actual_score', 'actual_result', 'is_win', 'profit', 'bet_amount', 'pr
     if c not in df_log.columns: 
         df_log[c] = np.nan if 'amount' in c or 'profit' in c else ""
 
-# 🌟 核心修复：不找“昨天”，直接找“所有还没结算的比赛”！
-# 并且只找日期小于等于今天的（防止把还没踢的比赛拿来复盘）
+# 找“所有还没结算的比赛”，且日期小于等于今天
 pending_review = df_log[(df_log['actual_score'].isna() | (df_log['actual_score'] == "")) & (df_log['date'].dt.strftime('%Y-%m-%d') <= today_str)].copy()
 
 if pending_review.empty:
     print("✅ 没有需要复盘的新比赛。")
-    # 🌟 即使没比赛，也发一封邮件，让你安心
     html_report = f"""
     <html><body style="font-family: sans-serif; padding: 30px; text-align: center; background-color: #f4f7f6;">
         <h2 style="color: #2c3e50;">☕ 今日复盘完成</h2>
@@ -66,8 +64,9 @@ if pending_review.empty:
 print(f"⏳ 找到 {len(pending_review)} 场待复盘比赛，正在抓取真实赛果...")
 
 actual_results = {}
+# 往前查5天，容错更高
 for league_name, config in LEAGUES.items():
-    for i in range(1, 5): # 往前查4天
+    for i in range(1, 6):
         date_str = (today - timedelta(days=i)).strftime('%Y%m%d')
         url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{config['espn_code']}/scoreboard?dates={date_str}"
         try:
@@ -156,8 +155,17 @@ for idx, row in pending_review.iterrows():
             '盈亏': round(profit, 2)
         })
 
-if total_count == 0 and len(score_analysis_data) == 0:
+# 🌟 修复：如果没有结算任何有效资金，也发邮件通知
+if total_count == 0:
     print("⚠️ 扫描到了比赛，但暂无已结算赛果，可能比赛还没踢完。")
+    html_report = f"""
+    <html><body style="font-family: sans-serif; padding: 30px; text-align: center; background-color: #f4f7f6;">
+        <h2 style="color: #2c3e50;">⏳ 比赛尚未结算</h2>
+        <p style="color: #7f8c8d; font-size: 16px;">系统扫描到了 {len(pending_review)} 场比赛，但在外部数据源中暂未查到最终赛果，可能比赛还没踢完。</p>
+        <p style="color: #7f8c8d; font-size: 14px;">系统会在下次定时任务中自动重试结算。</p>
+    </div></body></html>
+    """
+    send_email("⏳ 每日复盘通知 (待结算)", html_report)
     exit()
 
 bankroll += total_profit
