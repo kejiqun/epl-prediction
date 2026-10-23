@@ -30,7 +30,7 @@ def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
     return scores, matrix
 
 def run_backtest():
-    print("⏳ 启动时光机回测系统 (V41.0)...")
+    print("⏳ 启动时光机回测系统 (V42.0)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -58,6 +58,11 @@ def run_backtest():
         print(f"❌ 找不到模型文件: {e}")
         return
 
+    league_xg_weights = {
+        '英超': 0.05, '西甲': 0.0, '德甲': 0.15, '意甲': -0.15, '法甲': -0.05,
+        '欧冠': 0.0, '欧联': 0.0
+    }
+
     initial_bankroll = 10000.0
     bankroll = initial_bankroll
     bet_amount = 100.0 
@@ -71,6 +76,7 @@ def run_backtest():
 
     for idx, row in df.iterrows():
         h_team, a_team, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
+        league_name = row.get('league', '英超')
         
         for t in [h_team, a_team]:
             if t not in team_stats: 
@@ -114,6 +120,10 @@ def run_backtest():
             pred_a_xg_lgb = model_a_lgb.predict(feat)[0]
             pred_a_xg_xgb = model_a_xgb.predict(feat)[0]
             pred_a_xg = max(0.1, (pred_a_xg_lgb + pred_a_xg_xgb) / 2.0)
+            
+            xg_adj = league_xg_weights.get(league_name, 0.0)
+            pred_h_xg += (xg_adj / 2)
+            pred_a_xg += (xg_adj / 2)
             
             scores_list, prob_matrix = generate_score_matrix(pred_h_xg, pred_a_xg)
             
@@ -175,7 +185,7 @@ def run_backtest():
         plt.figure(figsize=(10, 5))
         plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
         plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
-        plt.title('历史回测资金曲线 (V41.0 巅峰版)')
+        plt.title('历史回测资金曲线 (V42.0 巅峰版)')
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.6)
         plt.savefig('backtest_roi.png', dpi=120)
@@ -187,7 +197,7 @@ def run_backtest():
     print(f"✅ 回测完成！下注胜率 {win_rate:.1f}%，ROI {roi:+.1f}%")
     print(f"🎯 比分命中率：首选 {top1_acc:.1f}%，前三 {top3_acc:.1f}%")
     
-    report = f"""--- 历史回测报告 (V41.0 巅峰版) ---
+    report = f"""--- 历史回测报告 (V42.0 巅峰版) ---
 总预测场次: {total_predicted} 场
 首选比分精准命中率: {top1_acc:.2f}%
 Top3比分包含命中率: {top3_acc:.2f}%
