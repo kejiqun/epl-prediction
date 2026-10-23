@@ -120,7 +120,7 @@ if os.path.exists('bankroll.csv'):
         if '盈亏' in recent.columns:
             wins = len(recent[recent['盈亏'] > 0])
             win_rate = wins / len(recent)
-            if win_rate < 0.4: kelly_multiplier = 0.2 # 极保守
+            if win_rate < 0.4: kelly_multiplier = 0.3
             elif win_rate > 0.6: kelly_multiplier = 0.7
     except: pass
 
@@ -192,7 +192,7 @@ for _, row in df_hist.iterrows():
     h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
     for t in [h, a]:
         if t not in team_stats: 
-            team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'is_draw':[]}
+            team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]}
         if t not in last_date: last_date[t] = None
         
     act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
@@ -207,9 +207,7 @@ for _, row in df_hist.iterrows():
     team_stats[h]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
     team_stats[a]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
     
-    team_stats[h]['is_draw'].append(1 if row['home_goals'] == row['away_goals'] else 0)
-    team_stats[a]['is_draw'].append(1 if row['home_goals'] == row['away_goals'] else 0)
-    
+    team_stats[h]['dates'].append(m_date); team_stats[a]['dates'].append(m_date)
     last_date[h] = m_date; last_date[a] = m_date
 
 elo_dict = {}
@@ -222,11 +220,6 @@ model_a_lgb = joblib.load('epl_v31_away_goals_model_lgb.pkl')
 model_h_xgb = joblib.load('epl_v31_home_goals_model_xgb.pkl')
 model_a_xgb = joblib.load('epl_v31_away_goals_model_xgb.pkl')
 calibrated_clf = joblib.load('epl_result_classifier.pkl')
-
-league_xg_weights = {
-    '英超': 0.05, '西甲': 0.0, '德甲': 0.15, '意甲': -0.15, '法甲': -0.05,
-    '欧冠': 0.0, '欧联': 0.0
-}
 
 jczq_picks_list = []
 html_report, prediction_logs, img_buffers = "", [], []
@@ -260,11 +253,15 @@ for league in df_next_round['联赛'].unique():
             has_real = False
             trap_warning = ""
 
-        h = team_stats.get(h_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'is_draw':[]})
-        a = team_stats.get(a_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'is_draw':[]})
+        h = team_stats.get(h_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]})
+        a = team_stats.get(a_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]})
         h_rest = (pd.Timestamp(m_date) - last_date[h_cn]).days if h_cn in last_date else 7
         a_rest = (pd.Timestamp(m_date) - last_date[a_cn]).days if a_cn in last_date else 7
         rest_diff = h_rest - a_rest
+        
+        # 🌟 16大特征提取
+        h_recent_matches = sum(1 for d in h['dates'] if (pd.Timestamp(m_date) - d).days <= 14)
+        a_recent_matches = sum(1 for d in a['dates'] if (pd.Timestamp(m_date) - d).days <= 14)
         
         h_xg = np.mean(h['xg'][-5:]) if h['xg'] else league_avg_goals
         a_xg = np.mean(a['xg'][-5:]) if a['xg'] else league_avg_goals
@@ -287,26 +284,18 @@ for league in df_next_round['联赛'].unique():
         feat = [
             h_elo, a_elo, h_elo - a_elo, 
             h_sos, a_sos, h_xg, a_xg, h_xga, a_xga, 
-            h_home_xg, h_home_xga, a_away_xg, a_away_xga, rest_diff
+            h_home_xg, h_home_xga, a_away_xg, a_away_xga, 
+            rest_diff, h_recent_matches, a_recent_matches
         ]
         feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000).reshape(1, -1)
         
-        pred_h_xg_lgb = model_h_lgb.predict(feat)[0]
-        pred_h_xg_xgb = model_h_xgb.predict(feat)[0]
-        home_xg = max(0.1, (pred_h_xg_lgb + pred_h_xg_xgb) / 2.0)
-        
-        pred_a_xg_lgb = model_a_lgb.predict(feat)[0]
-        pred_a_xg_xgb = model_a_xgb.predict(feat)[0]
-        away_xg = max(0.1, (pred_a_xg_lgb + pred_a_xg_xgb) / 2.0)
-        
-        xg_adj = league_xg_weights.get(league, 0.0)
-        home_xg += (xg_adj / 2)
-        away_xg += (xg_adj / 2)
+        pred_h_xg = max(0.1, (model_h_lgb.predict(feat)[0] + model_h_xgb.predict(feat)[0]) / 2.0)
+        pred_a_xg = max(0.1, (model_a_lgb.predict(feat)[0] + model_a_xgb.predict(feat)[0]) / 2.0)
         
         h_impact = injury_impact.get(h_cn, 0)
         a_impact = injury_impact.get(a_cn, 0)
-        home_xg *= max(0.6, 1 - h_impact * 0.1) 
-        away_xg *= max(0.6, 1 - a_impact * 0.1)
+        home_xg = pred_h_xg * max(0.6, 1 - h_impact * 0.1) 
+        away_xg = pred_a_xg * max(0.6, 1 - a_impact * 0.1)
         
         w_text, w_temp = get_match_weather(h_cn, match_date_str)
         if "雨" in w_text or "雪" in w_text:
@@ -343,31 +332,9 @@ for league in df_next_round['联赛'].unique():
             if max_k > 0.02:
                 b_choice = "主胜" if max_k == kh else ("平局" if max_k == kd else "客胜")
                 if (b_choice == "主胜" and p_h > 0.25) or (b_choice == "平局" and p_d > 0.25) or (b_choice == "客胜" and p_a > 0.25):
-                    # 🌟 核心升级：平局熔断
-                    if b_choice == "平局":
-                        h_draw_rate = np.mean(h['is_draw'][-5:]) if h['is_draw'] else 0.3
-                        a_draw_rate = np.mean(a['is_draw'][-5:]) if a['is_draw'] else 0.3
-                        if (h_draw_rate + a_draw_rate) / 2 < 0.25:
-                            split_msg = "⚠️ 触发防平局熔断：近期双方极少平局，强行放弃该推荐。"
-                            b_choice = "" # 熔断
-                    
-                    if b_choice:
-                        safe_k = min(max_k * kelly_multiplier, 0.05)
-                        bet_amt = bankroll * safe_k
-                        
-                        # 🌟 核心升级：杯赛降权与限注
-                        if league in ['欧联', '欧冠']:
-                            bet_amt = bet_amt * 0.8
-                            split_msg = f"推荐下注 {bet_amt:.2f}元 (欧战杯赛，自动降权20%)"
-                        else:
-                            split_msg = f"推荐下注 {bet_amt:.2f}元"
-                        
-                        # 硬性单注上限
-                        if bet_amt > 200:
-                            bet_amt = 200.0
-                            split_msg = f"推荐下注 200.00元 (触发风控限注)"
-                        
-                        final_rec = b_choice
+                    safe_k = min(max_k * kelly_multiplier, 0.05)
+                    bet_amt, final_rec = bankroll * safe_k, b_choice
+                    split_msg = f"推荐下注 {bet_amt:.2f}元"
                 else: split_msg = "概率不足，建议空仓观望"
             else: split_msg = "模型认为无正期望价值"
 
@@ -509,7 +476,7 @@ final_html = """
 <div class="container">
 """
 
-final_html += "<h1>⚽ 明日赛事量化预测 (V40.0 终极防冷版)</h1>"
+final_html += "<h1>⚽ 明日赛事量化预测 (V44.0 极客进击版)</h1>"
 
 if jczq_picks_list:
     df_picks = pd.DataFrame(jczq_picks_list)
@@ -544,4 +511,4 @@ if os.path.exists('predictions_log.csv'):
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("V40.0 明日赛事量化预测 (终极防冷版)", final_html, img_buffers)
+send_rich_email("V44.0 明日赛事量化预测 (极客进击版)", final_html, img_buffers)
