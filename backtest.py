@@ -7,11 +7,28 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.stats import poisson
 import warnings
+import lightgbm as lgb
+import xgboost as xgb
+from sklearn.calibration import CalibratedClassifierCV
 from team_mapping import translate_team_name
 
 warnings.filterwarnings('ignore')
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
+
+def calculate_elo(df):
+    elo = {}
+    for idx, row in df.iterrows():
+        h, a = row['home_team_cn'], row['away_team_cn']
+        if h not in elo: elo[h] = 1500
+        if a not in elo: elo[a] = 1500
+        exp_h = 1 / (1 + 10 ** ((elo[a] - (elo[h] + 100)) / 400))
+        score_h = 1 if row['home_goals'] > row['away_goals'] else (0.5 if row['home_goals'] == row['away_goals'] else 0)
+        elo[h] += 20 * (score_h - exp_h)
+        elo[a] += 20 * ((1-score_h) - (1-exp_h))
+        df.at[idx, 'home_elo'] = elo[h]
+        df.at[idx, 'away_elo'] = elo[a]
+    return df, elo
 
 def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
     def dixon_coles_tau(h, a):
@@ -30,7 +47,7 @@ def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
     return scores, matrix
 
 def run_backtest():
-    print("⏳ 启动时光机回测系统 (V42.0)...")
+    print("⏳ 启动时光机回测系统 (V44.0 严格盲测版)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -45,131 +62,200 @@ def run_backtest():
         df_xg['date'] = pd.to_datetime(df_xg['date'])
         df = pd.merge(df, df_xg, on=['date', 'home_team_cn', 'away_team_cn'], how='left', suffixes=('', '_xg'))
     
-    league_avg_goals = (df['home_goals'].mean() + df['away_goals'].mean()) / 2
+    split_idx = int(len(df) * 0.8)
+    train_df = df.iloc[:split_idx].copy()
+    test_df = df.iloc[split_idx:].copy()
     
-    try:
-        model_h_lgb = joblib.load('epl_v31_home_goals_model_lgb.pkl')
-        model_a_lgb = joblib.load('epl_v31_away_goals_model_lgb.pkl')
-        model_h_xgb = joblib.load('epl_v31_home_goals_model_xgb.pkl')
-        model_a_xgb = joblib.load('epl_v31_away_goals_model_xgb.pkl')
-        calibrated_clf = joblib.load('epl_result_classifier.pkl')
-        elo_dict = joblib.load('elo_dict.pkl')
-    except Exception as e: 
-        print(f"❌ 找不到模型文件: {e}")
-        return
+    print(f"📊 数据切分：训练集 {len(train_df)} 场，测试集 {len(test_df)} 场")
+    
+    train_df, final_elo = calculate_elo(train_df)
+    league_avg_goals = (train_df['home_goals'].mean() + train_df['away_goals'].mean()) / 2
+    
+    features, labels_home, labels_away, labels_result = [], [], [], []
+    team_stats, last_date = {}, {}
+    
+    # --- 训练阶段 ---
+    for idx, row in train_df.iterrows():
+        h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
+        for t in [h, a]:
+            if t not in team_stats: 
+                team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]}
+            if t not in last_date: last_date[t] = None
+        
+        h_rest = (m_date - last_date[h]).days if last_date[h] else 7
+        a_rest = (m_date - last_date[a]).days if last_date[a] else 7
+        rest_diff = h_rest - a_rest
+        
+        h_recent_matches = sum(1 for d in team_stats[h]['dates'] if (m_date - d).days <= 14)
+        a_recent_matches = sum(1 for d in team_stats[a]['dates'] if (m_date - d).days <= 14)
 
-    league_xg_weights = {
-        '英超': 0.05, '西甲': 0.0, '德甲': 0.15, '意甲': -0.15, '法甲': -0.05,
-        '欧冠': 0.0, '欧联': 0.0
-    }
+        h_xg = np.mean(team_stats[h]['xg'][-5:]) if team_stats[h]['xg'] else league_avg_goals
+        a_xg = np.mean(team_stats[a]['xg'][-5:]) if team_stats[a]['xg'] else league_avg_goals
+        h_xga = np.mean(team_stats[h]['xga'][-5:]) if team_stats[h]['xga'] else league_avg_goals
+        a_xga = np.mean(team_stats[a]['xga'][-5:]) if team_stats[a]['xga'] else league_avg_goals
+        
+        h_home_xg = np.mean(team_stats[h]['home_xg'][-3:]) if team_stats[h]['home_xg'] else h_xg
+        h_home_xga = np.mean(team_stats[h]['home_xga'][-3:]) if team_stats[h]['home_xga'] else h_xga
+        a_away_xg = np.mean(team_stats[a]['away_xg'][-3:]) if team_stats[a]['away_xg'] else a_xg
+        a_away_xga = np.mean(team_stats[a]['away_xga'][-3:]) if team_stats[a]['away_xga'] else a_xga
+        
+        h_sos = np.mean(team_stats[h]['opp_elo'][-5:]) if team_stats[h]['opp_elo'] else 1500
+        a_sos = np.mean(team_stats[a]['opp_elo'][-5:]) if team_stats[a]['opp_elo'] else 1500
+        h_pts = np.mean(team_stats[h]['pts'][-5:]) if team_stats[h]['pts'] else 1.0
+        a_pts = np.mean(team_stats[a]['pts'][-5:]) if team_stats[a]['pts'] else 1.0
+        
+        feat = [
+            row['home_elo'], row['away_elo'], row['home_elo'] - row['away_elo'], 
+            h_sos, a_sos, h_xg, a_xg, h_xga, a_xga, 
+            h_home_xg, h_home_xga, a_away_xg, a_away_xga, 
+            rest_diff, h_recent_matches, a_recent_matches
+        ]
+        feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000)
+        features.append(feat)
+        
+        h_goals = row['home_goals'] if pd.notna(row['home_goals']) else 0.0
+        a_goals = row['away_goals'] if pd.notna(row['away_goals']) else 0.0
+        labels_home.append(float(h_goals))
+        labels_away.append(float(a_goals))
+        
+        if h_goals > a_goals: labels_result.append(2)
+        elif h_goals == a_goals: labels_result.append(1)
+        else: labels_result.append(0)
+        
+        act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else h_goals
+        act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else a_goals
+        
+        team_stats[h]['xg'].append(act_h_xg); team_stats[h]['xga'].append(act_a_xg)
+        team_stats[a]['xg'].append(act_a_xg); team_stats[a]['xga'].append(act_h_xg)
+        team_stats[h]['home_xg'].append(act_h_xg); team_stats[h]['home_xga'].append(act_a_xg)
+        team_stats[a]['away_xg'].append(act_a_xg); team_stats[a]['away_xga'].append(act_h_xg)
+        
+        team_stats[h]['opp_elo'].append(row['away_elo']); team_stats[a]['opp_elo'].append(row['home_elo'])
+        team_stats[h]['pts'].append(3 if h_goals > a_goals else (1 if h_goals == a_goals else 0))
+        team_stats[a]['pts'].append(3 if a_goals > h_goals else (1 if h_goals == a_goals else 0))
+        team_stats[h]['dates'].append(m_date); team_stats[a]['dates'].append(m_date)
+        last_date[h] = m_date; last_date[a] = m_date
 
-    initial_bankroll = 10000.0
-    bankroll = initial_bankroll
+    # 训练双引擎
+    X_train = np.array(features, dtype=np.float32)
+    y_h_train = np.nan_to_num(np.array(labels_home, dtype=np.float32), nan=0.0, posinf=10.0, neginf=0.0)
+    y_a_train = np.nan_to_num(np.array(labels_away, dtype=np.float32), nan=0.0, posinf=10.0, neginf=0.0)
+    y_res_train = np.array(labels_result, dtype=np.int32)
+    
+    params_reg = {'objective': 'regression', 'metric': 'rmse', 'verbose': -1}
+    model_h_lgb = lgb.train(params_reg, lgb.Dataset(X_train, label=y_h_train), num_boost_round=100)
+    model_a_lgb = lgb.train(params_reg, lgb.Dataset(X_train, label=y_a_train), num_boost_round=100)
+    
+    model_h_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1, tree_method='exact')
+    model_a_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, n_jobs=1, tree_method='exact')
+    model_h_xgb.fit(X_train, y_h_train)
+    model_a_xgb.fit(X_train, y_a_train)
+    
+    clf = lgb.LGBMClassifier(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42, verbose=-1)
+    calibrated_clf = CalibratedClassifierCV(clf, method='isotonic', cv=3)
+    calibrated_clf.fit(X_train, y_res_train)
+
+    # --- 测试阶段（严格盲测） ---
+    print("⏳ 正在模拟未来实战预测...")
+    bankroll = 10000.0
     bet_amount = 100.0 
     records = []
-    team_stats, last_date = {}, {}
-    backtest_start_date = df['date'].max() - pd.Timedelta(days=365)
     
     total_predicted = 0
     top1_hits = 0
     top3_hits = 0
 
-    for idx, row in df.iterrows():
-        h_team, a_team, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
-        league_name = row.get('league', '英超')
+    for idx, row in test_df.iterrows():
+        h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
         
-        for t in [h_team, a_team]:
+        for t in [h, a]:
             if t not in team_stats: 
-                team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[]}
+                team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]}
             if t not in last_date: last_date[t] = None
-                
-        if m_date >= backtest_start_date:
-            h_rest = (m_date - last_date[h_team]).days if last_date[h_team] else 7
-            a_rest = (m_date - last_date[a_team]).days if last_date[a_team] else 7
-            rest_diff = h_rest - a_rest
             
-            h_xg = np.mean(team_stats[h_team]['xg'][-5:]) if team_stats[h_team]['xg'] else league_avg_goals
-            a_xg = np.mean(team_stats[a_team]['xg'][-5:]) if team_stats[a_team]['xg'] else league_avg_goals
-            h_xga = np.mean(team_stats[h_team]['xga'][-5:]) if team_stats[h_team]['xga'] else league_avg_goals
-            a_xga = np.mean(team_stats[a_team]['xga'][-5:]) if team_stats[a_team]['xga'] else league_avg_goals
-            
-            h_home_xg = np.mean(team_stats[h_team]['home_xg'][-3:]) if team_stats[h_team]['home_xg'] else h_xg
-            h_home_xga = np.mean(team_stats[h_team]['home_xga'][-3:]) if team_stats[h_team]['home_xga'] else h_xga
-            a_away_xg = np.mean(team_stats[a_team]['away_xg'][-3:]) if team_stats[a_team]['away_xg'] else a_xg
-            a_away_xga = np.mean(team_stats[a_team]['away_xga'][-3:]) if team_stats[a_team]['away_xga'] else a_xga
-            
-            h_sos = np.mean(team_stats[h_team]['opp_elo'][-5:]) if team_stats[h_team]['opp_elo'] else 1500
-            a_sos = np.mean(team_stats[a_team]['opp_elo'][-5:]) if team_stats[a_team]['opp_elo'] else 1500
-            h_pts = np.mean(team_stats[h_team]['pts'][-5:]) if team_stats[h_team]['pts'] else 1.0
-            a_pts = np.mean(team_stats[a_team]['pts'][-5:]) if team_stats[a_team]['pts'] else 1.0
-            
-            h_elo = elo_dict.get(h_team, 1500)
-            a_elo = elo_dict.get(a_team, 1500)
-            
-            feat = [
-                h_elo, a_elo, h_elo - a_elo, 
-                h_sos, a_sos, h_xg, a_xg, h_xga, a_xga, 
-                h_home_xg, h_home_xga, a_away_xg, a_away_xga, rest_diff
-            ]
-            feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000).reshape(1, -1)
-            
-            pred_h_xg_lgb = model_h_lgb.predict(feat)[0]
-            pred_h_xg_xgb = model_h_xgb.predict(feat)[0]
-            pred_h_xg = max(0.1, (pred_h_xg_lgb + pred_h_xg_xgb) / 2.0)
-            
-            pred_a_xg_lgb = model_a_lgb.predict(feat)[0]
-            pred_a_xg_xgb = model_a_xgb.predict(feat)[0]
-            pred_a_xg = max(0.1, (pred_a_xg_lgb + pred_a_xg_xgb) / 2.0)
-            
-            xg_adj = league_xg_weights.get(league_name, 0.0)
-            pred_h_xg += (xg_adj / 2)
-            pred_a_xg += (xg_adj / 2)
-            
-            scores_list, prob_matrix = generate_score_matrix(pred_h_xg, pred_a_xg)
-            
-            valid_scores = [s for s in scores_list if s[1] > 0.012]
-            pred_top1 = valid_scores[0][0]
-            pred_top3 = [s[0] for s in valid_scores[:3]]
-            
-            actual_score = f"{int(row['home_goals'])}-{int(row['away_goals'])}"
-            total_predicted += 1
-            
-            if actual_score == pred_top1: top1_hits += 1
-            if actual_score in pred_top3: top3_hits += 1
-                
-            clf_probs = calibrated_clf.predict_proba(feat)[0]
-            p_a_clf, p_d_clf, p_h_clf = clf_probs[0], clf_probs[1], clf_probs[2]
-            
-            max_p = max(p_h_clf, p_d_clf, p_a_clf)
-            bet_choice = ""
-            
-            if max_p > 0.55: 
-                if max_p == p_h_clf: bet_choice = "主胜"
-                elif max_p == p_d_clf: bet_choice = "平局"
-                else: bet_choice = "客胜"
-                
-            if bet_choice:
-                actual_res = "主胜" if row['home_goals'] > row['away_goals'] else ("平局" if row['home_goals'] == row['away_goals'] else "客胜")
-                sim_odds = 2.0 
-                if bet_choice == actual_res: profit = bet_amount * (sim_odds - 1)
-                else: profit = -bet_amount
-                bankroll += profit
-                records.append({'date': m_date.strftime('%Y-%m-%d'), 'profit': profit, 'bankroll': bankroll})
+        h_rest = (m_date - last_date[h]).days if last_date[h] else 7
+        a_rest = (m_date - last_date[a]).days if last_date[a] else 7
+        rest_diff = h_rest - a_rest
         
+        h_recent_matches = sum(1 for d in team_stats[h]['dates'] if (m_date - d).days <= 14)
+        a_recent_matches = sum(1 for d in team_stats[a]['dates'] if (m_date - d).days <= 14)
+        
+        h_xg = np.mean(team_stats[h]['xg'][-5:]) if team_stats[h]['xg'] else league_avg_goals
+        a_xg = np.mean(team_stats[a]['xg'][-5:]) if team_stats[a]['xg'] else league_avg_goals
+        h_xga = np.mean(team_stats[h]['xga'][-5:]) if team_stats[h]['xga'] else league_avg_goals
+        a_xga = np.mean(team_stats[a]['xga'][-5:]) if team_stats[a]['xga'] else league_avg_goals
+        
+        h_home_xg = np.mean(team_stats[h]['home_xg'][-3:]) if team_stats[h]['home_xg'] else h_xg
+        h_home_xga = np.mean(team_stats[h]['home_xga'][-3:]) if team_stats[h]['home_xga'] else h_xga
+        a_away_xg = np.mean(team_stats[a]['away_xg'][-3:]) if team_stats[a]['away_xg'] else a_xg
+        a_away_xga = np.mean(team_stats[a]['away_xga'][-3:]) if team_stats[a]['away_xga'] else a_xga
+        
+        h_sos = np.mean(team_stats[h]['opp_elo'][-5:]) if team_stats[h]['opp_elo'] else 1500
+        a_sos = np.mean(team_stats[a]['opp_elo'][-5:]) if team_stats[a]['opp_elo'] else 1500
+        h_pts = np.mean(team_stats[h]['pts'][-5:]) if team_stats[h]['pts'] else 1.0
+        a_pts = np.mean(team_stats[a]['pts'][-5:]) if team_stats[a]['pts'] else 1.0
+        
+        h_elo = final_elo.get(h, 1500)
+        a_elo = final_elo.get(a, 1500)
+        
+        feat = [
+            h_elo, a_elo, h_elo - a_elo, 
+            h_sos, a_sos, h_xg, a_xg, h_xga, a_xga, 
+            h_home_xg, h_home_xga, a_away_xg, a_away_xga, 
+            rest_diff, h_recent_matches, a_recent_matches
+        ]
+        feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000).reshape(1, -1)
+        
+        pred_h_xg = max(0.1, (model_h_lgb.predict(feat)[0] + model_h_xgb.predict(feat)[0]) / 2.0)
+        pred_a_xg = max(0.1, (model_a_lgb.predict(feat)[0] + model_a_xgb.predict(feat)[0]) / 2.0)
+        
+        scores_list, prob_matrix = generate_score_matrix(pred_h_xg, pred_a_xg)
+        
+        valid_scores = [s for s in scores_list if s[1] > 0.012]
+        pred_top1 = valid_scores[0][0]
+        pred_top3 = [s[0] for s in valid_scores[:3]]
+        
+        actual_score = f"{int(row['home_goals'])}-{int(row['away_goals'])}"
+        total_predicted += 1
+        
+        if actual_score == pred_top1: top1_hits += 1
+        if actual_score in pred_top3: top3_hits += 1
+            
+        clf_probs = calibrated_clf.predict_proba(feat)[0]
+        p_a_clf, p_d_clf, p_h_clf = clf_probs[0], clf_probs[1], clf_probs[2]
+        
+        max_p = max(p_h_clf, p_d_clf, p_a_clf)
+        bet_choice = ""
+        
+        if max_p > 0.55: 
+            if max_p == p_h_clf: bet_choice = "主胜"
+            elif max_p == p_d_clf: bet_choice = "平局"
+            else: bet_choice = "客胜"
+            
+        if bet_choice:
+            actual_res = "主胜" if row['home_goals'] > row['away_goals'] else ("平局" if row['home_goals'] == row['away_goals'] else "客胜")
+            sim_odds = 2.0 
+            if bet_choice == actual_res: profit = bet_amount * (sim_odds - 1)
+            else: profit = -bet_amount
+            bankroll += profit
+            records.append({'date': m_date.strftime('%Y-%m-%d'), 'profit': profit, 'bankroll': bankroll})
+            
         act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
         act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
         
-        team_stats[h_team]['xg'].append(act_h_xg); team_stats[h_team]['xga'].append(act_a_xg)
-        team_stats[a_team]['xg'].append(act_a_xg); team_stats[a_team]['xga'].append(act_h_xg)
-        team_stats[h_team]['home_xg'].append(act_h_xg); team_stats[h_team]['home_xga'].append(act_a_xg)
-        team_stats[a_team]['away_xg'].append(act_a_xg); team_stats[a_team]['away_xga'].append(act_h_xg)
+        team_stats[h]['xg'].append(act_h_xg); team_stats[h]['xga'].append(act_a_xg)
+        team_stats[a]['xg'].append(act_a_xg); team_stats[a]['xga'].append(act_h_xg)
+        team_stats[h]['home_xg'].append(act_h_xg); team_stats[h]['home_xga'].append(act_a_xg)
+        team_stats[a]['away_xg'].append(act_a_xg); team_stats[a]['away_xga'].append(act_h_xg)
         
-        team_stats[h_team]['opp_elo'].append(elo_dict.get(a_team, 1500)); team_stats[a_team]['opp_elo'].append(elo_dict.get(h_team, 1500))
-        team_stats[h_team]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
-        team_stats[a_team]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        team_stats[h]['opp_elo'].append(a_elo); team_stats[a]['opp_elo'].append(h_elo)
+        team_stats[h]['pts'].append(3 if row['home_goals'] > row['away_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
+        team_stats[a]['pts'].append(3 if row['away_goals'] > row['home_goals'] else (1 if row['home_goals'] == row['away_goals'] else 0))
         
-        last_date[h_team] = m_date; last_date[a_team] = m_date
+        team_stats[h]['dates'].append(m_date); team_stats[a]['dates'].append(m_date)
+        last_date[h] = m_date; last_date[a] = m_date
 
+    # 汇总报告
     total_bets = len(records)
     win_rate = 0.0
     roi = 0.0
@@ -184,8 +270,8 @@ def run_backtest():
         
         plt.figure(figsize=(10, 5))
         plt.plot(range(len(df_rec)), df_rec['bankroll'], marker='', color='gold', linewidth=2, label='资金曲线')
-        plt.axhline(y=initial_bankroll, color='red', linestyle='--', label='初始资金')
-        plt.title('历史回测资金曲线 (V42.0 巅峰版)')
+        plt.axhline(y=10000, color='red', linestyle='--', label='初始资金')
+        plt.title('真实滚动回测 (未来盲测) 资金曲线')
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.6)
         plt.savefig('backtest_roi.png', dpi=120)
@@ -194,11 +280,13 @@ def run_backtest():
     top1_acc = (top1_hits / total_predicted) * 100 if total_predicted > 0 else 0
     top3_acc = (top3_hits / total_predicted) * 100 if total_predicted > 0 else 0
     
-    print(f"✅ 回测完成！下注胜率 {win_rate:.1f}%，ROI {roi:+.1f}%")
+    print(f"✅ 真实盲测完成！下注胜率 {win_rate:.1f}%，ROI {roi:+.1f}%")
     print(f"🎯 比分命中率：首选 {top1_acc:.1f}%，前三 {top3_acc:.1f}%")
     
-    report = f"""--- 历史回测报告 (V42.0 巅峰版) ---
-总预测场次: {total_predicted} 场
+    report = f"""--- 历史回测报告 (V44.0 严格时间滚动盲测) ---
+训练数据量: {len(train_df)} 场
+测试数据量: {total_predicted} 场
+
 首选比分精准命中率: {top1_acc:.2f}%
 Top3比分包含命中率: {top3_acc:.2f}%
 
@@ -209,7 +297,7 @@ Top3比分包含命中率: {top3_acc:.2f}%
 """
     with open('backtest_report.txt', 'w', encoding='utf-8') as f:
         f.write(report)
-    print("✅ 新报告已强制写入！")
+    print("✅ 科学盲测报告已强制写入！")
 
 if __name__ == "__main__":
     run_backtest()
