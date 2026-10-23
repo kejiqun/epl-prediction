@@ -73,7 +73,8 @@ jobs:
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git add -A
-          git commit -m "V32.0 自动更新预测数据与回测报告 [skip ci]" || echo "无变化"
+          git commit -m "V44.0 自动更新预测数据与回测报告 [skip ci]" || echo "没有新数据需要更新"
+          git pull --rebase origin main
           git push
 
   run-review:
