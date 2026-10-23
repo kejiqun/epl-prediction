@@ -90,7 +90,6 @@ def get_total_goals_recommendation(prob_matrix, max_goals=7):
     goal_probs['7+'] = prob_7_plus
     
     sorted_goals = sorted(goal_probs.items(), key=lambda x: x[1], reverse=True)
-    # 返回纯文本，去掉HTML标签，方便在表格中展示
     top2_list = [f"{k}球" for k, v in sorted_goals[:2]]
     return " / ".join(top2_list), sorted_goals[0][0] + "球"
 
@@ -152,10 +151,23 @@ if os.path.exists('manual_odds.csv'):
         except: pass
 
 ref_dict, coach_dict = {}, {}
+# 🌟 修复点 1：适配新的中文表头读取 referee_stats.csv
 if os.path.exists('referee_stats.csv'):
-    for _, r in pd.read_csv('referee_stats.csv').iterrows(): ref_dict[(r['home_team'], r['away_team'])] = {'name': r['referee'], 'yellow': r['avg_yellow_cards'], 'penalty': r['avg_penalties']}
+    try:
+        df_ref = pd.read_csv('referee_stats.csv')
+        for _, r in df_ref.iterrows(): 
+            ref_dict[(r['主队'], r['客队'])] = {'name': r['主裁判'], 'yellow': r['场均黄牌'], 'penalty': r['场均点球']}
+    except Exception as e:
+        print(f"⚠️ 裁判数据读取异常 (可能仍为旧版英文表头): {e}")
+
+# 🌟 修复点 2：适配新的中文表头读取 coach_stats.csv
 if os.path.exists('coach_stats.csv'):
-    for _, r in pd.read_csv('coach_stats.csv').iterrows(): coach_dict[r['球队']] = {'style': r['教练风格']}
+    try:
+        df_coach = pd.read_csv('coach_stats.csv')
+        for _, r in df_coach.iterrows(): 
+            coach_dict[r['球队']] = {'style': r['教练风格']}
+    except Exception as e:
+        print(f"⚠️ 教练数据读取异常: {e}")
 
 injury_dict, injury_impact = {}, {}
 try:
@@ -308,6 +320,7 @@ for league in df_next_round['联赛'].unique():
         total_p = p_h + p_d + p_a
         p_h, p_d, p_a = p_h/total_p, p_d/total_p, p_a/total_p
         
+        # 这里修好了，直接取对应的字典
         ref_info = ref_dict.get((h_cn, a_cn), {'name': '未公布', 'yellow': 0, 'penalty': 0})
         h_coach = coach_dict.get(h_cn, {'style': '攻守平衡'})
         a_coach = coach_dict.get(a_cn, {'style': '攻守平衡'})
@@ -362,7 +375,6 @@ for league in df_next_round['联赛'].unique():
 
         total_goals_rec_str, best_goal = get_total_goals_recommendation(prob_matrix)
 
-        # 🌟 将比分和总进球数塞入狙击清单
         if bet_amt > 0 or "高价值" in ou_rec or "高价值" in hc_rec:
             jczq_picks_list.append({
                 '比赛时间': m_time, '赛事': league, '对阵': f"{h_cn} vs {a_cn}",
@@ -465,16 +477,11 @@ final_html = """
     .container { max-width: 900px; margin: auto; }
     .header { text-align: center; margin-bottom: 30px; }
     .header h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 15px; font-size: 28px; margin: 0; }
-    
-    /* 金融级表格样式 */
     .report-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; background-color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-radius: 8px; overflow: hidden; }
     .report-table th { background-color: #2c3e50; color: #ffffff; font-weight: bold; padding: 12px 10px; text-align: center; border-bottom: 2px solid #1a252f; }
     .report-table td { padding: 10px; border-bottom: 1px solid #ecf0f1; text-align: center; color: #333; }
     .report-table tr:nth-child(even) { background-color: #f8f9fa; }
     .report-table tr:hover { background-color: #e8f4fd; }
-    .highlight-red { color: #e74c3c; font-weight: bold; font-size: 14px; }
-    .highlight-gold { color: #f39c12; font-weight: bold; }
-    
     .section-title { text-align: center; color: #d35400; font-size: 20px; margin-top: 0; margin-bottom: 10px; border-bottom: 2px solid #f39c12; display: inline-block; padding-bottom: 5px; }
 </style>
 </head>
@@ -487,10 +494,7 @@ final_html += "<h1>⚽ 明日赛事量化预测 (V39.0 华尔街日报版)</h1>"
 if jczq_picks_list:
     df_picks = pd.DataFrame(jczq_picks_list)
     df_picks.to_csv('daily_jczq_picks.csv', index=False, encoding='utf-8-sig')
-    
-    # 生成带有特定 class 的 HTML 表格
     picks_html = df_picks.to_html(index=False, border=0, classes='report-table', justify='center', escape=False)
-    # 对特定列进行高亮替换 (比如推荐和金额)
     picks_html = picks_html.replace('<td>推荐</td>', '<th>推荐</th>')
     
     final_html += f"""
