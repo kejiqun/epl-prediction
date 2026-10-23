@@ -72,7 +72,6 @@ def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores, matrix
 
-# 🌟 核心修复：替换引发冲突的变量名
 def get_total_goals_recommendation(prob_matrix, max_goals=7):
     goal_probs = {}
     for total_g in range(8):
@@ -91,8 +90,9 @@ def get_total_goals_recommendation(prob_matrix, max_goals=7):
     goal_probs['7+'] = prob_7_plus
     
     sorted_goals = sorted(goal_probs.items(), key=lambda x: x[1], reverse=True)
-    top2_str = " | ".join([f"<b>{k}球</b> ({v*100:.1f}%)" for k, v in sorted_goals[:2]])
-    return top2_str
+    # 返回纯文本，去掉HTML标签，方便在表格中展示
+    top2_list = [f"{k}球" for k, v in sorted_goals[:2]]
+    return " / ".join(top2_list), sorted_goals[0][0] + "球"
 
 def ai_adjust_probabilities(home_cn, away_cn, p_h, p_d, p_a, injury_info, odds_trend, knowledge, ref_info, coach_info):
     prompt = f"""你是一位量化风控总监。比赛：{home_cn} vs {away_cn}。
@@ -221,7 +221,7 @@ jczq_picks_list = []
 html_report, prediction_logs, img_buffers = "", [], []
 
 for league in df_next_round['联赛'].unique():
-    html_report += f"""<div style="background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 8px 15px; border-radius: 8px; margin-top: 25px; margin-bottom: 15px;"><h2 style="margin: 0; font-size: 20px;">🏆 {league}</h2></div>"""
+    html_report += f"""<div style="background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 10px 20px; border-radius: 8px; margin-top: 30px; margin-bottom: 20px;"><h2 style="margin: 0; font-size: 22px;">🏆 {league}</h2></div>"""
     for _, match in df_next_round[df_next_round['联赛'] == league].iterrows():
         h_cn, a_cn = match['主队'], match['客队']
         match_date_str = match['match_date_str']
@@ -355,20 +355,22 @@ for league in df_next_round['联赛'].unique():
             final_rec = f"技术倾向：{predict_choice}"
             split_msg = "(无真实盘口，仅供观赛)"
 
-        if bet_amt > 0 or "高价值" in ou_rec or "高价值" in hc_rec:
-            jczq_picks_list.append({
-                '比赛时间': m_time, '赛事': league, '对阵': f"{h_cn} vs {a_cn}",
-                '推荐': final_rec if bet_amt > 0 else "观望", '金额': round(bet_amt, 2) if bet_amt > 0 else 0,
-                '让球': hc_rec, '大小球': ou_rec
-            })
-
         valid_scores = [s for s in scores_list if s[1] > 0.012]
         top3 = valid_scores[:3]
         top3_str = " | ".join([f"<b>{s[0]}</b> ({s[1]*100:.1f}%)" for s in top3])
         best_score = top3[0][0]
 
-        # 🌟 使用修复后的安全函数
-        total_goals_rec = get_total_goals_recommendation(prob_matrix)
+        total_goals_rec_str, best_goal = get_total_goals_recommendation(prob_matrix)
+
+        # 🌟 将比分和总进球数塞入狙击清单
+        if bet_amt > 0 or "高价值" in ou_rec or "高价值" in hc_rec:
+            jczq_picks_list.append({
+                '比赛时间': m_time, '赛事': league, '对阵': f"{h_cn} vs {a_cn}",
+                '推荐': final_rec if bet_amt > 0 else "观望", '金额': round(bet_amt, 2) if bet_amt > 0 else 0,
+                '比分': best_score,
+                '总进球': total_goals_rec_str,
+                '让球': hc_rec, '大小球': ou_rec
+            })
 
         venue = f"{h_cn}主场" 
 
@@ -409,26 +411,29 @@ for league in df_next_round['联赛'].unique():
         })
 
         html_report += f"""
-        <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; margin-bottom: 20px; background-color: #ffffff; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 8px; margin-bottom: 10px;">
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.06);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
                 <h3 style="margin: 0; color: #2c3e50; font-size: 18px;">⏰ {m_time} <span style="color: #000; margin-left: 10px; font-size: 20px;">{h_cn} vs {a_cn}</span></h3>
-                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 3px 10px; border-radius: 15px; font-weight: bold; font-size: 12px;">{venue}</span>
+                <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 13px;">{venue}</span>
             </div>
             
-            <img src='cid:chart_{len(img_buffers)-1}' width='100%' style='border-radius: 5px; margin-bottom: 10px;'>
+            <img src='cid:chart_{len(img_buffers)-1}' width='100%' style='border-radius: 6px; margin-bottom: 15px;'>
 
-            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-                <span style="font-size: 14px; color: #856404; font-weight: bold;">🎯 首选比分：<span style="font-size: 20px; color: #d9534f;">{best_score}</span></span>
-                <span style="font-size: 12px; color: #666;">防冷补充: {top3_str}</span>
-            </div>
-
-            <div style="background-color: #e8f4fd; border-left: 4px solid #3498db; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; font-size: 14px; color: #2c3e50;">
-                ⚽ <b>总进球数推荐：</b>{total_goals_rec}
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <div style="flex: 1; background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 10px; border-radius: 4px;">
+                    <span style="font-size: 13px; color: #856404; font-weight: bold; display: block; margin-bottom: 5px;">🎯 首选比分</span>
+                    <span style="font-size: 22px; color: #d9534f; font-weight: bold;">{best_score}</span>
+                    <span style="font-size: 12px; color: #666; margin-left: 8px;">防冷: {top3_str}</span>
+                </div>
+                <div style="flex: 1; background-color: #e8f4fd; border-left: 4px solid #3498db; padding: 10px; border-radius: 4px;">
+                    <span style="font-size: 13px; color: #2980b9; font-weight: bold; display: block; margin-bottom: 5px;">⚽ 总进球数</span>
+                    <span style="font-size: 20px; color: #1e3c72; font-weight: bold;">{total_goals_rec_str}</span>
+                </div>
             </div>
 
             {f"<div style='background-color: #f8d7da; color: #721c24; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; font-weight: bold;'>{trap_warning}</div>" if trap_warning else ""}
 
-            <div style="display: flex; flex-wrap: wrap; font-size: 13px; line-height: 1.8; color: #444; margin-bottom: 10px;">
+            <div style="display: flex; flex-wrap: wrap; font-size: 13px; line-height: 1.8; color: #444; margin-bottom: 12px; background-color: #f8f9fa; padding: 10px; border-radius: 6px;">
                 <div style="width: 50%;">💪 <b>Elo:</b> 主 {h_elo:.0f} / 客 {a_elo:.0f}</div>
                 <div style="width: 50%;">🌤️ <b>天气:</b> {w_text} {w_temp}℃</div>
                 <div style="width: 50%;">⏱️ <b>休息:</b> 主 {h_rest} 天 / 客 {a_rest} 天</div>
@@ -436,35 +441,74 @@ for league in df_next_round['联赛'].unique():
                 <div style="width: 100%; color: #d9534f; margin-top: 5px;"><b>🚨 伤停:</b> 主[{h_inj_str}] / 客[{a_inj_str}]</div>
             </div>
 
-            <div style="background-color: #f8f9fa; padding: 8px; border-radius: 6px; display: flex; justify-content: space-around; text-align: center; font-size: 13px;">
+            <div style="display: flex; justify-content: space-around; text-align: center; font-size: 13px; margin-bottom: 15px;">
                 <div><span style="color: #666;">亚盘</span> <b style="color: #1e3c72;">{hc_rec} ({hc_msg})</b></div>
                 <div><span style="color: #666;">大小球</span> <b style="color: #1e3c72;">{ou_rec} ({ou_msg})</b></div>
             </div>
 
-            <div style="margin-top: 12px; padding: 10px; border: 1px dashed #ccc; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; background-color: #fafafa;">
+            <div style="padding: 12px; border: 1px dashed #ccc; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; background-color: #fafafa;">
                 <div>
                     <span style="font-size: 15px;"><b>💡 最终结论：</b><span style="font-size: 22px; color: #d9534f; font-weight: bold; margin-right: 10px;">{final_rec}</span></span>
                     <span style="font-size: 13px; color: #666;">{split_msg}</span>
                 </div>
             </div>
 
-            <p style="margin-top: 10px; margin-bottom: 0; color: #555; font-size: 13px; line-height: 1.5;"><b>🧠 AI点评：</b>{ai_comment}</p>
+            <p style="margin-top: 15px; margin-bottom: 0; color: #555; font-size: 13px; line-height: 1.6;"><b>🧠 AI点评：</b>{ai_comment}</p>
         </div>
         """
 
-final_html = "<html><body style='background-color: #f4f7f6; padding: 15px; font-family: \"Helvetica Neue\", Arial, sans-serif;'><div style='max-width: 850px; margin: auto;'>"
-final_html += "<h1 style='text-align: center; color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; font-size: 24px;'>⚽ 明日赛事量化预测 (V38.0 全能实战版)</h1>"
+final_html = """
+<html>
+<head>
+<style>
+    body { font-family: 'Helvetica Neue', Helvetica, Arial, 'Microsoft YaHei', sans-serif; background-color: #f4f7f6; padding: 20px; color: #333; }
+    .container { max-width: 900px; margin: auto; }
+    .header { text-align: center; margin-bottom: 30px; }
+    .header h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 15px; font-size: 28px; margin: 0; }
+    
+    /* 金融级表格样式 */
+    .report-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 13px; background-color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-radius: 8px; overflow: hidden; }
+    .report-table th { background-color: #2c3e50; color: #ffffff; font-weight: bold; padding: 12px 10px; text-align: center; border-bottom: 2px solid #1a252f; }
+    .report-table td { padding: 10px; border-bottom: 1px solid #ecf0f1; text-align: center; color: #333; }
+    .report-table tr:nth-child(even) { background-color: #f8f9fa; }
+    .report-table tr:hover { background-color: #e8f4fd; }
+    .highlight-red { color: #e74c3c; font-weight: bold; font-size: 14px; }
+    .highlight-gold { color: #f39c12; font-weight: bold; }
+    
+    .section-title { text-align: center; color: #d35400; font-size: 20px; margin-top: 0; margin-bottom: 10px; border-bottom: 2px solid #f39c12; display: inline-block; padding-bottom: 5px; }
+</style>
+</head>
+<body>
+<div class="container">
+"""
+
+final_html += "<h1>⚽ 明日赛事量化预测 (V39.0 华尔街日报版)</h1>"
 
 if jczq_picks_list:
     df_picks = pd.DataFrame(jczq_picks_list)
     df_picks.to_csv('daily_jczq_picks.csv', index=False, encoding='utf-8-sig')
-    picks_html = df_picks.to_html(index=False, border=0, justify='center', classes='table table-hover', table_id='pick_table')
-    css = """<style>#pick_table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; } #pick_table th { background-color: #3498db; color: white; padding: 8px; text-align: center; } #pick_table td { padding: 6px; border-bottom: 1px solid #eee; text-align: center; } #pick_table tr:nth-child(even) { background-color: #f9f9f9; }</style>"""
-    final_html += css
-    final_html += f"""<div style='background-color: #fff; border-top: 5px solid #f39c12; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);'><h3 style='color: #d35400; margin-top: 0; font-size: 18px; text-align: center;'>🎯 今日竞彩狙击清单</h3>{picks_html}</div>"""
+    
+    # 生成带有特定 class 的 HTML 表格
+    picks_html = df_picks.to_html(index=False, border=0, classes='report-table', justify='center', escape=False)
+    # 对特定列进行高亮替换 (比如推荐和金额)
+    picks_html = picks_html.replace('<td>推荐</td>', '<th>推荐</th>')
+    
+    final_html += f"""
+    <div style='background-color: #fff; padding: 20px; border-radius: 10px; margin-bottom: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-top: 5px solid #f39c12;'>
+        <div style="text-align: center; margin-bottom: 15px;">
+            <h3 class='section-title'>🎯 今日竞彩狙击清单</h3>
+        </div>
+        {picks_html}
+    </div>
+    """
 else:
-    final_html += """<div style='background-color: #fdf2f2; border-top: 5px solid #e74c3c; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center;'><h3 style='color: #c0392b; margin-top: 0; font-size: 18px;'>🛑 今日无狙击目标</h3><p style='color: #c0392b; font-size: 14px;'>系统扫描了所有明日比赛，因无赔率或期望价值不足，建议空仓观望。</p></div>"""
-    pd.DataFrame(columns=['比赛时间', '赛事', '对阵', '推荐', '金额', '让球', '大小球']).to_csv('daily_jczq_picks.csv', index=False, encoding='utf-8-sig')
+    final_html += """
+    <div style='background-color: #fdf2f2; border-top: 5px solid #e74c3c; padding: 20px; border-radius: 10px; margin-bottom: 30px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05);'>
+        <h3 style='color: #c0392b; margin-top: 0; font-size: 20px;'>🛑 今日无狙击目标</h3>
+        <p style='color: #c0392b; font-size: 14px;'>系统扫描了所有明日比赛，因无赔率或期望价值不足，建议空仓观望。</p>
+    </div>
+    """
+    pd.DataFrame(columns=['比赛时间', '赛事', '对阵', '推荐', '金额', '比分', '总进球', '让球', '大小球']).to_csv('daily_jczq_picks.csv', index=False, encoding='utf-8-sig')
 
 final_html += html_report
 final_html += "</div></body></html>"
@@ -476,4 +520,4 @@ if os.path.exists('predictions_log.csv'):
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("V38.0 明日赛事量化预测 (全能实战版)", final_html, img_buffers)
+send_rich_email("V39.0 明日赛事量化预测 (华尔街日报版)", final_html, img_buffers)
