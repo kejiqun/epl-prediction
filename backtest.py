@@ -57,6 +57,10 @@ def run_backtest():
     df['home_team_cn'] = df['home_team'].apply(translate_team_name)
     df['away_team_cn'] = df['away_team'].apply(translate_team_name)
     
+    # 🌟 核心修复：剔除没有实际比分（未完赛/取消）的脏数据
+    df = df.dropna(subset=['home_goals', 'away_goals'])
+    print(f"🧹 数据清洗完毕，共剔除 {len(df) - len(df.dropna(subset=['home_goals', 'away_goals']))} 场缺失比分的比赛。")
+    
     if os.path.exists('xg_data.csv'):
         df_xg = pd.read_csv('xg_data.csv')
         df_xg['date'] = pd.to_datetime(df_xg['date'])
@@ -113,8 +117,8 @@ def run_backtest():
         feat = np.clip(np.nan_to_num(feat, nan=0.0), -1000, 3000)
         features.append(feat)
         
-        h_goals = row['home_goals'] if pd.notna(row['home_goals']) else 0.0
-        a_goals = row['away_goals'] if pd.notna(row['away_goals']) else 0.0
+        h_goals = row['home_goals']
+        a_goals = row['away_goals']
         labels_home.append(float(h_goals))
         labels_away.append(float(a_goals))
         
@@ -215,6 +219,7 @@ def run_backtest():
         pred_top1 = valid_scores[0][0]
         pred_top3 = [s[0] for s in valid_scores[:3]]
         
+        # 这里因为前面已经 dropna 处理了，所以不会再有 NaN 报错
         actual_score = f"{int(row['home_goals'])}-{int(row['away_goals'])}"
         total_predicted += 1
         
