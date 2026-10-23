@@ -24,7 +24,7 @@ def calculate_elo(df):
     return df, elo
 
 def train_models():
-    print("⏳ 开始训练 V36.0 强正则化全景模型...")
+    print("⏳ 开始训练 V40.0 防冷防平局模型...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -50,14 +50,13 @@ def train_models():
         h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
         for t in [h, a]:
             if t not in team_stats: 
-                team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[]}
+                team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'is_draw':[]}
             if t not in last_date: last_date[t] = None
         
         h_rest = (m_date - last_date[h]).days if last_date[h] else 7
         a_rest = (m_date - last_date[a]).days if last_date[a] else 7
         rest_diff = h_rest - a_rest
 
-        # 14个完整特征提取
         h_xg = np.mean(team_stats[h]['xg'][-5:]) if team_stats[h]['xg'] else league_avg_goals
         a_xg = np.mean(team_stats[a]['xg'][-5:]) if team_stats[a]['xg'] else league_avg_goals
         h_xga = np.mean(team_stats[h]['xga'][-5:]) if team_stats[h]['xga'] else league_avg_goals
@@ -102,6 +101,9 @@ def train_models():
         team_stats[h]['pts'].append(3 if h_goals > a_goals else (1 if h_goals == a_goals else 0))
         team_stats[a]['pts'].append(3 if a_goals > h_goals else (1 if h_goals == a_goals else 0))
         
+        team_stats[h]['is_draw'].append(1 if h_goals == a_goals else 0)
+        team_stats[a]['is_draw'].append(1 if h_goals == a_goals else 0)
+        
         last_date[h] = m_date; last_date[a] = m_date
 
     X = np.array(features, dtype=np.float32)
@@ -109,34 +111,18 @@ def train_models():
     y_a = np.nan_to_num(np.array(labels_away, dtype=np.float32), nan=0.0, posinf=10.0, neginf=0.0)
     y_res = np.array(labels_result, dtype=np.int32)
     
-    # 🌟 强正则化：LGBM 防过拟合参数
     params_reg = {
-        'objective': 'regression', 
-        'metric': 'rmse', 
-        'verbose': -1,
-        'lambda_l1': 0.1,        # L1 正则，剔除无效特征
-        'lambda_l2': 0.1,        # L2 正则，平滑权重
-        'min_data_in_leaf': 20,  # 叶子节点最小样本，防止死记硬背
-        'feature_fraction': 0.8  # 每次只给模型看 80% 的特征，防过拟合
+        'objective': 'regression', 'metric': 'rmse', 'verbose': -1,
+        'lambda_l1': 0.1, 'lambda_l2': 0.1, 'min_data_in_leaf': 20, 'feature_fraction': 0.8
     }
     model_h_lgb = lgb.train(params_reg, lgb.Dataset(X, label=y_h), num_boost_round=100)
     model_a_lgb = lgb.train(params_reg, lgb.Dataset(X, label=y_a), num_boost_round=100)
     
-    # 🌟 强正则化：XGB 防过拟合参数
-    model_h_xgb = xgb.XGBRegressor(
-        n_estimators=100, learning_rate=0.05, max_depth=4,
-        reg_alpha=0.1, reg_lambda=1.0, min_child_weight=5,
-        random_state=42, n_jobs=1, tree_method='exact'
-    )
-    model_a_xgb = xgb.XGBRegressor(
-        n_estimators=100, learning_rate=0.05, max_depth=4,
-        reg_alpha=0.1, reg_lambda=1.0, min_child_weight=5,
-        random_state=42, n_jobs=1, tree_method='exact'
-    )
+    model_h_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.05, max_depth=4, reg_alpha=0.1, reg_lambda=1.0, min_child_weight=5, random_state=42, n_jobs=1, tree_method='exact')
+    model_a_xgb = xgb.XGBRegressor(n_estimators=100, learning_rate=0.05, max_depth=4, reg_alpha=0.1, reg_lambda=1.0, min_child_weight=5, random_state=42, n_jobs=1, tree_method='exact')
     model_h_xgb.fit(X, y_h)
     model_a_xgb.fit(X, y_a)
     
-    # 分类器 (胜平负)
     clf = lgb.LGBMClassifier(n_estimators=100, learning_rate=0.05, max_depth=4, reg_alpha=0.1, reg_lambda=0.1, random_state=42, verbose=-1)
     calibrated_clf = CalibratedClassifierCV(clf, method='isotonic', cv=3)
     calibrated_clf.fit(X, y_res)
@@ -146,7 +132,7 @@ def train_models():
     joblib.dump(model_h_xgb, 'epl_v31_home_goals_model_xgb.pkl')
     joblib.dump(model_a_xgb, 'epl_v31_away_goals_model_xgb.pkl')
     joblib.dump(calibrated_clf, 'epl_result_classifier.pkl')
-    print("✅ V36.0 强正则化全景模型训练完成！(14大特征，防过拟合)")
+    print("✅ V40.0 防冷防平局模型训练完成！")
 
 if __name__ == "__main__":
     train_models()
