@@ -136,7 +136,14 @@ start_of_tomorrow = tomorrow.replace(hour=0, minute=0, second=0, microsecond=0)
 end_of_tomorrow = start_of_tomorrow + timedelta(days=1)
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= start_of_tomorrow) & (df_next_round['datetime_parsed'] < end_of_tomorrow)]
 df_next_round = df_next_round.sort_values('datetime_parsed')
-if df_next_round.empty: exit()
+if df_next_round.empty:
+    print("⚠️ 未来 72 小时内无比赛。")
+    html_report = f"""<html><body><div style="text-align: center; padding: 50px;">
+        <h2 style="color: #2c3e50;">🛡️ 今日休战</h2>
+        <p style="color: #666; font-size: 16px;">系统扫描了所有赛程，未来 72 小时内没有需要预测的足球赛事。</p>
+    </div></body></html>"""
+    send_rich_email("🛡️ 多联赛每日战报 (今日休战)", html_report, [])
+    exit()
 
 real_odds_dict = {}
 if os.path.exists('real_odds.csv'):
