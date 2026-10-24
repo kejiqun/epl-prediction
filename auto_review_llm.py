@@ -32,7 +32,7 @@ def send_email(subject, html_content, receiver="308730509@qq.com"):
         print("✅ 复盘邮件发送成功！")
     except Exception as e: print(f"❌ 邮件发送失败: {e}")
 
-print("⏳ 正在启动 V44.0 深度复盘引擎...")
+print("⏳ 正在启动 V44.1 深度复盘引擎...")
 if not os.path.exists('predictions_log.csv'): 
     print("⚠️ 找不到预测日志，跳过复盘。")
     exit()
@@ -46,8 +46,22 @@ for c in ['actual_score', 'actual_result', 'is_win', 'profit', 'bet_amount', 'pr
     if c not in df_log.columns: 
         df_log[c] = np.nan if 'amount' in c or 'profit' in c else ""
 
-# 找“所有还没结算的比赛”，且日期小于等于今天
+# 找出所有还没结算的比赛，且日期在今天之前（包含今天）
 pending_review = df_log[(df_log['actual_score'].isna() | (df_log['actual_score'] == "")) & (df_log['date'].dt.strftime('%Y-%m-%d') <= today_str)].copy()
+
+# 🌟 核心修复：清理超过3天的垃圾数据
+if not pending_review.empty:
+    pending_review['days_diff'] = (today - pending_review['date']).dt.days
+    # 把超过3天的垃圾数据标记为“赛果丢失”
+    expired_matches = pending_review[pending_review['days_diff'] > 3]
+    if not expired_matches.empty:
+        print(f"🧹 发现 {len(expired_matches)} 场比赛已过期(>3天)无赛果，自动作废。")
+        for idx in expired_matches.index:
+            df_log.at[idx, 'actual_score'] = "赛果丢失"
+            df_log.at[idx, 'is_win'] = "作废"
+            df_log.at[idx, 'profit'] = 0.0
+        # 从待结算池中剔除这些过期数据
+        pending_review = pending_review[~pending_review.index.isin(expired_matches.index)]
 
 if pending_review.empty:
     print("✅ 没有需要复盘的新比赛。")
@@ -58,13 +72,13 @@ if pending_review.empty:
         <p style="color: #7f8c8d; font-size: 14px;">资金账户安全，静待下一轮战斗。</p>
     </div></body></html>
     """
+    df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig') # 必须保存清理后的日志
     send_email("☕ 每日复盘通知 (今日无战事)", html_report)
     exit()
 
 print(f"⏳ 找到 {len(pending_review)} 场待复盘比赛，正在抓取真实赛果...")
 
 actual_results = {}
-# 往前查5天，容错更高
 for league_name, config in LEAGUES.items():
     for i in range(1, 6):
         date_str = (today - timedelta(days=i)).strftime('%Y%m%d')
@@ -155,16 +169,16 @@ for idx, row in pending_review.iterrows():
             '盈亏': round(profit, 2)
         })
 
-# 🌟 修复：如果没有结算任何有效资金，也发邮件通知
 if total_count == 0:
     print("⚠️ 扫描到了比赛，但暂无已结算赛果，可能比赛还没踢完。")
     html_report = f"""
     <html><body style="font-family: sans-serif; padding: 30px; text-align: center; background-color: #f4f7f6;">
         <h2 style="color: #2c3e50;">⏳ 比赛尚未结算</h2>
-        <p style="color: #7f8c8d; font-size: 16px;">系统扫描到了 {len(pending_review)} 场比赛，但在外部数据源中暂未查到最终赛果，可能比赛还没踢完。</p>
+        <p style="color: #7f8c8d; font-size: 16px;">系统扫描到了 {len(pending_review)} 场比赛，但在外部数据源中暂未查到最终赛果，可能比赛还没踢完，或者数据源有延迟。</p>
         <p style="color: #7f8c8d; font-size: 14px;">系统会在下次定时任务中自动重试结算。</p>
     </div></body></html>
     """
+    df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig') # 保存日志
     send_email("⏳ 每日复盘通知 (待结算)", html_report)
     exit()
 
