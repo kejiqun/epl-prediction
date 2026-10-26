@@ -47,7 +47,7 @@ def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
     return scores, matrix
 
 def run_backtest():
-    print("⏳ 启动时光机回测系统 (V44.0 严格盲测版)...")
+    print("⏳ 启动时光机回测系统 (V45.0 盲测版)...")
     history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
     if not os.path.exists(history_file): return
         
@@ -57,9 +57,7 @@ def run_backtest():
     df['home_team_cn'] = df['home_team'].apply(translate_team_name)
     df['away_team_cn'] = df['away_team'].apply(translate_team_name)
     
-    # 🌟 核心修复：剔除没有实际比分（未完赛/取消）的脏数据
     df = df.dropna(subset=['home_goals', 'away_goals'])
-    print(f"🧹 数据清洗完毕，共剔除 {len(df) - len(df.dropna(subset=['home_goals', 'away_goals']))} 场缺失比分的比赛。")
     
     if os.path.exists('xg_data.csv'):
         df_xg = pd.read_csv('xg_data.csv')
@@ -78,7 +76,6 @@ def run_backtest():
     features, labels_home, labels_away, labels_result = [], [], [], []
     team_stats, last_date = {}, {}
     
-    # --- 训练阶段 ---
     for idx, row in train_df.iterrows():
         h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
         for t in [h, a]:
@@ -140,7 +137,6 @@ def run_backtest():
         team_stats[h]['dates'].append(m_date); team_stats[a]['dates'].append(m_date)
         last_date[h] = m_date; last_date[a] = m_date
 
-    # 训练双引擎
     X_train = np.array(features, dtype=np.float32)
     y_h_train = np.nan_to_num(np.array(labels_home, dtype=np.float32), nan=0.0, posinf=10.0, neginf=0.0)
     y_a_train = np.nan_to_num(np.array(labels_away, dtype=np.float32), nan=0.0, posinf=10.0, neginf=0.0)
@@ -159,7 +155,6 @@ def run_backtest():
     calibrated_clf = CalibratedClassifierCV(clf, method='isotonic', cv=3)
     calibrated_clf.fit(X_train, y_res_train)
 
-    # --- 测试阶段（严格盲测） ---
     print("⏳ 正在模拟未来实战预测...")
     bankroll = 10000.0
     bet_amount = 100.0 
@@ -219,7 +214,6 @@ def run_backtest():
         pred_top1 = valid_scores[0][0]
         pred_top3 = [s[0] for s in valid_scores[:3]]
         
-        # 这里因为前面已经 dropna 处理了，所以不会再有 NaN 报错
         actual_score = f"{int(row['home_goals'])}-{int(row['away_goals'])}"
         total_predicted += 1
         
@@ -236,6 +230,9 @@ def run_backtest():
             if max_p == p_h_clf: bet_choice = "主胜"
             elif max_p == p_d_clf: bet_choice = "平局"
             else: bet_choice = "客胜"
+            
+        if bet_choice == "平局" and (pred_h_xg + pred_a_xg) > 2.8:
+            bet_choice = "" # 强制平局熔断
             
         if bet_choice:
             actual_res = "主胜" if row['home_goals'] > row['away_goals'] else ("平局" if row['home_goals'] == row['away_goals'] else "客胜")
@@ -260,7 +257,6 @@ def run_backtest():
         team_stats[h]['dates'].append(m_date); team_stats[a]['dates'].append(m_date)
         last_date[h] = m_date; last_date[a] = m_date
 
-    # 汇总报告
     total_bets = len(records)
     win_rate = 0.0
     roi = 0.0
@@ -288,7 +284,7 @@ def run_backtest():
     print(f"✅ 真实盲测完成！下注胜率 {win_rate:.1f}%，ROI {roi:+.1f}%")
     print(f"🎯 比分命中率：首选 {top1_acc:.1f}%，前三 {top3_acc:.1f}%")
     
-    report = f"""--- 历史回测报告 (V44.0 严格时间滚动盲测) ---
+    report = f"""--- 历史回测报告 (V45.0 防御极客版) ---
 训练数据量: {len(train_df)} 场
 测试数据量: {total_predicted} 场
 
