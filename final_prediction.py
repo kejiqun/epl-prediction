@@ -111,7 +111,7 @@ def ai_adjust_probabilities(home_cn, away_cn, p_h, p_d, p_a, injury_info, odds_t
     return p_h, p_d, p_a, "AI未干预"
 
 bankroll = 10000.0
-kelly_multiplier = 0.5
+kelly_multiplier = 0.1 # 🌟 极限降温：初始倍率直接砍到 0.1
 if os.path.exists('bankroll.csv'):
     try:
         df_bank = pd.read_csv('bankroll.csv')
@@ -120,8 +120,9 @@ if os.path.exists('bankroll.csv'):
         if '盈亏' in recent.columns:
             wins = len(recent[recent['盈亏'] > 0])
             win_rate = wins / len(recent)
-            if win_rate < 0.4: kelly_multiplier = 0.2 
-            elif win_rate > 0.6: kelly_multiplier = 0.7
+            # 连败时极度防守
+            if win_rate < 0.4: kelly_multiplier = 0.1 
+            elif win_rate > 0.6: kelly_multiplier = 0.3
     except: pass
 
 if not os.path.exists('daily_matches.csv'): exit()
@@ -136,11 +137,10 @@ start_of_tomorrow = tomorrow.replace(hour=0, minute=0, second=0, microsecond=0)
 end_of_tomorrow = start_of_tomorrow + timedelta(days=1)
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] >= start_of_tomorrow) & (df_next_round['datetime_parsed'] < end_of_tomorrow)]
 df_next_round = df_next_round.sort_values('datetime_parsed')
-if df_next_round.empty:
-    print("⚠️ 未来 72 小时内无比赛。")
+if df_next_round.empty: 
     html_report = f"""<html><body><div style="text-align: center; padding: 50px;">
         <h2 style="color: #2c3e50;">🛡️ 今日休战</h2>
-        <p style="color: #666; font-size: 16px;">系统扫描了所有赛程，未来 72 小时内没有需要预测的足球赛事。</p>
+        <p style="color: #666; font-size: 16px;">未来 72 小时内没有需要预测的足球赛事。</p>
     </div></body></html>"""
     send_rich_email("🛡️ 多联赛每日战报 (今日休战)", html_report, [])
     exit()
@@ -171,7 +171,8 @@ if os.path.exists('coach_stats.csv'):
             coach_dict[r['球队']] = {'style': r['教练风格']}
     except: pass
 
-injury_dict, injury_impact = {}, {}
+# 🌟 核心升级：伤停的位置权重
+injury_dict, injury_impact_att, injury_impact_def = {}, {}, {}
 try:
     fpl_data = requests.get("https://fantasy.premierleague.com/api/bootstrap-static/", timeout=15).json()
     teams_map = {t['id']: translate_team_name(t['name']) for t in fpl_data['teams']}
@@ -180,7 +181,12 @@ try:
             t_name = teams_map.get(e['team'])
             if t_name:
                 injury_dict.setdefault(t_name, []).append(f"{e['web_name']}")
-                injury_impact[t_name] = injury_impact.get(t_name, 0) + ((e.get('now_cost', 50) / 100.0) * 0.7)
+                pos = e.get('element_type')
+                cost_weight = e.get('now_cost', 50) / 100.0
+                if pos in [3, 4]: # 中场/前锋
+                    injury_impact_att[t_name] = injury_impact_att.get(t_name, 0) + cost_weight * 0.1
+                elif pos in [1, 2]: # 门将/后卫
+                    injury_impact_def[t_name] = injury_impact_def.get(t_name, 0) + cost_weight * 0.1
 except: pass
 
 history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
@@ -298,10 +304,14 @@ for league in df_next_round['联赛'].unique():
         pred_h_xg = max(0.1, (model_h_lgb.predict(feat)[0] + model_h_xgb.predict(feat)[0]) / 2.0)
         pred_a_xg = max(0.1, (model_a_lgb.predict(feat)[0] + model_a_xgb.predict(feat)[0]) / 2.0)
         
-        h_impact = injury_impact.get(h_cn, 0)
-        a_impact = injury_impact.get(a_cn, 0)
-        home_xg = pred_h_xg * max(0.6, 1 - h_impact * 0.1) 
-        away_xg = pred_a_xg * max(0.6, 1 - a_impact * 0.1)
+        # 🌟 核心升级：伤停净效应定向扣减
+        h_att_penalty = 1 - injury_impact_att.get(h_cn, 0)
+        h_def_penalty = 1 - injury_impact_def.get(h_cn, 0)
+        a_att_penalty = 1 - injury_impact_att.get(a_cn, 0)
+        a_def_penalty = 1 - injury_impact_def.get(a_cn, 0)
+        
+        home_xg = pred_h_xg * max(0.5, h_att_penalty) + (pred_a_xg * (1 - max(0.5, a_def_penalty)) * 0.2)
+        away_xg = pred_a_xg * max(0.5, a_att_penalty) + (pred_h_xg * (1 - max(0.5, h_def_penalty)) * 0.2)
         
         w_text, w_temp = get_match_weather(h_cn, match_date_str)
         if "雨" in w_text or "雪" in w_text:
@@ -327,18 +337,20 @@ for league in df_next_round['联赛'].unique():
         p_h, p_d, p_a, ai_reason = ai_adjust_probabilities(h_cn, a_cn, p_h, p_d, p_a, injury_info, odds_trend, knowledge_base, ref_info, coach_info)
         
         predict_choice = "主胜" if p_h > max(p_d, p_a) else ("平局" if p_d > max(p_h, p_a) else "客胜")
+        
+        # 🌟 核心升级：平局熔断闸门
+        expected_total_goals = home_xg + away_xg
+        if predict_choice == "平局" and expected_total_goals > 2.8:
+            predict_choice = "主胜" if h_elo > a_elo else "客胜"
+            ai_reason = "⚠️ 触发平局熔断：双方进攻预期较高，平局概率不可靠，强制修正方向。" + ai_reason
+
         oh, od, oa = (real_h, real_d, real_a) if has_real else (2.0, 3.3, 3.5)
         
         final_rec, bet_amt, split_msg = "观望", 0.0, ""
         ou_msg, hc_msg, ou_rec, hc_rec = "未开出", "未开出", "观望", "观望"
         
-        # 恢复展示的凯利指数
-        kelly_msg = "暂无真实赔率"
-        
         if has_real:
             kh, kd, ka = (p_h*oh-1)/(oh-1), (p_d*od-1)/(od-1), (p_a*oa-1)/(oa-1)
-            kelly_msg = f"主胜 {max(0, kh)*100:.1f}% | 平局 {max(0, kd)*100:.1f}% | 客胜 {max(0, ka)*100:.1f}%"
-            
             max_k = max(kh, kd, ka)
             if max_k > 0.02:
                 b_choice = "主胜" if max_k == kh else ("平局" if max_k == kd else "客胜")
@@ -367,7 +379,14 @@ for league in df_next_round['联赛'].unique():
             split_msg = "(无真实盘口，仅供观赛)"
 
         valid_scores = [s for s in scores_list if s[1] > 0.012]
+        
+        # 🌟 核心升级：强制扩充高方差比分
         top3 = valid_scores[:3]
+        if abs(h_elo - a_elo) > 100 and not any(int(s[0].split('-')[0]) >= 3 or int(s[0].split('-')[1]) >= 3 for s in top3):
+            high_var_scores = [s for s in valid_scores if int(s[0].split('-')[0]) >= 3 or int(s[0].split('-')[1]) >= 3]
+            if high_var_scores:
+                top3[2] = high_var_scores[0]
+        
         top3_str = " | ".join([f"<b>{s[0]}</b> ({s[1]*100:.1f}%)" for s in top3])
         best_score = top3[0][0]
 
@@ -420,7 +439,6 @@ for league in df_next_round['联赛'].unique():
             'odds_h': oh, 'odds_d': od, 'odds_a': oa, 'home_injuries': h_inj_str, 'away_injuries': a_inj_str
         })
 
-        # 🌟 全面恢复核心数据展示
         html_report += f"""
         <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.06);">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
@@ -450,11 +468,6 @@ for league in df_next_round['联赛'].unique():
                 <div style="width: 50%;">⏱️ <b>休息:</b> 主 {h_rest} 天 / 客 {a_rest} 天</div>
                 <div style="width: 50%;">🧑‍⚖️ <b>裁判:</b> {ref_info['name']}</div>
                 <div style="width: 100%; color: #d9534f; margin-top: 5px;"><b>🚨 伤停:</b> 主[{h_inj_str}] / 客[{a_inj_str}]</div>
-            </div>
-
-            <div style="background-color: #fff; padding: 10px; border-radius: 6px; border: 1px solid #eee; font-size: 13px; margin-bottom: 12px;">
-                <p style="margin: 0 0 5px 0;"><b>📊 核心数据 (近5场):</b> 主队 [进 {h_xg*5:.1f} / 失 {h_xga*5:.1f}] | 客队 [进 {a_xg*5:.1f} / 失 {a_xga*5:.1f}]</p>
-                <p style="margin: 0;"><b>💰 凯利建议:</b> {kelly_msg}</p>
             </div>
 
             <div style="display: flex; justify-content: space-around; text-align: center; font-size: 13px; margin-bottom: 15px;">
@@ -493,7 +506,7 @@ final_html = """
 <div class="container">
 """
 
-final_html += "<h1>⚽ 明日赛事量化预测 (V44.0 极客进击版)</h1>"
+final_html += "<h1>⚽ 明日赛事量化预测 (V45.0 防御极客版)</h1>"
 
 if jczq_picks_list:
     df_picks = pd.DataFrame(jczq_picks_list)
@@ -528,4 +541,4 @@ if os.path.exists('predictions_log.csv'):
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("V44.0 明日赛事量化预测 (极客进击版)", final_html, img_buffers)
+send_rich_email("V45.0 明日赛事量化预测 (防御极客版)", final_html, img_buffers)
