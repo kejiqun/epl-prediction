@@ -111,7 +111,7 @@ def ai_adjust_probabilities(home_cn, away_cn, p_h, p_d, p_a, injury_info, odds_t
     return p_h, p_d, p_a, "AI未干预"
 
 bankroll = 10000.0
-kelly_multiplier = 0.2 # 防守模式
+kelly_multiplier = 0.2
 if os.path.exists('bankroll.csv'):
     try:
         df_bank = pd.read_csv('bankroll.csv')
@@ -131,9 +131,8 @@ df_next_round['客队'] = df_next_round['客队'].apply(translate_team_name)
 df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
 df_next_round['match_date_str'] = df_next_round['datetime_parsed'].dt.strftime('%Y-%m-%d')
 
-# 🌟 核心修改：比赛当天下午 4 点跑，过滤掉今天已经开赛的比赛
+# 🌟 24小时滚动窗口
 now_ts = pd.Timestamp.now()
-# 🌟 核心修复：设定 24 小时的滚动时间窗，完美覆盖今晚及明天凌晨的赛事
 end_window = now_ts + pd.Timedelta(hours=24)
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] > now_ts) & (df_next_round['datetime_parsed'] <= end_window)]
 df_next_round = df_next_round.sort_values('datetime_parsed')
@@ -141,7 +140,7 @@ df_next_round = df_next_round.sort_values('datetime_parsed')
 if df_next_round.empty: 
     html_report = f"""<html><body><div style="text-align: center; padding: 50px;">
         <h2 style="color: #2c3e50;">🛡️ 今日休战</h2>
-        <p style="color: #666; font-size: 16px;">今天下午 4 点之后，已无未开赛的足球赛事。</p>
+        <p style="color: #666; font-size: 16px;">未来 24 小时内已无未开赛的足球赛事。</p>
     </div></body></html>"""
     send_rich_email("🛡️ 多联赛每日战报 (今日休战)", html_report, [])
     exit()
@@ -230,11 +229,12 @@ model_h_xgb = joblib.load('epl_v31_home_goals_model_xgb.pkl')
 model_a_xgb = joblib.load('epl_v31_away_goals_model_xgb.pkl')
 calibrated_clf = joblib.load('epl_result_classifier.pkl')
 
+# 🌟 这里就是之前漏掉的地方，必须加上初始化
 jczq_picks_list = []
+prediction_logs = [] 
 html_report_cards = ""
 img_buffers = []
 
-# 🌟 核心报告生成
 for league in df_next_round['联赛'].unique():
     html_report_cards += f"""<div style="background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 10px 20px; border-radius: 8px; margin-top: 30px; margin-bottom: 20px;"><h2 style="margin: 0; font-size: 22px;">🏆 {league}</h2></div>"""
     
@@ -387,7 +387,6 @@ for league in df_next_round['联赛'].unique():
 
         total_goals_rec_str, best_goal = get_total_goals_recommendation(prob_matrix)
 
-        # 记录到清单1：狙击清单
         if bet_amt > 0 or "高价值" in ou_rec or "高价值" in hc_rec:
             jczq_picks_list.append({
                 '比赛时间': m_time, '赛事': league, '对阵': f"{h_cn} vs {a_cn}",
@@ -435,7 +434,6 @@ for league in df_next_round['联赛'].unique():
             'odds_h': oh, 'odds_d': od, 'odds_a': oa, 'home_injuries': h_inj_str, 'away_injuries': a_inj_str
         })
 
-        # 记录到清单2：全景预测分析卡片
         html_report_cards += f"""
         <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.06);">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
@@ -482,7 +480,6 @@ for league in df_next_round['联赛'].unique():
         </div>
         """
 
-# 组装最终邮件
 final_html = """
 <html>
 <head>
@@ -505,7 +502,6 @@ final_html = """
 
 final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V46.0)</h1>"
 
-# Part 1: 狙击清单
 final_html += "<h2 style='color: #e74c3c; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;'>🎯 Part 1: 今日竞彩狙击清单 (价值投资)</h2>"
 if jczq_picks_list:
     df_picks = pd.DataFrame(jczq_picks_list)
@@ -525,7 +521,6 @@ else:
     """
     pd.DataFrame(columns=['比赛时间', '赛事', '对阵', '推荐', '金额', '比分', '总进球', '让球', '大小球']).to_csv('daily_jczq_picks.csv', index=False, encoding='utf-8-sig')
 
-# Part 2: 全景分析
 final_html += "<h2 style='color: #2980b9; border-bottom: 2px solid #2980b9; padding-bottom: 10px; margin-top: 40px;'>📊 Part 2: 今日全部比赛全景预测分析</h2>"
 final_html += html_report_cards
 
