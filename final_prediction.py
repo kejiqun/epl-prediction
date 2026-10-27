@@ -133,8 +133,9 @@ df_next_round['match_date_str'] = df_next_round['datetime_parsed'].dt.strftime('
 
 # 🌟 核心修改：比赛当天下午 4 点跑，过滤掉今天已经开赛的比赛
 now_ts = pd.Timestamp.now()
-today_date = now_ts.date()
-df_next_round = df_next_round[(df_next_round['datetime_parsed'] > now_ts) & (df_next_round['datetime_parsed'].dt.date == today_date)]
+# 🌟 核心修复：设定 24 小时的滚动时间窗，完美覆盖今晚及明天凌晨的赛事
+end_window = now_ts + pd.Timedelta(hours=24)
+df_next_round = df_next_round[(df_next_round['datetime_parsed'] > now_ts) & (df_next_round['datetime_parsed'] <= end_window)]
 df_next_round = df_next_round.sort_values('datetime_parsed')
 
 if df_next_round.empty: 
