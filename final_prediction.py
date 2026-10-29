@@ -26,7 +26,7 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
 print("==================================================")
-print("🚀 启动 V190.0 动态凯利与串关策略引擎")
+print("🚀 启动 V190.1 动态凯利与串关策略引擎 (修复版)")
 print("==================================================")
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -68,7 +68,7 @@ def get_weather(team, date_str):
         return day['condition']['text'], round(day['avgtemp_c'], 1)
     return "未知", 0
 
-# 🌟 核心：V180.0 零膨胀时间切片引擎
+# 🌟 核心：零膨胀时间切片引擎
 def zinb_time_sliced_simulation(home_xg, away_xg, h_def_rate=0.2, a_def_rate=0.2, sims=10000):
     h_goals = np.zeros(sims, dtype=int)
     a_goals = np.zeros(sims, dtype=int)
@@ -206,7 +206,7 @@ m_ax = joblib.load('epl_v31_away_goals_model_xgb.pkl')
 elo = joblib.load('elo_dict.pkl') if os.path.exists('elo_dict.pkl') else {}
 
 picks, logs, html_cards, imgs = [], [], "", []
-parlay_pool = [] # 用于串关的池子
+parlay_pool = [] 
 
 # ================= 4. 主预测流 =================
 for league in df_next['联赛'].unique():
@@ -219,14 +219,18 @@ for league in df_next['联赛'].unique():
         
         if stats.get(h, {'count':0})['count'] < 3 or stats.get(a, {'count':0})['count'] < 3: continue
         
-        od = manual_odds.get((date_str, h, a)) or real_odds.get((date_str, h, a))
+        # 🌟 核心修复：规避 Series 的真假值歧义问题
+        od_manual = manual_odds.get((date_str, h, a))
+        od_auto = real_odds.get((date_str, h, a))
+        od = od_manual if od_manual is not None else od_auto
+        
         has_odds, src = False, "无赔率"
         if od is not None:
             try:
                 oh, od_, oa = float(od['主胜赔率']), float(od['平局赔率']), float(od['客胜赔率'])
                 tl, over, under = float(od.get('大小球盘口', 2.5)), float(od.get('大球赔率', 0)), float(od.get('小球赔率', 0))
                 has_odds = True
-                src = "手动盘" if (date_str,h,a) in manual_odds else "自动盘"
+                src = "手动盘" if od_manual is not None else "自动盘"
             except: pass
             
         hs, as_ = stats.get(h, {}), stats.get(a, {})
@@ -281,7 +285,6 @@ for league in df_next['联赛'].unique():
             margin = 1/oh + 1/od_ + 1/oa
             ih, id_, ia = (1/oh)/margin, (1/od_)/margin, (1/oa)/margin
             
-            # 动态分数凯利：偏离越大，敢下注
             ph, pd_, pa = ph*0.6 + ih*0.4, pd_*0.6 + id_*0.4, pa*0.6 + ia*0.4
             ph, pd_, pa = ph/(ph+pd_+pa), pd_/(ph+pd_+pa), pa/(ph+pd_+pa)
             
@@ -297,12 +300,10 @@ for league in df_next['联赛'].unique():
             if max_k > 0.02 and not warn_t:
                 bet_rec = "主胜" if max_k == kh else ("平局" if max_k == kd else "客胜")
                 if (bet_rec=="主胜" and ph>0.25) or (bet_rec=="平局" and pd_>0.25) or (bet_rec=="客胜" and pa>0.25):
-                    # 动态凯利
                     dynamic_kelly = base_kelly * (1 + max_k) 
-                    bet = bankroll * min(dynamic_kelly, 0.06) # 封顶6%
+                    bet = bankroll * min(dynamic_kelly, 0.06) 
                     final_rec = bet_rec
                     
-                    # 加入串关池
                     real_p = ph if bet_rec=="主胜" else (pd_ if bet_rec=="平局" else pa)
                     real_odds_val = oh if bet_rec=="主胜" else (od_ if bet_rec=="平局" else oa)
                     parlay_pool.append({
@@ -330,7 +331,6 @@ for league in df_next['联赛'].unique():
         if has_odds and (bet > 0 or ou_rec != "观望"):
             picks.append({'时间': time_str, '赛事': league, '对阵': f"{h} vs {a}", '推荐': final_rec, '金额': round(bet,2), '比分': best_sc, '总进球': tg_str, '大小球': ou_rec})
 
-        # AI裁判长
         ai_txt = "AI裁判长连接超时，已跳过。"
         if llm_client:
             prompt = f"比赛:{h} vs {a}。模型倾向:{choice}。风险提示:{warn_c}{warn_t}{warn_r}。请用80字客观总结风险，给出操盘建议。"
@@ -339,7 +339,6 @@ for league in df_next['联赛'].unique():
                 ai_txt = res.choices[0].message.content.strip()
             except: pass
 
-        # 渲染图表
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 3.2))
         ax1.bar(['主胜', '平局', '客胜'], [ph*100, pd_*100, pa*100], color=['#4e79a7','#f28e2b','#e15759'], width=0.5)
         ax1.set_title("零膨胀融合胜率"); ax1.set_ylim(0,100)
@@ -364,22 +363,17 @@ for league in df_next['联赛'].unique():
         </div>
         """
 
-# ================= 5. V190.0 核心：串关策略引擎 =================
+# ================= 5. V190.1 核心：串关策略引擎 =================
 parlay_html = "<p style='text-align:center; color:#666;'>今日无明显正期望值单子，不推荐串关。</p>"
 if len(parlay_pool) >= 2:
-    # 按 EV 从高到低排序，取前 5 场最优单子
     parlay_pool = sorted(parlay_pool, key=lambda x: x['ev'], reverse=True)[:5]
-    
     parlay_candidates = []
-    # 生成 2串1 和 3串1
     for r in [2, 3]:
         for combo in combinations(parlay_pool, r):
-            # 计算联合概率和赔率
             joint_prob = np.prod([c['prob'] for c in combo])
             joint_odds = np.prod([c['odds'] for c in combo])
             ev = joint_prob * joint_odds
-            
-            if ev > 1.15: # 串关期望值必须大于 1.15
+            if ev > 1.15:
                 parlay_candidates.append({
                     'type': f"{r}串1",
                     'matches': " + ".join([f"{c['match']}({c['choice']})" for c in combo]),
@@ -389,10 +383,9 @@ if len(parlay_pool) >= 2:
                 })
     
     if parlay_candidates:
-        # 按 EV 排序，取前 3 个推荐
         parlay_candidates = sorted(parlay_candidates, key=lambda x: x['ev'], reverse=True)[:3]
         df_parlay = pd.DataFrame(parlay_candidates)
-        df_parlay['建议金额'] = df_parlay['ev'].apply(lambda x: round(bankroll * 0.02, 2)) # 串关固定 2% 资金
+        df_parlay['建议金额'] = df_parlay['ev'].apply(lambda x: round(bankroll * 0.02, 2)) 
         parlay_html = f"""
         <div style="background:#fff; padding:20px; border-radius:10px; border-top:5px solid #27ae60;">
             <p style="color:#27ae60; font-weight:bold;">✨ 系统侦测到高期望值串关机会，利用复利法则博取高赔率：</p>
@@ -405,7 +398,7 @@ if len(parlay_pool) >= 2:
 # ================= 6. 结果发送 =================
 html = f"""<html><body style="font-family:Arial; padding:20px; background-color:#f4f7f6;">
 <div style="max-width:900px; margin:auto;">
-<h1 style="text-align:center; color:#2c3e50;">⚽ 足球量化决策清单 (V190.0 终极资金版)</h1>
+<h1 style="text-align:center; color:#2c3e50;">⚽ 足球量化决策清单 (V190.1 终极资金版)</h1>
 <h2 style="color:#e74c3c; border-bottom:2px solid #e74c3c; padding-bottom:10px;">Part 1: 单关狙击清单</h2>
 { pd.DataFrame(picks).to_html(index=False, border=0, justify='center', escape=False) if picks else "<p style='text-align:center; color:#c0392b; font-weight:bold; padding:20px;'>今日无高价值单关，建议空仓。</p>" }
 <h2 style="color:#27ae60; border-bottom:2px solid #27ae60; padding-bottom:10px; margin-top:30px;">Part 2: 串关复利策略 (High EV)</h2>
@@ -418,5 +411,5 @@ html = f"""<html><body style="font-family:Arial; padding:20px; background-color:
 if logs:
     pd.DataFrame(logs).to_csv('predictions_log.csv', mode='a', header=not os.path.exists('predictions_log.csv'), index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html)
-send_email("⚽ 今日竞彩量化清单 (V190.0 终极资金版)", html, imgs)
+send_email("⚽ 今日竞彩量化清单 (V190.1 终极资金版)", html, imgs)
 print("🏁 运行完毕！")
