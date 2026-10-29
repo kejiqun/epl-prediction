@@ -131,7 +131,6 @@ df_next_round['客队'] = df_next_round['客队'].apply(translate_team_name)
 df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
 df_next_round['match_date_str'] = df_next_round['datetime_parsed'].dt.strftime('%Y-%m-%d')
 
-# 🌟 24小时滚动窗口
 now_ts = pd.Timestamp.now()
 end_window = now_ts + pd.Timedelta(hours=24)
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] > now_ts) & (df_next_round['datetime_parsed'] <= end_window)]
@@ -200,9 +199,12 @@ for _, row in df_hist.iterrows():
     h, a, m_date = row['home_team_cn'], row['away_team_cn'], row['date']
     for t in [h, a]:
         if t not in team_stats: 
-            team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]}
+            team_stats[t] = {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[], 'count': 0}
         if t not in last_date: last_date[t] = None
         
+    team_stats[h]['count'] += 1
+    team_stats[a]['count'] += 1
+    
     act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
     act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
     
@@ -229,7 +231,6 @@ model_h_xgb = joblib.load('epl_v31_home_goals_model_xgb.pkl')
 model_a_xgb = joblib.load('epl_v31_away_goals_model_xgb.pkl')
 calibrated_clf = joblib.load('epl_result_classifier.pkl')
 
-# 🌟 这里就是之前漏掉的地方，必须加上初始化
 jczq_picks_list = []
 prediction_logs = [] 
 html_report_cards = ""
@@ -244,6 +245,24 @@ for league in df_next_round['联赛'].unique():
         m_time = pd.to_datetime(match['datetime_parsed']).strftime('%m月%d日 %H:%M')
         m_date = pd.to_datetime(match['datetime_parsed']).date()
         
+        # 🌟 核心抢救：数据防污染拦截机制
+        h_count = team_stats.get(h_cn, {'count': 0})['count']
+        a_count = team_stats.get(a_cn, {'count': 0})['count']
+        
+        if h_count < 3 or a_count < 3:
+            # 拒绝预测，输出占位卡片
+            html_report_cards += f"""
+            <div style="border: 1px solid #f5c6cb; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #f8d7da; box-shadow: 0 4px 10px rgba(0,0,0,0.06);">
+                <h3 style="margin: 0; color: #721c24; font-size: 18px;">⏰ {m_time} <span style="margin-left: 10px;">{h_cn} vs {a_cn}</span></h3>
+                <p style="margin-top: 15px; font-weight: bold; color: #721c24;">
+                    🚫 <b>数据不足，已拦截：</b>该球队在历史数据库中的场次少于3场 (主队:{h_count}场，客队:{a_count}场)。
+                </p>
+                <p style="font-size: 13px; color: #721c24;">为防止使用平均值污染模型，系统已强制终止预测。</p>
+            </div>
+            """
+            continue # 跳过本次循环，不参与后续预测
+            
+        # 正常的预测逻辑
         odds_row = real_odds_dict.get((match_date_str, h_cn, a_cn))
         manual_row = manual_odds_dict.get((match_date_str, h_cn, a_cn))
         use_odds = manual_row if manual_row is not None else odds_row
@@ -500,7 +519,7 @@ final_html = """
 <div class="container">
 """
 
-final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V46.0)</h1>"
+final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V47.0 防污染版)</h1>"
 
 final_html += "<h2 style='color: #e74c3c; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;'>🎯 Part 1: 今日竞彩狙击清单 (价值投资)</h2>"
 if jczq_picks_list:
@@ -533,4 +552,4 @@ if os.path.exists('predictions_log.csv'):
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V46.0)", final_html, img_buffers)
+send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V47.0 防污染版)", final_html, img_buffers)
