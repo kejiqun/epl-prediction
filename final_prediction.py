@@ -150,12 +150,6 @@ if os.path.exists('real_odds.csv'):
         try: real_odds_dict[(pd.to_datetime(r['比赛时间']).strftime('%Y-%m-%d'), r['主队'], r['客队'])] = r
         except: pass
 
-manual_odds_dict = {}
-if os.path.exists('manual_odds.csv'):
-    for _, r in pd.read_csv('manual_odds.csv').iterrows():
-        try: manual_odds_dict[(str(r['比赛日期']).strip(), r['主队'], r['客队'])] = r
-        except: pass
-
 ref_dict, coach_dict = {}, {}
 if os.path.exists('referee_stats.csv'):
     try:
@@ -245,26 +239,18 @@ for league in df_next_round['联赛'].unique():
         m_time = pd.to_datetime(match['datetime_parsed']).strftime('%m月%d日 %H:%M')
         m_date = pd.to_datetime(match['datetime_parsed']).date()
         
-        # 🌟 核心抢救：数据防污染拦截机制
         h_count = team_stats.get(h_cn, {'count': 0})['count']
         a_count = team_stats.get(a_cn, {'count': 0})['count']
         
+        # 🌟 降级兜底：不再直接跳过，而是标记后继续算
+        is_data_insufficient = False
         if h_count < 3 or a_count < 3:
-            # 拒绝预测，输出占位卡片
-            html_report_cards += f"""
-            <div style="border: 1px solid #f5c6cb; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #f8d7da; box-shadow: 0 4px 10px rgba(0,0,0,0.06);">
-                <h3 style="margin: 0; color: #721c24; font-size: 18px;">⏰ {m_time} <span style="margin-left: 10px;">{h_cn} vs {a_cn}</span></h3>
-                <p style="margin-top: 15px; font-weight: bold; color: #721c24;">
-                    🚫 <b>数据不足，已拦截：</b>该球队在历史数据库中的场次少于3场 (主队:{h_count}场，客队:{a_count}场)。
-                </p>
-                <p style="font-size: 13px; color: #721c24;">为防止使用平均值污染模型，系统已强制终止预测。</p>
-            </div>
-            """
-            continue # 跳过本次循环，不参与后续预测
+            is_data_insufficient = True
             
-        # 正常的预测逻辑
         odds_row = real_odds_dict.get((match_date_str, h_cn, a_cn))
-        manual_row = manual_odds_dict.get((match_date_str, h_cn, a_cn))
+        # 这里手动数据合并
+        manual_row = None
+        
         use_odds = manual_row if manual_row is not None else odds_row
         has_real = False
         
@@ -274,9 +260,6 @@ for league in df_next_round['联赛'].unique():
             tl_line, over_odd, under_odd = use_odds.get('大小球盘口', 2.5), use_odds.get('大球赔率', 0.0), use_odds.get('小球赔率', 0.0)
             has_real = True
             trap_warning = ""
-            if manual_row is not None and odds_row is not None:
-                diff_h = abs(manual_row['主胜赔率'] - odds_row['主胜赔率']) / odds_row['主胜赔率']
-                if diff_h > 0.15: trap_warning = f"⚠️ <b>数据异常：</b>国内赔率({manual_row['主胜赔率']})与国外锐利盘({odds_row['主胜赔率']})差异达 {diff_h*100:.1f}%，疑似机构在设陷阱。"
         else:
             real_h, real_d, real_a = 0, 0, 0
             hc_line, hc_h_odd, hc_a_odd = 0.0, 0.0, 0.0
@@ -286,6 +269,7 @@ for league in df_next_round['联赛'].unique():
 
         h = team_stats.get(h_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]})
         a = team_stats.get(a_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]})
+        
         h_rest = (pd.Timestamp(m_date) - last_date[h_cn]).days if h_cn in last_date else 7
         a_rest = (pd.Timestamp(m_date) - last_date[a_cn]).days if a_cn in last_date else 7
         rest_diff = h_rest - a_rest
@@ -293,6 +277,7 @@ for league in df_next_round['联赛'].unique():
         h_recent_matches = sum(1 for d in h['dates'] if (pd.Timestamp(m_date) - d).days <= 14)
         a_recent_matches = sum(1 for d in a['dates'] if (pd.Timestamp(m_date) - d).days <= 14)
         
+        # 没数据就用平均值
         h_xg = np.mean(h['xg'][-5:]) if h['xg'] else league_avg_goals
         a_xg = np.mean(a['xg'][-5:]) if a['xg'] else league_avg_goals
         h_xga = np.mean(h['xga'][-5:]) if h['xga'] else league_avg_goals
@@ -453,13 +438,18 @@ for league in df_next_round['联赛'].unique():
             'odds_h': oh, 'odds_d': od, 'odds_a': oa, 'home_injuries': h_inj_str, 'away_injuries': a_inj_str
         })
 
+        # 如果是数据不足，给卡片加个警告边框
+        card_border = "border: 2px dashed #e74c3c;" if is_data_insufficient else "border: 1px solid #e0e0e0;"
+        
         html_report_cards += f"""
-        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.06);">
+        <div style="{card_border} border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.06);">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
                 <h3 style="margin: 0; color: #2c3e50; font-size: 18px;">⏰ {m_time} <span style="color: #000; margin-left: 10px; font-size: 20px;">{h_cn} vs {a_cn}</span></h3>
                 <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 13px;">{venue}</span>
             </div>
             
+            {f"<div style='background-color: #fff3cd; color: #856404; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; font-weight: bold;'>⚠️ 注意：该球队在历史数据库中场次不足(主:{h_count}场,客:{a_count}场)，采用联赛基准模型推演，置信度降级。</div>" if is_data_insufficient else ""}
+
             <img src='cid:chart_{len(img_buffers)-1}' width='100%' style='border-radius: 6px; margin-bottom: 15px;'>
 
             <div style="display: flex; gap: 10px; margin-bottom: 15px;">
@@ -473,8 +463,6 @@ for league in df_next_round['联赛'].unique():
                     <span style="font-size: 20px; color: #1e3c72; font-weight: bold;">{total_goals_rec_str}</span>
                 </div>
             </div>
-
-            {f"<div style='background-color: #f8d7da; color: #721c24; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; font-weight: bold;'>{trap_warning}</div>" if trap_warning else ""}
 
             <div style="display: flex; flex-wrap: wrap; font-size: 13px; line-height: 1.8; color: #444; margin-bottom: 12px; background-color: #f8f9fa; padding: 10px; border-radius: 6px;">
                 <div style="width: 50%;">💪 <b>Elo:</b> 主 {h_elo:.0f} / 客 {a_elo:.0f}</div>
@@ -519,7 +507,7 @@ final_html = """
 <div class="container">
 """
 
-final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V47.0 防污染版)</h1>"
+final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V48.0 满血复活版)</h1>"
 
 final_html += "<h2 style='color: #e74c3c; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;'>🎯 Part 1: 今日竞彩狙击清单 (价值投资)</h2>"
 if jczq_picks_list:
@@ -552,4 +540,4 @@ if os.path.exists('predictions_log.csv'):
 log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V47.0 防污染版)", final_html, img_buffers)
+send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V48.0 满血复活版)", final_html, img_buffers)
