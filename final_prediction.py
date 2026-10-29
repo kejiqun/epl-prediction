@@ -46,7 +46,7 @@ def send_rich_email(subject, html_content, img_buffers, receiver="308730509@qq.c
     except Exception as e: print(f"❌ 邮件失败: {e}")
 
 def get_match_weather(home_team, date_str):
-    city = {'阿森纳': 'London', '曼联': 'Manchester', '利物浦': 'Liverpool', '皇家马德里': 'Madrid', '巴塞罗那': 'Barcelona', '拜仁慕尼黑': 'Munich', '国际米兰': 'Milan', 'AC米兰': 'Milan', '尤文图斯': 'Turin', '那不勒斯': 'Naples', '罗马': 'Rome', '拉齐奥': 'Rome'}.get(home_team, 'London')
+    city = {'阿森纳': 'London', '曼联': 'Manchester', '利物浦': 'Liverpool', '皇家马德里': 'Madrid', '巴塞罗那': 'Barcelona', '拜仁慕尼黑': 'Munich', '国际米兰': 'Milan', 'AC米兰': 'Milan', '尤文图斯': 'Turin', '那不勒斯': 'Naples', '罗马': 'Rome'}.get(home_team, 'London')
     try:
         url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={city}&dt={date_str[:10]}&lang=zh"
         resp = requests.get(url, timeout=10)
@@ -124,6 +124,10 @@ if os.path.exists('bankroll.csv'):
             elif win_rate > 0.6: kelly_multiplier = 0.3
     except: pass
 
+if not os.path.exists('all_leagues_matches.csv'):
+    print("❌ 致命错误：缺少 all_leagues_matches.csv，请先运行 fetch_league_history.py")
+    exit()
+
 if not os.path.exists('daily_matches.csv'): exit()
 df_next_round = pd.read_csv('daily_matches.csv')
 df_next_round['主队'] = df_next_round['主队'].apply(translate_team_name)
@@ -144,11 +148,18 @@ if df_next_round.empty:
     send_rich_email("🛡️ 多联赛每日战报 (今日休战)", html_report, [])
     exit()
 
-real_odds_dict = {}
-if os.path.exists('real_odds.csv'):
-    for _, r in pd.read_csv('real_odds.csv').iterrows():
-        try: real_odds_dict[(pd.to_datetime(r['比赛时间']).strftime('%Y-%m-%d'), r['主队'], r['客队'])] = r
-        except: pass
+# 读取手动赔率
+manual_odds_dict = {}
+if os.path.exists('manual_odds.csv'):
+    try:
+        df_manual = pd.read_csv('manual_odds.csv')
+        for _, r in df_manual.iterrows():
+            m_date = str(r['比赛日期']).strip()
+            h_team = translate_team_name(str(r['主队']).strip())
+            a_team = translate_team_name(str(r['客队']).strip())
+            manual_odds_dict[(m_date, h_team, a_team)] = r
+    except Exception as e:
+        print(f"⚠️ 读取手动赔率失败: {e}")
 
 ref_dict, coach_dict = {}, {}
 if os.path.exists('referee_stats.csv'):
@@ -177,15 +188,10 @@ try:
                 elif pos in [1, 2]: injury_impact_def[t_name] = injury_impact_def.get(t_name, 0) + cost_weight * 0.1
 except: pass
 
-history_file = 'all_leagues_matches.csv' if os.path.exists('all_leagues_matches.csv') else 'epl_matches_10y.csv'
-df_hist = pd.read_csv(history_file)
+df_hist = pd.read_csv('all_leagues_matches.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist['home_team_cn'] = df_hist['home_team'].apply(translate_team_name)
 df_hist['away_team_cn'] = df_hist['away_team'].apply(translate_team_name)
-if os.path.exists('xg_data.csv'):
-    df_xg = pd.read_csv('xg_data.csv')
-    df_xg['date'] = pd.to_datetime(df_xg['date'])
-    df_hist = pd.merge(df_hist, df_xg, on=['date', 'home_team_cn', 'away_team_cn'], how='left', suffixes=('', '_xg'))
 
 league_avg_goals = (df_hist['home_goals'].mean() + df_hist['away_goals'].mean()) / 2
 team_stats, last_date = {}, {}
@@ -199,8 +205,8 @@ for _, row in df_hist.iterrows():
     team_stats[h]['count'] += 1
     team_stats[a]['count'] += 1
     
-    act_h_xg = row['home_xg'] if not pd.isna(row.get('home_xg', np.nan)) else row['home_goals']
-    act_a_xg = row['away_xg'] if not pd.isna(row.get('away_xg', np.nan)) else row['away_goals']
+    act_h_xg = row['home_goals']
+    act_a_xg = row['away_goals']
     
     team_stats[h]['xg'].append(act_h_xg); team_stats[h]['xga'].append(act_a_xg)
     team_stats[a]['xg'].append(act_a_xg); team_stats[a]['xga'].append(act_h_xg)
@@ -216,7 +222,6 @@ for _, row in df_hist.iterrows():
 
 elo_dict = {}
 if os.path.exists('elo_dict.pkl'): elo_dict = joblib.load('elo_dict.pkl')
-
 knowledge_base = open('knowledge.txt', 'r', encoding='utf-8').read() if os.path.exists('knowledge.txt') else ""
 
 model_h_lgb = joblib.load('epl_v31_home_goals_model_lgb.pkl')
@@ -242,18 +247,32 @@ for league in df_next_round['联赛'].unique():
         h_count = team_stats.get(h_cn, {'count': 0})['count']
         a_count = team_stats.get(a_cn, {'count': 0})['count']
         
-        is_data_insufficient = False
+        # 🚨 铁血纪律一：历史数据不足，直接拦截，绝不拿平均值糊弄
         if h_count < 3 or a_count < 3:
-            is_data_insufficient = True
+            print(f"⚠️ 拦截比赛：{h_cn} vs {a_cn}，历史数据不足。")
+            html_report_cards += f"""
+            <div style="border: 2px dashed #e74c3c; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #fdf2f2;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0; color: #c0392b; font-size: 18px;">⏰ {m_time} <span style="color: #000; margin-left: 10px; font-size: 20px;">{h_cn} vs {a_cn}</span></h3>
+                    <span style="background-color: #e74c3c; color: white; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 13px;">数据拦截</span>
+                </div>
+                <p style="color: #c0392b; font-size: 14px; margin-top: 15px; font-weight: bold;">
+                    ❌ 已拦截：该球队在历史数据库中的真实场次不足 (主队:{h_count}场, 客队:{a_count}场)。<br>
+                    系统已严格执行客观纪律，拒绝使用假数据污染模型。
+                </p>
+            </div>
+            """
+            continue
             
-        odds_row = real_odds_dict.get((match_date_str, h_cn, a_cn))
-        use_odds = odds_row
+        manual_row = manual_odds_dict.get((match_date_str, h_cn, a_cn))
+        use_odds = manual_row
         has_real = False
         
+        # 🚨 铁血纪律二：没有真实手动赔率，不计算凯利，不加入清单
         if use_odds is not None:
-            real_h, real_d, real_a = use_odds['主胜赔率'], use_odds['平局赔率'], use_odds['客胜赔率']
-            hc_line, hc_h_odd, hc_a_odd = use_odds.get('让球盘口', 0.0), use_odds.get('主让胜赔率', 0.0), use_odds.get('客受让胜赔率', 0.0)
-            tl_line, over_odd, under_odd = use_odds.get('大小球盘口', 2.5), use_odds.get('大球赔率', 0.0), use_odds.get('小球赔率', 0.0)
+            real_h, real_d, real_a = float(use_odds['主胜赔率']), float(use_odds['平局赔率']), float(use_odds['客胜赔率'])
+            hc_line, hc_h_odd, hc_a_odd = float(use_odds['让球盘口']), float(use_odds['主让胜赔率']), float(use_odds['客受让胜赔率'])
+            tl_line, over_odd, under_odd = float(use_odds['大小球盘口']), float(use_odds['大球赔率']), float(use_odds['小球赔率'])
             has_real = True
             trap_warning = ""
         else:
@@ -261,7 +280,7 @@ for league in df_next_round['联赛'].unique():
             hc_line, hc_h_odd, hc_a_odd = 0.0, 0.0, 0.0
             tl_line, over_odd, under_odd = 2.5, 0.0, 0.0
             has_real = False
-            trap_warning = ""
+            trap_warning = "⚠️ 缺失手动真实赔率，系统不提供价值推荐。"
 
         h = team_stats.get(h_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]})
         a = team_stats.get(a_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]})
@@ -330,6 +349,8 @@ for league in df_next_round['联赛'].unique():
         injury_info = f"主队伤停: {h_inj_str}; 客队伤停: {a_inj_str}"
         
         odds_trend = "暂无盘口轨迹数据"
+        
+        # 🚨 铁血纪律三：AI 只负责微调，不负责迎合
         p_h, p_d, p_a, ai_reason = ai_adjust_probabilities(h_cn, a_cn, p_h, p_d, p_a, injury_info, odds_trend, knowledge_base, ref_info, coach_info)
         
         predict_choice = "主胜" if p_h > max(p_d, p_a) else ("平局" if p_d > max(p_h, p_a) else "客胜")
@@ -370,34 +391,12 @@ for league in df_next_round['联赛'].unique():
                 if prob_hc_home * hc_h_odd > 1.05: hc_rec = "主队赢盘"
                 elif prob_hc_away * hc_a_odd > 1.05: hc_rec = "客队赢盘"
         else:
-            # 🌟 核心修复：下调技术推荐阈值至 45%
-            if p_h >= 0.45:
-                final_rec = "主胜"
-                bet_amt = 0.0
-                split_msg = "技术推荐（无真实赔率）"
-                jczq_picks_list.append({
-                    '比赛时间': m_time, '赛事': league, '对阵': f"{h_cn} vs {a_cn}",
-                    '推荐': final_rec, '金额': '无盘口',
-                    '比分': scores_list[0][0], '总进球': get_total_goals_recommendation(prob_matrix)[0],
-                    '让球': '观望', '大小球': '观望'
-                })
-            elif p_a >= 0.45:
-                final_rec = "客胜"
-                bet_amt = 0.0
-                split_msg = "技术推荐（无真实赔率）"
-                jczq_picks_list.append({
-                    '比赛时间': m_time, '赛事': league, '对阵': f"{h_cn} vs {a_cn}",
-                    '推荐': final_rec, '金额': '无盘口',
-                    '比分': scores_list[0][0], '总进球': get_total_goals_recommendation(prob_matrix)[0],
-                    '让球': '观望', '大小球': '观望'
-                })
-            else:
-                final_rec = f"技术倾向：{predict_choice}"
-                bet_amt = 0.0
-                split_msg = "(无真实盘口，仅供观赛)"
+            final_rec = f"技术倾向：{predict_choice}"
+            bet_amt = 0.0
+            split_msg = "(无真实盘口，仅供观赛)"
 
+        # 🚨 铁血纪律四：严格依据泊松矩阵，保留真实比分概率
         valid_scores = [s for s in scores_list if s[1] > 0.012]
-        
         top3 = valid_scores[:3]
         if abs(h_elo - a_elo) > 100 and not any(int(s[0].split('-')[0]) >= 3 or int(s[0].split('-')[1]) >= 3 for s in top3):
             high_var_scores = [s for s in valid_scores if int(s[0].split('-')[0]) >= 3 or int(s[0].split('-')[1]) >= 3]
@@ -408,7 +407,8 @@ for league in df_next_round['联赛'].unique():
 
         total_goals_rec_str, best_goal = get_total_goals_recommendation(prob_matrix)
 
-        if (has_real and bet_amt > 0) or "高价值" in ou_rec or "高价值" in hc_rec:
+        # 只有带有真实赔率的单子，才能进入狙击清单
+        if has_real and (bet_amt > 0 or "高价值" in ou_rec or "高价值" in hc_rec):
             jczq_picks_list.append({
                 '比赛时间': m_time, '赛事': league, '对阵': f"{h_cn} vs {a_cn}",
                 '推荐': final_rec if bet_amt > 0 else "观望", '金额': round(bet_amt, 2) if bet_amt > 0 else 0,
@@ -419,7 +419,11 @@ for league in df_next_round['联赛'].unique():
 
         venue = f"{h_cn}主场" 
 
-        prompt = f"""资深专家，点评(150字内)：比赛：{h_cn} vs {a_cn}。倾向：{predict_choice}。伤停：{injury_info}。大小球/让球：{ou_msg} / {hc_msg}。AI理由：{ai_reason}。以“推荐关注：{final_rec}”结尾。"""
+        # 🚨 铁血纪律五：AI 点评恢复客观，不强行干预倾向
+        prompt = f"""资深专家，点评(150字内)：比赛：{h_cn} vs {a_cn}。
+        基础模型倾向：{predict_choice}。首选比分：{best_score}。
+        伤停：{injury_info}。大小球/让球：{ou_msg} / {hc_msg}。
+        请客观分析该场比赛的走势与风险点，不要一味迎合倾向，指出隐患。以“推荐关注：{final_rec}”结尾。"""
         try: ai_comment = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False).choices[0].message.content.strip()
         except: ai_comment = "AI解析失败"
 
@@ -455,17 +459,13 @@ for league in df_next_round['联赛'].unique():
             'odds_h': oh, 'odds_d': od, 'odds_a': oa, 'home_injuries': h_inj_str, 'away_injuries': a_inj_str
         })
 
-        card_border = "border: 2px dashed #e74c3c;" if is_data_insufficient else "border: 1px solid #e0e0e0;"
-        
         html_report_cards += f"""
-        <div style="{card_border} border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.06);">
+        <div style="border: 1px solid #e0e0e0; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.06);">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; margin-bottom: 15px;">
                 <h3 style="margin: 0; color: #2c3e50; font-size: 18px;">⏰ {m_time} <span style="color: #000; margin-left: 10px; font-size: 20px;">{h_cn} vs {a_cn}</span></h3>
                 <span style="background-color: #e8f4fd; color: #1e3c72; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 13px;">{venue}</span>
             </div>
             
-            {f"<div style='background-color: #fff3cd; color: #856404; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; font-weight: bold;'>⚠️ 注意：该球队在历史数据库中场次不足(主:{h_count}场,客:{a_count}场)，采用联赛基准模型推演，置信度降级。</div>" if is_data_insufficient else ""}
-
             <img src='cid:chart_{len(img_buffers)-1}' width='100%' style='border-radius: 6px; margin-bottom: 15px;'>
 
             <div style="display: flex; gap: 10px; margin-bottom: 15px;">
@@ -480,7 +480,7 @@ for league in df_next_round['联赛'].unique():
                 </div>
             </div>
 
-            {f"<div style='background-color: #f8d7da; color: #721c24; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; font-weight: bold;'>{trap_warning}</div>" if trap_warning else ""}
+            {f"<div style='background-color: #fff3cd; color: #856404; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; font-weight: bold;'>{trap_warning}</div>" if trap_warning else ""}
 
             <div style="display: flex; flex-wrap: wrap; font-size: 13px; line-height: 1.8; color: #444; margin-bottom: 12px; background-color: #f8f9fa; padding: 10px; border-radius: 6px;">
                 <div style="width: 50%;">💪 <b>Elo:</b> 主 {h_elo:.0f} / 客 {a_elo:.0f}</div>
@@ -518,14 +518,13 @@ final_html = """
     .report-table td { padding: 10px; border-bottom: 1px solid #ecf0f1; text-align: center; color: #333; }
     .report-table tr:nth-child(even) { background-color: #f8f9fa; }
     .report-table tr:hover { background-color: #e8f4fd; }
-    .section-title { text-align: center; color: #d35400; font-size: 20px; margin-top: 0; margin-bottom: 10px; border-bottom: 2px solid #f39c12; display: inline-block; padding-bottom: 5px; }
 </style>
 </head>
 <body>
 <div class="container">
 """
 
-final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V50.1 查漏补缺版)</h1>"
+final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V51.0 专业客观版)</h1>"
 
 final_html += "<h2 style='color: #e74c3c; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;'>🎯 Part 1: 今日竞彩狙击清单 (价值投资)</h2>"
 if jczq_picks_list:
@@ -541,7 +540,7 @@ else:
     final_html += """
     <div style='background-color: #fdf2f2; border-top: 5px solid #e74c3c; padding: 20px; border-radius: 10px; margin-bottom: 30px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05);'>
         <h3 style='color: #c0392b; margin-top: 0; font-size: 20px;'>🛑 今日无高价值狙击目标</h3>
-        <p style='color: #c0392b; font-size: 14px;'>系统扫描了今日比赛，因无赔率或期望价值不足，建议空仓观望。</p>
+        <p style='color: #c0392b; font-size: 14px;'>系统严格执行纪律：因无真实赔率或期望价值不足，拒绝强行出单，建议空仓观望。</p>
     </div>
     """
     pd.DataFrame(columns=['比赛时间', '赛事', '对阵', '推荐', '金额', '比分', '总进球', '让球', '大小球']).to_csv('daily_jczq_picks.csv', index=False, encoding='utf-8-sig')
@@ -559,4 +558,4 @@ if not log_df.empty:
     log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V50.1 查漏补缺版)", final_html, img_buffers)
+send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V51.0 专业客观版)", final_html, img_buffers)
