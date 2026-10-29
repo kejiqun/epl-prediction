@@ -29,7 +29,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt --default-timeout=100
       
-      - name: 1. 抓取五大联赛历史赛果 (建库)
+      - name: 1. 抓取五大联赛历史赛果
         env:
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: python fetch_league_history.py
@@ -39,8 +39,8 @@ jobs:
         run: python train_v31.py
       - name: 4. 抓取今日赛程与赔率
         env:
-          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: python fetch_multi_leagues.py
       - name: 4.2 抓取真实裁判及教练数据
         run: python fetch_referee_coach.py
@@ -51,15 +51,18 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: python final_prediction.py
       - name: 5. 自动提交更新的数据
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
+          # 先拉取最新代码，防止冲突
+          git pull origin main --no-rebase
           git add -A
-          git commit -m "V52.0 自动更新预测数据 [skip ci]" || echo "无变化"
-          git pull --rebase origin main
-          git push
+          # 强制解决 predictions_log.csv 可能产生的冲突，保留最新生成的
+          git commit -m "V340.0 自动更新预测数据 [skip ci]" || echo "无变化"
+          git push origin main
 
   run-review:
     runs-on: ubuntu-latest
@@ -76,17 +79,17 @@ jobs:
       
       - name: 1. 运行深度复盘 (次日中午12点)
         env:
-          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: python auto_review_llm.py
       
       - name: 2. 自动提交复盘数据
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
+          git pull origin main --no-rebase
           git add knowledge.txt bankroll.csv predictions_log.csv
-          git commit -m "V52.0 自动更新复盘经验与资金库 [skip ci]" || echo "无变化"
-          git pull --rebase origin main
-          git push
+          git commit -m "V340.0 自动更新复盘经验与资金库 [skip ci]" || echo "无变化"
+          git push origin main
