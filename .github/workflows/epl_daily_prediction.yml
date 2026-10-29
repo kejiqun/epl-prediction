@@ -5,10 +5,8 @@ permissions:
 
 on:
   schedule:
-    # UTC 8:00 (北京时间 16:00) 触发预测
-    - cron: '0 8 * * *'
-    # UTC 4:00 (北京时间 12:00) 触发复盘
-    - cron: '0 4 * * *'
+    - cron: '0 8 * * *'  # 16:00 预测
+    - cron: '0 4 * * *'  # 12:00 复盘
   workflow_dispatch:
 
 jobs:
@@ -53,15 +51,20 @@ jobs:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: python final_prediction.py
-      - name: 5. 自动提交更新的数据
+      
+      - name: 5. 自动提交更新的数据 (防冲突终极版)
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          # 先拉取最新代码，防止冲突
+          # 暂存刚跑出来的新账本
+          git stash
+          # 拉取远端最新代码
           git pull origin main --no-rebase
+          # 恢复新账本，强制以最新跑出来的覆盖
+          git stash pop || true
+          git checkout --theirs predictions_log.csv || true
           git add -A
-          # 强制解决 predictions_log.csv 可能产生的冲突，保留最新生成的
-          git commit -m "V340.0 自动更新预测数据 [skip ci]" || echo "无变化"
+          git commit -m "V350.0 自动更新预测数据 [skip ci]" || echo "无变化"
           git push origin main
 
   run-review:
@@ -85,11 +88,14 @@ jobs:
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: python auto_review_llm.py
       
-      - name: 2. 自动提交复盘数据
+      - name: 2. 自动提交复盘数据 (防冲突终极版)
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
+          git stash
           git pull origin main --no-rebase
+          git stash pop || true
+          git checkout --theirs predictions_log.csv || true
           git add knowledge.txt bankroll.csv predictions_log.csv
-          git commit -m "V340.0 自动更新复盘经验与资金库 [skip ci]" || echo "无变化"
+          git commit -m "V51.0 自动更新复盘数据 [skip ci]" || echo "无变化"
           git push origin main
