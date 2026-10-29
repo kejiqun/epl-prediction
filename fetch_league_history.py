@@ -2,16 +2,15 @@ import pandas as pd
 import requests
 from datetime import datetime
 import os
+import time
 from team_mapping import translate_team_name
 
 API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY")
 
-# API-Football 联赛 ID
-LEAGUES = {
-    '英超': 39, '西甲': 140, '德甲': 78, '意甲': 135, '法甲': 61
-}
-# 抓取近三个赛季
-SEASONS = [2024, 2025, 2026] 
+# 五大联赛 ID
+LEAGUES = {'英超': 39, '西甲': 140, '德甲': 78, '意甲': 135, '法甲': 61}
+# 抓取近两个赛季
+SEASONS = [2024, 2025] 
 
 def fetch_history():
     if not API_FOOTBALL_KEY:
@@ -22,13 +21,14 @@ def fetch_history():
     all_matches = []
     
     for league_name, league_id in LEAGUES.items():
-        print(f"⏳ 正在抓取 {league_name} 历史数据...")
         for season in SEASONS:
+            print(f"⏳ 正在抓取 {league_name} {season} 赛季...")
             url = f"https://v3.football.api-sports.io/fixtures?league={league_id}&season={season}&status=FT"
             try:
-                resp = requests.get(url, headers=headers, timeout=15)
+                resp = requests.get(url, headers=headers, timeout=20)
                 if resp.status_code == 200:
-                    for fixture in resp.json().get('response', []):
+                    data = resp.json().get('response', [])
+                    for fixture in data:
                         hg = fixture['goals']['home']
                         ag = fixture['goals']['away']
                         if hg is None or ag is None: continue
@@ -40,16 +40,21 @@ def fetch_history():
                             'home_goals': hg,
                             'away_goals': ag
                         })
+                    print(f"  ✅ 获取到 {len(data)} 场比赛")
+                else:
+                    print(f"  ⚠️ 请求失败: {resp.status_code}")
             except Exception as e:
-                print(f"⚠️ {league_name} 抓取异常: {e}")
+                print(f"  ❌ 异常: {e}")
                 
+            # 强制休眠 6 秒，保护 API 额度
+            time.sleep(6)
+
     if all_matches:
         df = pd.DataFrame(all_matches).drop_duplicates()
-        # 强制覆盖旧的仅仅包含英超的数据库
         df.to_csv('all_leagues_matches.csv', index=False, encoding='utf-8-sig')
-        print(f"✅ 历史数据抓取完成，共 {len(df)} 场，已保存至 all_leagues_matches.csv！")
+        print(f"🎉 历史数据建库完成！共 {len(df)} 场，已保存至 all_leagues_matches.csv！")
     else:
-        print("❌ 未抓取到任何历史数据。")
+        print("❌ 未抓取到任何历史数据，请检查 API Key。")
 
 if __name__ == "__main__":
     fetch_history()
