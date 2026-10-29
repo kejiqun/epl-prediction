@@ -242,16 +242,12 @@ for league in df_next_round['联赛'].unique():
         h_count = team_stats.get(h_cn, {'count': 0})['count']
         a_count = team_stats.get(a_cn, {'count': 0})['count']
         
-        # 🌟 降级兜底：不再直接跳过，而是标记后继续算
         is_data_insufficient = False
         if h_count < 3 or a_count < 3:
             is_data_insufficient = True
             
         odds_row = real_odds_dict.get((match_date_str, h_cn, a_cn))
-        # 这里手动数据合并
-        manual_row = None
-        
-        use_odds = manual_row if manual_row is not None else odds_row
+        use_odds = odds_row
         has_real = False
         
         if use_odds is not None:
@@ -269,7 +265,6 @@ for league in df_next_round['联赛'].unique():
 
         h = team_stats.get(h_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]})
         a = team_stats.get(a_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]})
-        
         h_rest = (pd.Timestamp(m_date) - last_date[h_cn]).days if h_cn in last_date else 7
         a_rest = (pd.Timestamp(m_date) - last_date[a_cn]).days if a_cn in last_date else 7
         rest_diff = h_rest - a_rest
@@ -277,7 +272,6 @@ for league in df_next_round['联赛'].unique():
         h_recent_matches = sum(1 for d in h['dates'] if (pd.Timestamp(m_date) - d).days <= 14)
         a_recent_matches = sum(1 for d in a['dates'] if (pd.Timestamp(m_date) - d).days <= 14)
         
-        # 没数据就用平均值
         h_xg = np.mean(h['xg'][-5:]) if h['xg'] else league_avg_goals
         a_xg = np.mean(a['xg'][-5:]) if a['xg'] else league_avg_goals
         h_xga = np.mean(h['xga'][-5:]) if h['xga'] else league_avg_goals
@@ -438,7 +432,6 @@ for league in df_next_round['联赛'].unique():
             'odds_h': oh, 'odds_d': od, 'odds_a': oa, 'home_injuries': h_inj_str, 'away_injuries': a_inj_str
         })
 
-        # 如果是数据不足，给卡片加个警告边框
         card_border = "border: 2px dashed #e74c3c;" if is_data_insufficient else "border: 1px solid #e0e0e0;"
         
         html_report_cards += f"""
