@@ -370,10 +370,10 @@ for league in df_next_round['联赛'].unique():
                 if prob_hc_home * hc_h_odd > 1.05: hc_rec = "主队赢盘"
                 elif prob_hc_away * hc_a_odd > 1.05: hc_rec = "客队赢盘"
         else:
-            # 🌟 核心修复：如果没有赔率，但当模型概率极高时，也作为技术推荐放入狙击清单！
-            if p_h >= 0.55:
+            # 🌟 核心修复：下调技术推荐阈值至 45%
+            if p_h >= 0.45:
                 final_rec = "主胜"
-                bet_amt = 0.0  # 无赔率不显示具体金额
+                bet_amt = 0.0
                 split_msg = "技术推荐（无真实赔率）"
                 jczq_picks_list.append({
                     '比赛时间': m_time, '赛事': league, '对阵': f"{h_cn} vs {a_cn}",
@@ -381,7 +381,7 @@ for league in df_next_round['联赛'].unique():
                     '比分': scores_list[0][0], '总进球': get_total_goals_recommendation(prob_matrix)[0],
                     '让球': '观望', '大小球': '观望'
                 })
-            elif p_a >= 0.55:
+            elif p_a >= 0.45:
                 final_rec = "客胜"
                 bet_amt = 0.0
                 split_msg = "技术推荐（无真实赔率）"
@@ -408,7 +408,6 @@ for league in df_next_round['联赛'].unique():
 
         total_goals_rec_str, best_goal = get_total_goals_recommendation(prob_matrix)
 
-        # 只有在有真实赔率且凯利看好时才加入（技术推荐的已经在上面加过了）
         if (has_real and bet_amt > 0) or "高价值" in ou_rec or "高价值" in hc_rec:
             jczq_picks_list.append({
                 '比赛时间': m_time, '赛事': league, '对阵': f"{h_cn} vs {a_cn}",
@@ -526,7 +525,7 @@ final_html = """
 <div class="container">
 """
 
-final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V50.0 强出单版)</h1>"
+final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V50.1 查漏补缺版)</h1>"
 
 final_html += "<h2 style='color: #e74c3c; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;'>🎯 Part 1: 今日竞彩狙击清单 (价值投资)</h2>"
 if jczq_picks_list:
@@ -560,4 +559,4 @@ if not log_df.empty:
     log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V50.0 强出单版)", final_html, img_buffers)
+send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V50.1 查漏补缺版)", final_html, img_buffers)
