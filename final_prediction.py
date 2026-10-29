@@ -25,7 +25,7 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
 print("==================================================")
-print("🚀 启动 V340.0 全维度科学引擎 (精度至上版)")
+print("🚀 启动 V350.0 终极纠错版 (严丝合缝 16 维)")
 print("==================================================")
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -112,17 +112,11 @@ def get_weather(team, date_str):
 
 # ================= 3. 绝对科学内核：动态 Dixon-Coles 解析解 =================
 def generate_dynamic_score_matrix(home_xg, away_xg, h_def_strength, a_def_strength, max_goals=8):
-    """
-    动态修正 rho 参数：
-    如果两队防守都很强（失球少），则低比分概率应该放大；反之则减少。
-    """
-    # 动态计算 rho (范围在 -0.05 到 -0.25 之间)
-    # h_def_strength 和 a_def_strength 是对手强度系数，越强越接近1
     defense_avg = (h_def_strength + a_def_strength) / 2.0
     if defense_avg > 0.7:
-        rho = -0.25 # 防守大战，平局概率极高
+        rho = -0.25 
     elif defense_avg < 0.4:
-        rho = -0.05 # 互捅局，大比分概率高
+        rho = -0.05 
     else:
         rho = -0.15
 
@@ -154,23 +148,18 @@ def get_total_goals(matrix, max_goals=8):
     prob_over = sum(p for g, p in totals.items() if g > 2.5)
     return " / ".join(top2), prob_over
 
-# ================= 4. 数据装载与特征深度处理 =================
+# ================= 4. 数据装载与特征处理 =================
 bankroll, base_kelly = 10000.0, 0.2
 if os.path.exists('bankroll.csv'):
     try:
         df_bank = pd.read_csv('bankroll.csv')
         bankroll = df_bank.iloc[-1]['当前资金']
         win_rate = len(df_bank.tail(10)[df_bank.tail(10)['盈亏'] > 0]) / 10
-        if win_rate < 0.4: 
-            base_kelly = 0.1 
-        elif win_rate > 0.6: 
-            base_kelly = 0.3
-    except: 
-        pass
+        if win_rate < 0.4: base_kelly = 0.1 
+        elif win_rate > 0.6: base_kelly = 0.3
+    except: pass
 
-if not os.path.exists('all_leagues_matches.csv'): 
-    print("❌ 缺少历史数据文件 all_leagues_matches.csv")
-    exit()
+if not os.path.exists('all_leagues_matches.csv'): exit()
 
 # 1. 自动抓取赛程
 df_auto = pd.DataFrame()
@@ -180,8 +169,7 @@ if os.path.exists('daily_matches.csv'):
         df_auto['主队'] = df_auto['主队'].apply(translate_team_name)
         df_auto['客队'] = df_auto['客队'].apply(translate_team_name)
         df_auto['datetime_parsed'] = pd.to_datetime(df_auto['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
-    except Exception as e: 
-        print(f"⚠️ 自动赛程读取异常: {e}")
+    except Exception as e: print(f"⚠️ 自动赛程读取异常: {e}")
 
 # 2. 手动填入数据
 manual_odds, df_manual = {}, pd.DataFrame()
@@ -196,8 +184,7 @@ if os.path.exists('manual_odds.csv'):
         df_manual = raw.copy()
         df_manual['联赛'] = '手动精选'
         df_manual['比赛时间'] = df_manual['datetime_parsed']
-    except Exception as e: 
-        print(f"⚠️ 手动赔率读取异常: {e}")
+    except Exception as e: print(f"⚠️ 手动赔率读取异常: {e}")
 
 # 3. 自动抓取海外赔率
 real_odds = {}
@@ -205,17 +192,14 @@ if os.path.exists('real_odds.csv'):
     try:
         for _, r in pd.read_csv('real_odds.csv').iterrows():
             real_odds[(pd.to_datetime(r['比赛时间']).strftime('%Y-%m-%d'), translate_team_name(r['主队']), translate_team_name(r['客队']))] = r
-    except: 
-        pass
+    except: pass
 
 df_next = pd.concat([df_auto, df_manual]).drop_duplicates(subset=['主队', '客队', 'datetime_parsed'], keep='last')
 now, end = pd.Timestamp.now(), pd.Timestamp.now() + pd.Timedelta(hours=24)
 df_next = df_next[(df_next['datetime_parsed'] > now) & (df_next['datetime_parsed'] <= end)].sort_values('datetime_parsed')
-if df_next.empty: 
-    print("⚠️ 未来 24 小时内无赛事。")
-    exit()
+if df_next.empty: exit()
 
-# 历史特征深度提取
+# 历史特征提取
 df_hist = pd.read_csv('all_leagues_matches.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist['h_cn'] = df_hist['home_team'].apply(translate_team_name)
@@ -224,24 +208,16 @@ df_hist = df_hist.sort_values('date')
 avg_goals = (df_hist['home_goals'].mean() + df_hist['away_goals'].mean()) / 2
 
 stats, last_date = {}, {}
-
 for _, r in df_hist.iterrows():
     h, a, d = r['h_cn'], r['a_cn'], r['date']
     for t in [h, a]:
         if t not in stats: 
-            # 增加 零封次数 和 进攻哑火次数
-            stats[t] = {'xg':[], 'xga':[], 'h_xg':[], 'h_xga':[], 'a_xg':[], 'a_xga':[], 'dates':[], 'count':0, 'clean_sheets':0, 'failed_to_score':0}
-        if t not in last_date: 
-            last_date[t] = None
+            stats[t] = {'xg':[], 'xga':[], 'h_xg':[], 'h_xga':[], 'a_xg':[], 'a_xga':[], 'dates':[], 'count':0, 'clean_sheets':0}
+        if t not in last_date: last_date[t] = None
             
     stats[h]['count'] += 1; stats[a]['count'] += 1
-    
-    # 统计防守韧性
     if r['away_goals'] == 0: stats[h]['clean_sheets'] += 1
     if r['home_goals'] == 0: stats[a]['clean_sheets'] += 1
-    # 统计进攻拉胯
-    if r['home_goals'] == 0: stats[h]['failed_to_score'] += 1
-    if r['away_goals'] == 0: stats[a]['failed_to_score'] += 1
 
     stats[h]['xg'].append(r['home_goals']); stats[h]['xga'].append(r['away_goals'])
     stats[a]['xg'].append(r['away_goals']); stats[a]['xga'].append(r['home_goals'])
@@ -251,8 +227,7 @@ for _, r in df_hist.iterrows():
     last_date[h], last_date[a] = d, d
 
 def decay_mean(arr, decay=0.7):
-    if not arr: 
-        return avg_goals
+    if not arr: return avg_goals
     a = np.array(arr)
     w = np.array([decay ** (len(a) - 1 - i) for i in range(len(a))])
     return np.sum(a * (w / np.sum(w)))
@@ -275,29 +250,26 @@ for league in df_next['联赛'].unique():
         date_str = m['datetime_parsed'].strftime('%Y-%m-%d')
         time_str = m['datetime_parsed'].strftime('%m月%d日 %H:%M')
         
-        if stats.get(h, {'count':0})['count'] < 3 or stats.get(a, {'count':0})['count'] < 3: 
-            continue
+        if stats.get(h, {'count':0})['count'] < 3 or stats.get(a, {'count':0})['count'] < 3: continue
         
         od_manual = manual_odds.get((date_str, h, a))
         od_auto = real_odds.get((date_str, h, a))
         od = od_manual if od_manual is not None else od_auto
         
-        has_odds = False
-        src = "无赔率"
+        has_odds, src = False, "无赔率"
         if od is not None:
             try:
                 oh, od_, oa = float(od['主胜赔率']), float(od['平局赔率']), float(od['客胜赔率'])
                 tl, over_odd, under_odd = float(od.get('大小球盘口', 2.5)), float(od.get('大球赔率', 0)), float(od.get('小球赔率', 0))
                 has_odds = True
                 src = "手动体彩盘" if od_manual is not None else "自动海外盘(参考)"
-            except: 
-                pass
+            except: pass
             
         hs, as_ = stats.get(h, {}), stats.get(a, {})
         h_rest = (pd.Timestamp(m['datetime_parsed']).date() - last_date[h].date()).days if h in last_date else 7
         a_rest = (pd.Timestamp(m['datetime_parsed']).date() - last_date[a].date()).days if a in last_date else 7
         
-        # 深度学习特征输入
+        # 🌟 严格恢复为 16 维特征 (模型要求的维度)
         feat = np.array([
             elo.get(h,1500), elo.get(a,1500), elo.get(h,1500)-elo.get(a,1500), 1500, 1500,
             decay_mean(hs.get('xg',[])[-5:]), decay_mean(as_.get('xg',[])[-5:]),
@@ -308,18 +280,12 @@ for league in df_next['联赛'].unique():
             np.mean(as_.get('a_xga',[])[-3:]) if as_.get('a_xga') else decay_mean(as_.get('xga',[])[-5:]),
             h_rest - a_rest,
             sum(1 for d in hs.get('dates',[]) if (pd.Timestamp(m['datetime_parsed']) - d).days <= 14),
-            sum(1 for d in as_.get('dates',[]) if (pd.Timestamp(m['datetime_parsed']) - d).days <= 14),
-            # 新增特征：零封率与拉胯率
-            hs.get('clean_sheets', 0) / hs.get('count', 1),
-            as_.get('clean_sheets', 0) / as_.get('count', 1),
-            hs.get('failed_to_score', 0) / hs.get('count', 1),
-            as_.get('failed_to_score', 0) / as_.get('count', 1)
+            sum(1 for d in as_.get('dates',[]) if (pd.Timestamp(m['datetime_parsed']) - d).days <= 14)
         ]).clip(-1000, 3000).reshape(1, -1)
         
         ph_l, ph_x = m_hl.predict(feat)[0], m_hx.predict(feat)[0]
         pa_l, pa_x = m_al.predict(feat)[0], m_ax.predict(feat)[0]
         
-        # 🌟 科学客观的模型方差惩罚
         penalty = 1.0
         warn_c = ""
         if abs(ph_l - ph_x) > 0.4 or abs(pa_l - pa_x) > 0.4:
@@ -329,24 +295,20 @@ for league in df_next['联赛'].unique():
         home_xg = max(0.1, (ph_l + ph_x)/2 * penalty)
         away_xg = max(0.1, (pa_l + pa_x)/2 * penalty)
         
-        # 真实盘口反推修正
         if has_odds and tl > 0 and abs((home_xg+away_xg) - tl) > 1.0:
             s = tl / (home_xg + away_xg)
             home_xg *= s; away_xg *= s
 
-        # 计算防守强度，用于动态 RHO
         h_def_str = hs.get('clean_sheets', 0) / hs.get('count', 1)
         a_def_str = as_.get('clean_sheets', 0) / as_.get('count', 1)
 
         sc_probs, matrix, dynamic_rho = generate_dynamic_score_matrix(home_xg, away_xg, h_def_str, a_def_str)
-        
         p_h = np.sum(np.tril(matrix, -1))
         p_d = np.sum(np.diag(matrix))
         p_a = np.sum(np.triu(matrix, 1))
         
         final_rec, bet_amt, ou_rec = "观望", 0.0, "观望"
         choice = "主胜" if p_h > max(p_d, p_a) else ("平局" if p_d > max(p_h, p_a) else "客胜")
-        
         tg_str, prob_over = get_total_goals(matrix, 8)
         
         if has_odds:
@@ -386,12 +348,11 @@ for league in df_next['联赛'].unique():
 
         ai_txt = "无风险提示。"
         if llm_client and bet_amt > 0:
-            prompt = f"比赛:{h} vs {a}。模型推荐:{final_rec}。预期进球:{home_xg:.1f} vs {away_xg:.1f}。动态平局系数:{dynamic_rho}。请用60字评估此单风险。"
+            prompt = f"比赛:{h} vs {a}。模型推荐:{final_rec}。预期进球:{home_xg:.1f} vs {away_xg:.1f}。请用60字评估此单风险。"
             try: 
                 res = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role":"user","content":prompt}], stream=False, timeout=8)
                 ai_txt = res.choices[0].message.content.strip()
-            except: 
-                pass
+            except: pass
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 3.2))
         ax1.bar(['主胜', '平局', '客胜'], [p_h*100, p_d*100, p_a*100], color=[THEME['primary'], '#f28e2b', '#e15759'], width=0.5)
@@ -554,5 +515,5 @@ html = f"""<html><body style="font-family:'Helvetica Neue', Arial, sans-serif; p
 if logs:
     pd.DataFrame(logs).to_csv('predictions_log.csv', mode='a', header=not os.path.exists('predictions_log.csv'), index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html)
-send_email(f"【{DAY_GANZHI}日·{ELEMENT}】⚽ 足球量化决策清单 (V340.0)", html, imgs)
+send_email(f"【{DAY_GANZHI}日·{ELEMENT}】⚽ 足球量化决策清单 (V350.0)", html, imgs)
 print("🏁 运行完毕！")
