@@ -25,7 +25,7 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
 print("==================================================")
-print("🚀 启动 V310.0 科学内核·玄学外观版")
+print("🚀 启动 V310.1 科学内核·玄学外观版 (修复版)")
 print("==================================================")
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -105,7 +105,6 @@ def get_weather(team, date_str):
 
 # ================= 3. 绝对科学内核：Dixon-Coles 解析解 =================
 def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
-    """纯数学解析解，瞬间出结果，毫秒级算完，没有蒙特卡洛的算力浪费"""
     def dixon_coles_tau(h, a):
         if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
         elif h == 0 and a == 1: return 1 + home_xg * rho
@@ -229,6 +228,7 @@ for league in df_next['联赛'].unique():
         try:
             oh, od_, oa = float(od_manual['主胜赔率']), float(od_manual['平局赔率']), float(od_manual['客胜赔率'])
             tl, over_odd, under_odd = float(od_manual.get('大小球盘口', 2.5)), float(od_manual.get('大球赔率', 0)), float(od_manual.get('小球赔率', 0))
+            src = "手动体彩盘" # 🌟 修复：补上丢失的变量 src
         except: continue
             
         hs, as_ = stats.get(h, {}), stats.get(a, {})
@@ -368,7 +368,7 @@ for league in df_next['联赛'].unique():
         </div>
         """
 
-# ================= 6. 串关算法 (满足要求) =================
+# ================= 6. 串关算法 =================
 parlay_html = "<p style='text-align:center; color:#888; padding: 20px;'>今日无明显正期望值单子，不推荐串关。</p>"
 if len(parlay_pool) >= 2:
     parlay_pool = sorted(parlay_pool, key=lambda x: x['ev'], reverse=True)[:5]
@@ -475,5 +475,5 @@ html = f"""<html><body style="font-family:'Helvetica Neue', Arial, sans-serif; p
 if logs:
     pd.DataFrame(logs).to_csv('predictions_log.csv', mode='a', header=not os.path.exists('predictions_log.csv'), index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html)
-send_email(f"【{DAY_GANZHI}日·{ELEMENT}】⚽ 足球量化决策清单 (V310.0)", html, imgs)
+send_email(f"【{DAY_GANZHI}日·{ELEMENT}】⚽ 足球量化决策清单 (V310.1)", html, imgs)
 print("🏁 运行完毕！")
