@@ -32,7 +32,7 @@ def send_email(subject, html_content, receiver="308730509@qq.com"):
         print("✅ 复盘邮件发送成功！")
     except Exception as e: print(f"❌ 邮件发送失败: {e}")
 
-print("⏳ 正在启动 V46.0 全景复盘引擎...")
+print("⏳ 正在启动 V47.0 深度复盘引擎...")
 if not os.path.exists('predictions_log.csv'): exit()
 
 df_log = pd.read_csv('predictions_log.csv')
@@ -44,12 +44,24 @@ for c in ['actual_score', 'actual_result', 'is_win', 'profit', 'bet_amount', 'pr
     if c not in df_log.columns: 
         df_log[c] = np.nan if 'amount' in c or 'profit' in c else ""
 
-# 寻找昨天及之前未结算的比赛
 pending_review = df_log[(df_log['actual_score'].isna() | (df_log['actual_score'] == "")) & (df_log['date'].dt.strftime('%Y-%m-%d') <= yesterday)].copy()
+
+# 🌟 核心抢救：清理超过3天的死账
+if not pending_review.empty:
+    pending_review['days_diff'] = (today - pending_review['date']).dt.days
+    expired_matches = pending_review[pending_review['days_diff'] > 3]
+    if not expired_matches.empty:
+        print(f"🧹 发现 {len(expired_matches)} 场比赛过期无赛果，强制作废。")
+        for idx in expired_matches.index:
+            df_log.at[idx, 'actual_score'] = "赛果丢失"
+            df_log.at[idx, 'is_win'] = "作废"
+            df_log.at[idx, 'profit'] = 0.0
+        pending_review = pending_review[~pending_review.index.isin(expired_matches.index)]
 
 if pending_review.empty:
     print("✅ 没有需要复盘的新比赛。")
     send_email("☕ 每日复盘通知 (今日无战事)", "<html><body><h2>今日无待复盘比赛</h2></body></html>")
+    df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
     exit()
 
 print(f"⏳ 找到 {len(pending_review)} 场待复盘比赛，正在抓取真实赛果...")
@@ -84,11 +96,9 @@ if os.path.exists('bankroll.csv'):
     except: pass
 
 review_records = []
-wrong_matches = []
 correct_count = 0
 total_count = 0
 total_profit = 0.0
-score_analysis_data = []
 
 for idx, row in pending_review.iterrows():
     m_date = row['date'].strftime('%Y-%m-%d')
@@ -99,7 +109,6 @@ for idx, row in pending_review.iterrows():
         actual_score = f"{hg}-{ag}"
         actual_res = "主胜" if hg > ag else ("平局" if hg == ag else "客胜")
         pred_score = row.get('predicted_score', '未知')
-        pred_top3 = row.get('top3_scores', '未知')
         
         bet = float(row.get('bet_amount', 0)) if pd.notna(row.get('bet_amount')) else 0.0
         profit = 0.0
@@ -116,18 +125,6 @@ for idx, row in pending_review.iterrows():
             else:
                 is_win = "❌ 失手"
                 profit = -bet
-                wrong_matches.append({
-                    '比赛': f"{row['home_team']} vs {row['away_team']}",
-                    '预测赛果': row['predicted_result'], '实际赛果': actual_res,
-                    '预测比分': pred_score, '实际比分': actual_score,
-                    '伤停': f"主[{row.get('home_injuries', '无')}] 客[{row.get('away_injuries', '无')}]"
-                })
-        
-        if pred_score != '未知' and pred_score != actual_score:
-            score_analysis_data.append({
-                '比赛': f"{row['home_team']} vs {row['away_team']}",
-                '预期比分': pred_score, '实际比分': actual_score,
-            })
         
         total_profit += profit
         df_log.at[idx, 'actual_score'] = actual_score
@@ -142,10 +139,10 @@ for idx, row in pending_review.iterrows():
             '财务情况': round(profit, 2)
         })
 
-if total_count == 0 and len(score_analysis_data) == 0:
+if total_count == 0:
     print("⚠️ 扫描到了比赛，但暂无已结算赛果。")
     df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
-    send_email("⏳ 每日复盘通知 (待结算)", "<html><body><h2>比赛尚未结算</h2></body></html>")
+    send_email("⏳ 每日复盘通知 (待结算)", "<html><body><h2>比赛尚未结算，系统将在明日重试。</h2></body></html>")
     exit()
 
 bankroll += total_profit
@@ -159,88 +156,35 @@ else:
     df_bank = new_bankroll_row
 df_bank.to_csv('bankroll.csv', index=False, encoding='utf-8-sig')
 
-# AI 生成总结
-ai_report = ""
-if wrong_matches or len(score_analysis_data) > 3:
-    prompt = f"""顶级足球量化总监，以下是昨日预测失败或比分偏差的复盘：
-    错题本: {wrong_matches}
-    比分偏差: {score_analysis_data[:10]}
-    请分析原因，输出3条深刻的【纠错铁律】。"""
-    try:
-        res = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False)
-        ai_report = res.choices[0].message.content.strip()
-        with open('knowledge.txt', 'a', encoding='utf-8') as f:
-            f.write(f"\n\n--- {datetime.now().strftime('%Y-%m-%d')} 深度比分纠错 ---\n{ai_report}")
-    except Exception as e: ai_report = f"AI 剖析失败: {e}"
-else:
-    ai_report = "完美！昨日无赛果错题，且比分预测与实际结果高度吻合，无需调整。"
-
-# 组装复盘 HTML
+# 组装邮件（简化版，输出复盘表格）
 html_table = pd.DataFrame(review_records).to_html(index=False, border=0, classes='report-table', justify='center')
 
-css = """
-<style>
-    body { font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f4f7f6; padding: 20px; color: #333; }
-    .container { max-width: 900px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-    h1 { text-align: center; color: #2c3e50; border-bottom: 3px solid #e74c3c; padding-bottom: 15px; margin-bottom: 25px; }
-    h2 { color: #e74c3c; border-bottom: 2px solid #e74c3c; padding-bottom: 10px; }
-    .stats-dashboard { display: flex; justify-content: space-around; background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 25px; border: 1px solid #e9ecef; }
-    .stat-item { text-align: center; }
-    .stat-value { font-size: 26px; font-weight: bold; color: #e74c3c; }
-    .stat-label { font-size: 14px; color: #6c757d; margin-top: 5px; }
-    .report-table { width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 13px; }
-    .report-table th { background-color: #2c3e50; color: white; padding: 12px; text-align: center; }
-    .report-table td { padding: 10px; border-bottom: 1px solid #dee2e6; text-align: center; }
-    .report-table tr:hover { background-color: #f1f1f1; }
-    .ai-box { background-color: #e8f4fd; border-left: 5px solid #3498db; padding: 20px; border-radius: 5px; font-size: 15px; line-height: 1.6; }
-    .card { border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 15px; background: #fafafa; }
-    .card-title { margin: 0 0 10px 0; color: #2c3e50; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-</style>
-"""
-
 html_content = f"""
-<html><head>{css}</head>
+<html><head><style>
+    body {{ font-family: Arial; padding: 20px; color: #333; }}
+    .container {{ max-width: 850px; margin: auto; background: #fff; padding: 30px; border-radius: 12px; }}
+    h1 {{ text-align: center; color: #2c3e50; }}
+    .stats-dashboard {{ display: flex; justify-content: space-around; background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 25px; }}
+    .stat-item {{ text-align: center; }}
+    .stat-value {{ font-size: 26px; font-weight: bold; color: #e74c3c; }}
+    .report-table {{ width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 13px; }}
+    .report-table th {{ background-color: #2c3e50; color: white; padding: 12px; text-align: center; }}
+    .report-table td {{ padding: 10px; border-bottom: 1px solid #dee2e6; text-align: center; }}
+</style></head>
 <body>
 <div class="container">
-    <h1>💼 每日量化实盘复盘战报 (V46.0)</h1>
-    
+    <h1>💼 每日量化实盘复盘战报 (V47.0 强制清算版)</h1>
     <div class="stats-dashboard">
-        <div class="stat-item"><div class="stat-value">{win_rate:.1f}%</div><div class="stat-label">昨日胜率 ({correct_count}/{total_count})</div></div>
-        <div class="stat-item"><div class="stat-value" style="color: {'#27ae60' if total_profit >= 0 else '#c0392b'};">{total_profit:+.2f}</div><div class="stat-label">昨日盈亏 (元)</div></div>
-        <div class="stat-item"><div class="stat-value" style="color: #2c3e50;">{bankroll:.2f}</div><div class="stat-label">当前总资金</div></div>
+        <div class="stat-item"><div class="stat-value">{win_rate:.1f}%</div><div class="stat-label">胜率 ({correct_count}/{total_count})</div></div>
+        <div class="stat-item"><div class="stat-value">{total_profit:+.2f}</div><div class="stat-label">盈亏 (元)</div></div>
+        <div class="stat-item"><div class="stat-value">{bankroll:.2f}</div><div class="stat-label">当前资金</div></div>
     </div>
-
-    <h2>Part 1: 预测与实盘对比清单</h2>
+    <h3>⚔️ 战况明细</h3>
     {html_table}
-"""
-
-# Part 2: 比分卡片生成
-html_content += "<h2>Part 2: 比分精细化复盘 (单场分析)</h2>"
-for r in review_records:
-    is_score_hit = r['比分对比'] == '✅ 命中'
-    color = '#27ae60' if is_score_hit else '#c0392b'
-    
-    html_content += f"""
-    <div class="card" style="border-left: 5px solid {color};">
-        <h4 class="card-title">{r['赛事']} | {r['对阵']} ({r['比赛日期']})</h4>
-        <p style="margin: 5px 0; font-size: 14px;"><b>赛果：</b>预测 <span style="color:blue;">{r['预测赛果']}</span> vs 实际 <span style="color:red;">{r['实际赛果']}</span> -> <b>{r['赛果对比']}</b></p>
-        <p style="margin: 5px 0; font-size: 14px;"><b>比分：</b>预测 <span style="color:blue;">{r['预测比分']}</span> vs 实际 <span style="color:red;">{r['实际比分']}</span> -> <b>{r['比分对比']}</b></p>
-        <p style="margin: 10px 0 0 0; font-size: 13px; color: #555;">
-            🧠 <b>专家总结：</b> 
-            {"预测精准！模型成功捕捉了双方攻防节奏，继续保持该特征权重。" if is_score_hit else "预测偏差。需反思是伤停高估、还是机构诱盘导致的数据失真？已记录入错题本并沉淀经验。"}
-        </p>
-    </div>
-    """
-
-html_content += f"""
-    <div class="ai-box">
-        <h3>🧠 AI 整体深度纠错 (已沉淀至经验库)</h3>
-        <p>{ai_report.replace(chr(10), '<br>')}</p>
-    </div>
 </div>
 </body></html>
 """
 
 df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
-send_email("💼 每日量化实盘复盘战报 (V46.0)", html_content)
+send_email("💼 每日量化实盘复盘战报 (V47.0 强制清算版)", html_content)
 print("✅ 复盘完毕！")
