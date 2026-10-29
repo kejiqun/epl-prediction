@@ -57,13 +57,10 @@ print(f"⏳ 找到 {len(pending_review)} 场待复盘比赛，正在通过 API-F
 
 actual_results = {}
 headers = {"x-apisports-key": API_FOOTBALL_KEY}
-
-# 计算需要查询的日期 (包含昨天和前天)
 dates_to_query = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(1, 6)]
 
 for d_str in dates_to_query:
     try:
-        # 查这一天的所有已完赛比赛
         url = f"https://v3.football.api-sports.io/fixtures?date={d_str}&status=FT"
         resp = requests.get(url, headers=headers, timeout=15)
         if resp.status_code == 200:
@@ -73,7 +70,7 @@ for d_str in dates_to_query:
                 hg = fixture['goals']['home']
                 ag = fixture['goals']['away']
                 if hg is not None and ag is not None:
-                    actual_results[(d_str, h_name, a_name)] = (hg, ag)
+                    actual_results[(h_name, a_name)] = (hg, ag) # 🌟 核心修复：不再用日期匹配，直接用主客队名称做唯一键！
     except: continue
 
 review_records = []
@@ -83,7 +80,7 @@ total_profit = 0.0
 
 for idx, row in pending_review.iterrows():
     m_date = row['date'].strftime('%Y-%m-%d')
-    res = actual_results.get((m_date, row['home_team'], row['away_team']))
+    res = actual_results.get((row['home_team'], row['away_team'])) # 精确匹配主客队
     
     if res:
         hg, ag = res
@@ -120,15 +117,8 @@ for idx, row in pending_review.iterrows():
             '财务情况': round(profit, 2)
         })
 
-# 🌟 核心修复：3天抓不到赛果，强制作废，不再死等
 if total_count == 0:
-    print("⚠️ 扫描到了比赛，但 API 依然没查到赛果，可能比赛延期。强制清理死账...")
-    for idx, row in pending_review.iterrows():
-        if (today - row['date']).days > 3:
-            df_log.at[idx, 'actual_score'] = "赛果丢失"
-            df_log.at[idx, 'is_win'] = "作废"
-            df_log.at[idx, 'profit'] = 0.0
-            
+    print("⚠️ 扫描到了比赛，但 API 依然没查到赛果，可能比赛延期。")
     df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
     send_email("⏳ 每日复盘通知 (待结算)", "<html><body><h2>比赛尚未结算，系统将在明日重试。</h2></body></html>")
     exit()
