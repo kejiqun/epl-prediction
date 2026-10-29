@@ -5,10 +5,8 @@ import joblib
 import os
 import io
 import json
-import re
 from datetime import datetime, timedelta
 import warnings
-from scipy.stats import poisson
 from openai import OpenAI
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -18,6 +16,7 @@ from email.header import Header
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from scipy.stats import poisson
 from team_mapping import translate_team_name
 from itertools import combinations
 
@@ -26,7 +25,7 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
 print("==================================================")
-print("🚀 启动 V210.0 纯正解析解双泊松引擎 (拒绝伪科学)")
+print("🚀 启动 V310.0 科学内核·玄学外观版")
 print("==================================================")
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -37,7 +36,7 @@ API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY")
 
 llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com") if DEEPSEEK_API_KEY else None
 
-# ================= 1. 玄学五行模块 (保留，增加情绪价值) =================
+# ================= 1. 纯玄学美学展示模块 =================
 def get_wuxing_theme():
     base_date = datetime(1900, 1, 31)
     today = datetime.now()
@@ -45,7 +44,6 @@ def get_wuxing_theme():
     
     tiangan = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸']
     dizhi = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥']
-    
     gan_idx = days_diff % 10
     zhi_idx = days_diff % 12
     day_ganzhi = tiangan[gan_idx] + dizhi[zhi_idx]
@@ -63,15 +61,9 @@ def get_wuxing_theme():
     return day_ganzhi, element, themes[element]
 
 DAY_GANZHI, ELEMENT, THEME = get_wuxing_theme()
+print(f"🌙 今日玄学匹配: {DAY_GANZHI}日 ({ELEMENT}属性)")
 
-# ================= 2. 鲁棒性工具类 =================
-def safe_request(url, timeout=8):
-    try:
-        resp = requests.get(url, timeout=timeout)
-        if resp.status_code == 200: return resp.json()
-    except: pass
-    return None
-
+# ================= 2. 鲁棒性工具 =================
 def send_email(subject, html, imgs, receiver="308730509@qq.com"):
     if not EMAIL_SENDER or not EMAIL_PASSWORD: return
     msg = MIMEMultipart('related')
@@ -88,17 +80,15 @@ def send_email(subject, html, imgs, receiver="308730509@qq.com"):
         print("✅ 邮件发送成功！")
     except Exception as e: print(f"❌ 邮件失败: {e}")
 
-# ================= 3. 超级天气智能追踪模块 =================
+def safe_request(url, timeout=8):
+    try:
+        resp = requests.get(url, timeout=timeout)
+        if resp.status_code == 200: return resp.json()
+    except: pass
+    return None
+
 def get_weather(team, date_str):
-    city_map = {
-        '阿森纳': 'London', '切尔西': 'London', '热刺': 'London', '曼联': 'Manchester', '曼城': 'Manchester',
-        '利物浦': 'Liverpool', '埃弗顿': 'Liverpool', '纽卡斯尔联': 'Newcastle', '阿斯顿维拉': 'Birmingham',
-        '皇家马德里': 'Madrid', '巴塞罗那': 'Barcelona', '塞维利亚': 'Seville', '瓦伦西亚': 'Valencia',
-        '拜仁慕尼黑': 'Munich', '多特蒙德': 'Dortmund', '勒沃库森': 'Leverkusen', 'RB莱比锡': 'Leipzig',
-        '国际米兰': 'Milan', 'AC米兰': 'Milan', '尤文图斯': 'Turin', '那不勒斯': 'Naples', '罗马': 'Rome',
-        '拉齐奥': 'Rome', '亚特兰大': 'Bergamo', '佛罗伦萨': 'Florence', '蒙扎': 'Monza',
-        '巴黎圣日耳曼': 'Paris', '马赛': 'Marseille', '摩纳哥': 'Monaco', '里尔': 'Lille', '里昂': 'Lyon'
-    }
+    city_map = {'阿森纳': 'London', '曼联': 'Manchester', '利物浦': 'Liverpool', '皇家马德里': 'Madrid', '巴塞罗那': 'Barcelona', '拜仁慕尼黑': 'Munich', '国际米兰': 'Milan', 'AC米兰': 'Milan', '尤文图斯': 'Turin', '那不勒斯': 'Naples', '蒙扎': 'Monza'}
     cache_file = 'team_city_cache.json'
     if os.path.exists(cache_file):
         try:
@@ -106,30 +96,16 @@ def get_weather(team, date_str):
                 cache = json.load(f)
                 if team in cache: city_map[team] = cache[team]
         except: pass
-
-    city = city_map.get(team)
-    if not city and llm_client:
-        try:
-            prompt = f"球队 '{team}' 的主场在哪个城市？请只回复英文城市名，不要标点符号。例如：Milan。"
-            res = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False, timeout=5)
-            city = res.choices[0].message.content.strip().replace('.', '')
-            if city and len(city) < 30:
-                city_map[team] = city
-                with open(cache_file, 'w', encoding='utf-8') as f: json.dump(city_map, f, ensure_ascii=False)
-            else: city = 'London'
-        except: city = 'London'
-            
-    if not city: city = 'London'
-
+    city = city_map.get(team, 'London')
     data = safe_request(f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={city}&dt={date_str[:10]}&lang=zh")
     if data and 'forecast' in data:
         day = data['forecast']['forecastday'][0]['day']
         return day['condition']['text'], round(day['avgtemp_c'], 1)
     return "未知", 0
 
-# ================= 4. 纯正解析解：双泊松矩阵 =================
-def generate_score_matrix(home_xg, away_xg, max_goals=8, rho=-0.15):
-    """纯数学解析解，瞬间出结果，无需蒙特卡洛"""
+# ================= 3. 绝对科学内核：Dixon-Coles 解析解 =================
+def generate_score_matrix(home_xg, away_xg, max_goals=7, rho=-0.15):
+    """纯数学解析解，瞬间出结果，毫秒级算完，没有蒙特卡洛的算力浪费"""
     def dixon_coles_tau(h, a):
         if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
         elif h == 0 and a == 1: return 1 + home_xg * rho
@@ -147,22 +123,18 @@ def generate_score_matrix(home_xg, away_xg, max_goals=8, rho=-0.15):
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores, matrix
 
-def get_total_goals(matrix, max_goals=8):
+def get_total_goals(matrix, max_goals=7):
     totals = {}
     for h in range(max_goals + 1):
         for a in range(max_goals + 1):
             total = h + a
             totals[total] = totals.get(total, 0) + matrix[h][a]
-    
     sorted_goals = sorted(totals.items(), key=lambda x: x[1], reverse=True)
     top2 = [f"{k}球" for k, v in sorted_goals[:2] if k <= 7]
-    
-    prob_over_25 = sum(p for g, p in totals.items() if g > 2.5)
-    prob_under_25 = sum(p for g, p in totals.items() if g < 2.5)
-    
-    return " / ".join(top2), prob_over_25, prob_under_25
+    prob_over = sum(p for g, p in totals.items() if g > 2.5)
+    return " / ".join(top2), prob_over
 
-# ================= 5. 数据装载 =================
+# ================= 4. 数据装载 =================
 bankroll, base_kelly = 10000.0, 0.2
 if os.path.exists('bankroll.csv'):
     try:
@@ -203,33 +175,12 @@ now, end = pd.Timestamp.now(), pd.Timestamp.now() + pd.Timedelta(hours=24)
 df_next = df_next[(df_next['datetime_parsed'] > now) & (df_next['datetime_parsed'] <= end)].sort_values('datetime_parsed')
 if df_next.empty: exit()
 
-real_odds = {}
-if os.path.exists('real_odds.csv'):
-    for _, r in pd.read_csv('real_odds.csv').iterrows():
-        try: real_odds[(pd.to_datetime(r['比赛时间']).strftime('%Y-%m-%d'), translate_team_name(r['主队']), translate_team_name(r['客队']))] = r
-        except: pass
-
-inj_dict, att_pen, def_pen = {}, {}, {}
-fpl = safe_request("https://fantasy.premierleague.com/api/bootstrap-static/", timeout=12)
-if fpl:
-    try:
-        t_map = {t['id']: translate_team_name(t['name']) for t in fpl['teams']}
-        for e in fpl['elements']:
-            if e['status'] in ['d','i','s','u'] or (e.get('chance_of_playing_next_round') or 100) < 75:
-                tn = t_map.get(e['team'])
-                if tn:
-                    inj_dict.setdefault(tn, []).append(e['web_name'])
-                    w = e.get('now_cost', 50) / 100.0
-                    if e['element_type'] in [3,4]: att_pen[tn] = att_pen.get(tn, 0) + w*0.15
-                    elif e['element_type'] in [1,2]: def_pen[tn] = def_pen.get(tn, 0) + w*0.15
-    except: pass
-
+# 历史特征
 df_hist = pd.read_csv('all_leagues_matches.csv')
 df_hist['date'] = pd.to_datetime(df_hist['date'])
 df_hist['h_cn'] = df_hist['home_team'].apply(translate_team_name)
 df_hist['a_cn'] = df_hist['away_team'].apply(translate_team_name)
 df_hist = df_hist.sort_values('date')
-
 avg_goals = (df_hist['home_goals'].mean() + df_hist['away_goals'].mean()) / 2
 stats, last_date = {}, {}
 
@@ -259,15 +210,11 @@ m_ax = joblib.load('epl_v31_away_goals_model_xgb.pkl')
 elo = joblib.load('elo_dict.pkl') if os.path.exists('elo_dict.pkl') else {}
 
 picks, logs, html_cards, imgs = [], [], "", []
-parlay_pool = [] 
+parlay_pool = []
 
-# ================= 6. 主预测流 =================
+# ================= 5. 主循环 =================
 for league in df_next['联赛'].unique():
-    html_cards += f"""
-    <div style="background: linear-gradient(90deg, {THEME['grad1']} 0%, {THEME['grad2']} 100%); color: white; padding: 12px 20px; border-radius: 8px; margin-top: 35px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-        <h2 style="margin: 0; font-size: 20px; letter-spacing: 1px;">🏆 {league}</h2>
-    </div>
-    """
+    html_cards += f"<div style='background:linear-gradient(90deg,{THEME['grad1']},{THEME['grad2']});color:#fff;padding:12px 20px;border-radius:8px;margin-top:35px;margin-bottom:25px;'><h2 style='margin:0;'>{league}</h2></div>"
     
     for _, m in df_next[df_next['联赛'] == league].iterrows():
         h, a = m['主队'], m['客队']
@@ -277,22 +224,18 @@ for league in df_next['联赛'].unique():
         if stats.get(h, {'count':0})['count'] < 3 or stats.get(a, {'count':0})['count'] < 3: continue
         
         od_manual = manual_odds.get((date_str, h, a))
-        od_auto = real_odds.get((date_str, h, a))
-        od = od_manual if od_manual is not None else od_auto
+        if od_manual is None: continue # 没有手动盘口不推
         
-        has_odds, src = False, "无赔率"
-        if od is not None:
-            try:
-                oh, od_, oa = float(od['主胜赔率']), float(od['平局赔率']), float(od['客胜赔率'])
-                tl, over, under = float(od.get('大小球盘口', 2.5)), float(od.get('大球赔率', 0)), float(od.get('小球赔率', 0))
-                has_odds = True
-                src = "手动盘" if od_manual is not None else "自动盘"
-            except: pass
+        try:
+            oh, od_, oa = float(od_manual['主胜赔率']), float(od_manual['平局赔率']), float(od_manual['客胜赔率'])
+            tl, over_odd, under_odd = float(od_manual.get('大小球盘口', 2.5)), float(od_manual.get('大球赔率', 0)), float(od_manual.get('小球赔率', 0))
+        except: continue
             
         hs, as_ = stats.get(h, {}), stats.get(a, {})
         h_rest = (pd.Timestamp(m['datetime_parsed']).date() - last_date[h].date()).days if h in last_date else 7
         a_rest = (pd.Timestamp(m['datetime_parsed']).date() - last_date[a].date()).days if a in last_date else 7
         
+        # 纯净特征
         feat = np.array([
             elo.get(h,1500), elo.get(a,1500), elo.get(h,1500)-elo.get(a,1500), 1500, 1500,
             decay_mean(hs.get('xg',[])[-5:]), decay_mean(as_.get('xg',[])[-5:]),
@@ -309,94 +252,78 @@ for league in df_next['联赛'].unique():
         ph_l, ph_x = m_hl.predict(feat)[0], m_hx.predict(feat)[0]
         pa_l, pa_x = m_al.predict(feat)[0], m_ax.predict(feat)[0]
         
+        # 🌟 共识惩罚
         penalty = 1.0
         warn_c = ""
         if abs(ph_l - ph_x) > 0.4 or abs(pa_l - pa_x) > 0.4:
             penalty = 0.8
             warn_c = "⚠️ 模型分歧度过高，已强制削减置信度。"
             
-        home_xg = max(0.1, (ph_l + ph_x)/2 * penalty) * max(0.5, 1 - att_pen.get(h,0)) + (pa_l*0.2)
-        away_xg = max(0.1, (pa_l + pa_x)/2 * penalty) * max(0.5, 1 - att_pen.get(a,0)) + (ph_l*0.2)
+        home_xg = max(0.1, (ph_l + ph_x)/2 * penalty)
+        away_xg = max(0.1, (pa_l + pa_x)/2 * penalty)
         
-        w_txt, _ = get_weather(h, date_str)
-        if "雨" in w_txt or "雪" in w_txt: home_xg *= 0.9; away_xg *= 0.9
-
-        warn_r = ""
-        if has_odds and tl > 0 and abs((home_xg+away_xg) - tl) > 1.0:
-            warn_r = f"⚠️ 模型xG({home_xg+away_xg:.1f})与盘口({tl})偏离大，已修正。"
+        # 盘口反推修正
+        if tl > 0 and abs((home_xg+away_xg) - tl) > 1.0:
             s = tl / (home_xg + away_xg)
             home_xg *= s; away_xg *= s
 
-        # 🌟 核心：直接使用双泊松解析解，毫秒级出结果
-        sc_probs, matrix = generate_score_matrix(home_xg, away_xg, max_goals=8)
-        ph = np.sum(np.tril(matrix, -1))
-        pd_ = np.sum(np.diag(matrix))
-        pa = np.sum(np.triu(matrix, 1))
-        tg_str, prob_over, prob_under = get_total_goals(matrix)
+        # 纯数学解析解
+        sc_probs, matrix = generate_score_matrix(home_xg, away_xg)
+        p_h = np.sum(np.tril(matrix, -1))
+        p_d = np.sum(np.diag(matrix))
+        p_a = np.sum(np.triu(matrix, 1))
         
-        warn_t, final_rec, bet = "", "观望", 0.0
-        ou_rec = "观望"
+        margin = 1/oh + 1/od_ + 1/oa
+        ih, id_, ia = (1/oh)/margin, (1/od_)/margin, (1/oa)/margin
+        p_h = p_h * 0.6 + ih * 0.4
+        p_d = p_d * 0.6 + id_ * 0.4
+        p_a = p_a * 0.6 + ia * 0.4
+        total_p = p_h + p_d + p_a
+        p_h, p_d, p_a = p_h/total_p, p_d/total_p, p_a/total_p
         
-        if has_odds:
-            margin = 1/oh + 1/od_ + 1/oa
-            ih, id_, ia = (1/oh)/margin, (1/od_)/margin, (1/oa)/margin
-            
-            ph, pd_, pa = ph*0.6 + ih*0.4, pd_*0.6 + id_*0.4, pa*0.6 + ia*0.4
-            ph, pd_, pa = ph/(ph+pd_+pa), pd_/(ph+pd_+pa), pa/(ph+pd_+pa)
-            
-            if ph - ih > 0.12: warn_t = "⚠️ 冷门警报：主胜疑似诱盘。"
-            elif pa - ia > 0.12: warn_t = "⚠️ 冷门警报：客胜疑似诱盘。"
-            
-            choice = "主胜" if ph > max(pd_, pa) else ("平局" if pd_ > max(ph, pa) else "客胜")
-            if choice == "平局" and (home_xg+away_xg) > 2.8: choice = "主胜" if elo.get(h,1500) > elo.get(a,1500) else "客胜"
-            
-            kh, kd, ka = (ph*oh-1)/(oh-1), (pd_*od_-1)/(od_-1), (pa*oa-1)/(oa-1)
-            max_k = max(kh, kd, ka)
-            
-            if max_k > 0.02 and not warn_t:
-                bet_rec = "主胜" if max_k == kh else ("平局" if max_k == kd else "客胜")
-                if (bet_rec=="主胜" and ph>0.25) or (bet_rec=="平局" and pd_>0.25) or (bet_rec=="客胜" and pa>0.25):
-                    dynamic_kelly = base_kelly * (1 + max_k) 
-                    bet = bankroll * min(dynamic_kelly, 0.06) 
-                    final_rec = bet_rec
-                    
-                    real_p = ph if bet_rec=="主胜" else (pd_ if bet_rec=="平局" else pa)
-                    real_odds_val = oh if bet_rec=="主胜" else (od_ if bet_rec=="平局" else oa)
-                    parlay_pool.append({
-                        'match': f"{h} vs {a}", 'choice': bet_rec, 
-                        'prob': real_p, 'odds': real_odds_val, 'ev': real_p * real_odds_val
-                    })
-                else: final_rec = "观望"
-            else: final_rec = "观望"
-            
-            ou_rec = "大球" if prob_over*over > 1.05 else ("小球" if prob_under*under > 1.05 else "观望")
-        else:
-            choice = "主胜" if ph > max(pd_, pa) else ("平局" if pd_ > max(ph, pa) else "客胜")
-            final_rec = f"倾向:{choice}"
+        choice = "主胜" if p_h > max(p_d, p_a) else ("平局" if p_d > max(p_h, p_a) else "客胜")
+        
+        kh, kd, ka = (p_h*oh-1)/(oh-1), (p_d*od_-1)/(od_-1), (p_a*oa-1)/(oa-1)
+        max_k = max(kh, kd, ka)
+        
+        final_rec, bet_amt = "观望", 0.0
+        if max_k > 0.02:
+            bet_rec = "主胜" if max_k == kh else ("平局" if max_k == kd else "客胜")
+            if (bet_rec=="主胜" and p_h>0.25) or (bet_rec=="平局" and p_d>0.25) or (bet_rec=="客胜" and p_a>0.25):
+                dynamic_kelly = base_kelly * (1 + max_k)
+                bet_amt = bankroll * min(dynamic_kelly, 0.05)
+                final_rec = bet_rec
+                
+                real_p = p_h if bet_rec=="主胜" else (p_d if bet_rec=="平局" else p_a)
+                real_odds_val = oh if bet_rec=="主胜" else (od_ if bet_rec=="平局" else oa)
+                parlay_pool.append({'match': f"{h} vs {a}", 'choice': bet_rec, 'prob': real_p, 'odds': real_odds_val, 'ev': real_p * real_odds_val})
 
+        best_score = sc_probs[0][0]
         top3 = " | ".join([f"{s[0]} ({s[1]*100:.1f}%)" for s in sc_probs[:3]])
-        best_sc = sc_probs[0][0]
+        tg_str, prob_over = get_total_goals(matrix, 7)
+        ou_rec = "大球" if prob_over * over_odd > 1.05 else ("小球" if (1-prob_over) * under_odd > 1.05 else "观望")
 
-        if has_odds and (bet > 0 or ou_rec != "观望"):
-            picks.append({'时间': time_str, '赛事': league, '对阵': f"{h} vs {a}", '推荐': final_rec, '金额': round(bet,2), '比分': best_sc, '总进球': tg_str, '大小球': ou_rec})
+        if bet_amt > 0:
+            picks.append({'时间': time_str, '赛事': league, '对阵': f"{h} vs {a}", '推荐': final_rec, '金额': round(bet_amt,2), '比分': best_score, '总进球': tg_str, '大小球': ou_rec})
 
-        ai_txt = "AI裁判长连接超时，已跳过。"
-        if llm_client:
-            prompt = f"比赛:{h} vs {a}。模型倾向:{choice}。风险提示:{warn_c}{warn_t}{warn_r}。请用80字客观总结风险，给出操盘建议。"
+        ai_txt = "无风险提示。"
+        if llm_client and bet_amt > 0:
+            prompt = f"比赛:{h} vs {a}。模型推荐:{final_rec}。预期进球:{home_xg:.1f} vs {away_xg:.1f}。请用60字评估此单风险。"
             try: 
-                res = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role":"user","content":prompt}], stream=False, timeout=10)
+                res = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role":"user","content":prompt}], stream=False, timeout=8)
                 ai_txt = res.choices[0].message.content.strip()
             except: pass
 
+        # 画图
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 3.2))
-        ax1.bar(['主胜', '平局', '客胜'], [ph*100, pd_*100, pa*100], color=[THEME['primary'], '#f28e2b', '#e15759'], width=0.5)
-        ax1.set_title("解析解双泊松胜率", color=THEME['primary'], fontweight='bold'); ax1.set_ylim(0,100)
-        for i,v in enumerate([ph*100,pd_*100,pa*100]): ax1.text(i, v+2, f"{v:.1f}%", ha='center', fontweight='bold')
+        ax1.bar(['主胜', '平局', '客胜'], [p_h*100, p_d*100, p_a*100], color=[THEME['primary'], '#f28e2b', '#e15759'], width=0.5)
+        ax1.set_title("融合胜率", color=THEME['primary'], fontweight='bold'); ax1.set_ylim(0,100)
+        for i,v in enumerate([p_h*100,p_d*100,p_a*100]): ax1.text(i, v+2, f"{v:.1f}%", ha='center', fontweight='bold')
         ax2.barh(['客队', '主队'], [away_xg, home_xg], color=['#59a14f', THEME['primary']], height=0.4)
         ax2.set_title("基准预期进球(xG)", color=THEME['primary'], fontweight='bold')
         plt.tight_layout(); buf = io.BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); buf.seek(0); imgs.append(buf); plt.close(fig)
 
-        logs.append({'date': date_str, 'league': league, 'home': h, 'away': a, 'res': final_rec, 'bet': round(bet,2), 'score': best_sc})
+        logs.append({'date': date_str, 'league': league, 'home': h, 'away': a, 'res': final_rec, 'bet': round(bet_amt,2), 'score': best_score})
 
         html_cards += f"""
         <div style="border: 1px solid #e0e0e0; border-radius: 12px; padding: 25px; margin-bottom: 25px; background: #ffffff; box-shadow: 0 6px 12px rgba(0,0,0,0.05); border-top: 4px solid {THEME['primary']};">
@@ -410,7 +337,7 @@ for league in df_next['联赛'].unique():
             <div style="display: flex; gap: 15px; margin-bottom: 20px;">
                 <div style="flex: 1; background: #fdfbf7; border-left: 4px solid #ffc107; padding: 15px; border-radius: 6px;">
                     <span style="font-size: 13px; color: #856404; font-weight: bold; display: block; margin-bottom: 8px;">🎯 首选比分</span>
-                    <span style="font-size: 24px; color: {THEME['primary']}; font-weight: bold; letter-spacing: 1px;">{best_sc}</span>
+                    <span style="font-size: 24px; color: {THEME['primary']}; font-weight: bold; letter-spacing: 1px;">{best_score}</span>
                     <span style="font-size: 12px; color: #666; margin-left: 10px;">防冷: {top3}</span>
                 </div>
                 <div style="flex: 1; background: #f4f8fd; border-left: 4px solid {THEME['primary']}; padding: 15px; border-radius: 6px;">
@@ -421,13 +348,13 @@ for league in df_next['联赛'].unique():
 
             <div style="background: #fff8f8; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
                 <div style="display: flex; justify-content: space-between; text-align: center; font-size: 13px; color: #555; font-weight: bold;">
-                    <div>主胜概率: <span style="color:{THEME['primary']};">{ph*100:.1f}%</span></div>
-                    <div>平局概率: <span style="color:#f28e2b;">{pd_*100:.1f}%</span></div>
-                    <div>客胜概率: <span style="color:#e15759;">{pa*100:.1f}%</span></div>
+                    <div>主胜概率: <span style="color:{THEME['primary']};">{p_h*100:.1f}%</span></div>
+                    <div>平局概率: <span style="color:#f28e2b;">{p_d*100:.1f}%</span></div>
+                    <div>客胜概率: <span style="color:#e15759;">{p_a*100:.1f}%</span></div>
                 </div>
             </div>
 
-            {f"<div style='background-color: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; font-weight: bold; border-left: 3px solid #ffc107;'>{warn_c} {warn_t} {warn_r}</div>" if warn_c or warn_t or warn_r else ""}
+            {f"<div style='background-color: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; font-weight: bold; border-left: 3px solid #ffc107;'>{warn_c}</div>" if warn_c else ""}
 
             <div style="padding: 16px; border: 1px dashed {THEME['primary']}; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; background-color: {THEME['bg']};">
                 <div>
@@ -441,7 +368,7 @@ for league in df_next['联赛'].unique():
         </div>
         """
 
-# ================= 7. 串关策略引擎 =================
+# ================= 6. 串关算法 (满足要求) =================
 parlay_html = "<p style='text-align:center; color:#888; padding: 20px;'>今日无明显正期望值单子，不推荐串关。</p>"
 if len(parlay_pool) >= 2:
     parlay_pool = sorted(parlay_pool, key=lambda x: x['ev'], reverse=True)[:5]
@@ -488,7 +415,7 @@ if len(parlay_pool) >= 2:
     else:
         parlay_html = "<p style='text-align:center; color:#888; padding: 20px;'>今日单场EV不足，不强行组合串关。</p>"
 
-# ================= 8. 最终组装发送 =================
+# ================= 7. 最终组装发送 =================
 if picks:
     df_picks = pd.DataFrame(picks)
     picks_rows = ""
@@ -548,5 +475,5 @@ html = f"""<html><body style="font-family:'Helvetica Neue', Arial, sans-serif; p
 if logs:
     pd.DataFrame(logs).to_csv('predictions_log.csv', mode='a', header=not os.path.exists('predictions_log.csv'), index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html)
-send_email(f"【{DAY_GANZHI}日·{ELEMENT}】⚽ 足球量化决策清单 (V210.0)", html, imgs)
+send_email(f"【{DAY_GANZHI}日·{ELEMENT}】⚽ 足球量化决策清单 (V310.0)", html, imgs)
 print("🏁 运行完毕！")
