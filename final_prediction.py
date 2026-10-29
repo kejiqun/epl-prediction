@@ -46,7 +46,7 @@ def send_rich_email(subject, html_content, img_buffers, receiver="308730509@qq.c
     except Exception as e: print(f"❌ 邮件失败: {e}")
 
 def get_match_weather(home_team, date_str):
-    city = {'阿森纳': 'London', '曼联': 'Manchester', '利物浦': 'Liverpool', '皇家马德里': 'Madrid', '巴塞罗那': 'Barcelona', '拜仁慕尼黑': 'Munich', '国际米兰': 'Milan', 'AC米兰': 'Milan'}.get(home_team, 'London')
+    city = {'阿森纳': 'London', '曼联': 'Manchester', '利物浦': 'Liverpool', '皇家马德里': 'Madrid', '巴塞罗那': 'Barcelona', '拜仁慕尼黑': 'Munich', '国际米兰': 'Milan', 'AC米兰': 'Milan', '尤文图斯': 'Turin', '那不勒斯': 'Naples', '罗马': 'Rome', '拉齐奥': 'Rome'}.get(home_team, 'London')
     try:
         url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={city}&dt={date_str[:10]}&lang=zh"
         resp = requests.get(url, timeout=10)
@@ -131,7 +131,6 @@ df_next_round['客队'] = df_next_round['客队'].apply(translate_team_name)
 df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
 df_next_round['match_date_str'] = df_next_round['datetime_parsed'].dt.strftime('%Y-%m-%d')
 
-# 🌟 核心时间逻辑：覆盖当前时间往后推 24 小时内的比赛，完美解决时差问题
 now_ts = pd.Timestamp.now()
 end_window = now_ts + pd.Timedelta(hours=24)
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] > now_ts) & (df_next_round['datetime_parsed'] <= end_window)]
@@ -220,7 +219,6 @@ if os.path.exists('elo_dict.pkl'): elo_dict = joblib.load('elo_dict.pkl')
 
 knowledge_base = open('knowledge.txt', 'r', encoding='utf-8').read() if os.path.exists('knowledge.txt') else ""
 
-# 确保这几个模型文件存在，否则会报错
 model_h_lgb = joblib.load('epl_v31_home_goals_model_lgb.pkl')
 model_a_lgb = joblib.load('epl_v31_away_goals_model_lgb.pkl')
 model_h_xgb = joblib.load('epl_v31_home_goals_model_xgb.pkl')
@@ -372,8 +370,31 @@ for league in df_next_round['联赛'].unique():
                 if prob_hc_home * hc_h_odd > 1.05: hc_rec = "主队赢盘"
                 elif prob_hc_away * hc_a_odd > 1.05: hc_rec = "客队赢盘"
         else:
-            final_rec = f"技术倾向：{predict_choice}"
-            split_msg = "(无真实盘口，仅供观赛)"
+            # 🌟 核心修复：如果没有赔率，但当模型概率极高时，也作为技术推荐放入狙击清单！
+            if p_h >= 0.55:
+                final_rec = "主胜"
+                bet_amt = 0.0  # 无赔率不显示具体金额
+                split_msg = "技术推荐（无真实赔率）"
+                jczq_picks_list.append({
+                    '比赛时间': m_time, '赛事': league, '对阵': f"{h_cn} vs {a_cn}",
+                    '推荐': final_rec, '金额': '无盘口',
+                    '比分': scores_list[0][0], '总进球': get_total_goals_recommendation(prob_matrix)[0],
+                    '让球': '观望', '大小球': '观望'
+                })
+            elif p_a >= 0.55:
+                final_rec = "客胜"
+                bet_amt = 0.0
+                split_msg = "技术推荐（无真实赔率）"
+                jczq_picks_list.append({
+                    '比赛时间': m_time, '赛事': league, '对阵': f"{h_cn} vs {a_cn}",
+                    '推荐': final_rec, '金额': '无盘口',
+                    '比分': scores_list[0][0], '总进球': get_total_goals_recommendation(prob_matrix)[0],
+                    '让球': '观望', '大小球': '观望'
+                })
+            else:
+                final_rec = f"技术倾向：{predict_choice}"
+                bet_amt = 0.0
+                split_msg = "(无真实盘口，仅供观赛)"
 
         valid_scores = [s for s in scores_list if s[1] > 0.012]
         
@@ -387,7 +408,8 @@ for league in df_next_round['联赛'].unique():
 
         total_goals_rec_str, best_goal = get_total_goals_recommendation(prob_matrix)
 
-        if bet_amt > 0 or "高价值" in ou_rec or "高价值" in hc_rec:
+        # 只有在有真实赔率且凯利看好时才加入（技术推荐的已经在上面加过了）
+        if (has_real and bet_amt > 0) or "高价值" in ou_rec or "高价值" in hc_rec:
             jczq_picks_list.append({
                 '比赛时间': m_time, '赛事': league, '对阵': f"{h_cn} vs {a_cn}",
                 '推荐': final_rec if bet_amt > 0 else "观望", '金额': round(bet_amt, 2) if bet_amt > 0 else 0,
@@ -504,7 +526,7 @@ final_html = """
 <div class="container">
 """
 
-final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V49.0 时差修复版)</h1>"
+final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V50.0 强出单版)</h1>"
 
 final_html += "<h2 style='color: #e74c3c; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;'>🎯 Part 1: 今日竞彩狙击清单 (价值投资)</h2>"
 if jczq_picks_list:
@@ -538,4 +560,4 @@ if not log_df.empty:
     log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V49.0 时差修复版)", final_html, img_buffers)
+send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V50.0 强出单版)", final_html, img_buffers)
