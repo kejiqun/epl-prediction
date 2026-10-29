@@ -124,17 +124,52 @@ if os.path.exists('bankroll.csv'):
             elif win_rate > 0.6: kelly_multiplier = 0.3
     except: pass
 
+# ==========================================
+# 🌟 核心数据源融合：自动抓取 + 手动补漏
+# ==========================================
 if not os.path.exists('all_leagues_matches.csv'):
     print("❌ 致命错误：缺少 all_leagues_matches.csv，请先运行 fetch_league_history.py")
     exit()
 
-if not os.path.exists('daily_matches.csv'): exit()
-df_next_round = pd.read_csv('daily_matches.csv')
-df_next_round['主队'] = df_next_round['主队'].apply(translate_team_name)
-df_next_round['客队'] = df_next_round['客队'].apply(translate_team_name)
-df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
+# 1. 读取自动抓取的赛程
+df_auto = pd.DataFrame()
+if os.path.exists('daily_matches.csv'):
+    df_auto = pd.read_csv('daily_matches.csv')
+    df_auto['主队'] = df_auto['主队'].apply(translate_team_name)
+    df_auto['客队'] = df_auto['客队'].apply(translate_team_name)
+    df_auto['datetime_parsed'] = pd.to_datetime(df_auto['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
+
+# 2. 读取手动填写的赔率
+manual_odds_dict = {}
+df_manual = pd.DataFrame()
+if os.path.exists('manual_odds.csv'):
+    try:
+        df_manual_raw = pd.read_csv('manual_odds.csv')
+        # 处理时间：将 日期 + 时间 合并
+        df_manual_raw['比赛时间_str'] = df_manual_raw['比赛日期'].astype(str).str.strip() + ' ' + df_manual_raw['比赛时间'].astype(str).str.strip()
+        df_manual_raw['datetime_parsed'] = pd.to_datetime(df_manual_raw['比赛时间_str'])
+        df_manual_raw['主队'] = df_manual_raw['主队'].apply(translate_team_name)
+        df_manual_raw['客队'] = df_manual_raw['客队'].apply(translate_team_name)
+        
+        # 建立赔率字典 (键为：日期_主队_客队)
+        for _, r in df_manual_raw.iterrows():
+            date_str = r['datetime_parsed'].strftime('%Y-%m-%d')
+            manual_odds_dict[(date_str, r['主队'], r['客队'])] = r
+            
+        # 为补充赛程，构造成与 df_auto 相同结构
+        df_manual['主队'] = df_manual_raw['主队']
+        df_manual['客队'] = df_manual_raw['客队']
+        df_manual['datetime_parsed'] = df_manual_raw['datetime_parsed']
+        df_manual['联赛'] = '手动精选' # 标记来源
+        df_manual['比赛时间'] = df_manual['datetime_parsed'] # 保留兼容
+    except Exception as e:
+        print(f"⚠️ 读取手动赔率失败: {e}")
+
+# 3. 合并赛程（手动填写的，如果自动没抓到，自动补上）
+df_next_round = pd.concat([df_auto, df_manual]).drop_duplicates(subset=['主队', '客队', 'datetime_parsed'], keep='last')
 df_next_round['match_date_str'] = df_next_round['datetime_parsed'].dt.strftime('%Y-%m-%d')
 
+# 4. 🌟 铁血时间过滤：只保留 当前时间 ~ 24小时内的比赛！
 now_ts = pd.Timestamp.now()
 end_window = now_ts + pd.Timedelta(hours=24)
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] > now_ts) & (df_next_round['datetime_parsed'] <= end_window)]
@@ -148,18 +183,14 @@ if df_next_round.empty:
     send_rich_email("🛡️ 多联赛每日战报 (今日休战)", html_report, [])
     exit()
 
-# 读取手动赔率
-manual_odds_dict = {}
-if os.path.exists('manual_odds.csv'):
-    try:
-        df_manual = pd.read_csv('manual_odds.csv')
-        for _, r in df_manual.iterrows():
-            m_date = str(r['比赛日期']).strip()
-            h_team = translate_team_name(str(r['主队']).strip())
-            a_team = translate_team_name(str(r['客队']).strip())
-            manual_odds_dict[(m_date, h_team, a_team)] = r
-    except Exception as e:
-        print(f"⚠️ 读取手动赔率失败: {e}")
+# 自动抓取的赔率(备用)
+real_odds_dict = {}
+if os.path.exists('real_odds.csv'):
+    for _, r in pd.read_csv('real_odds.csv').iterrows():
+        try: 
+            date_str = pd.to_datetime(r['比赛时间']).strftime('%Y-%m-%d')
+            real_odds_dict[(date_str, translate_team_name(r['主队']), translate_team_name(r['客队']))] = r
+        except: pass
 
 ref_dict, coach_dict = {}, {}
 if os.path.exists('referee_stats.csv'):
@@ -247,7 +278,7 @@ for league in df_next_round['联赛'].unique():
         h_count = team_stats.get(h_cn, {'count': 0})['count']
         a_count = team_stats.get(a_cn, {'count': 0})['count']
         
-        # 🚨 铁血纪律一：历史数据不足，直接拦截，绝不拿平均值糊弄
+        # 🚨 铁血纪律一：历史数据不足，直接拦截
         if h_count < 3 or a_count < 3:
             print(f"⚠️ 拦截比赛：{h_cn} vs {a_cn}，历史数据不足。")
             html_report_cards += f"""
@@ -264,23 +295,33 @@ for league in df_next_round['联赛'].unique():
             """
             continue
             
+        # 🚨 铁血纪律二：优先使用手动赔率，其次自动赔率
         manual_row = manual_odds_dict.get((match_date_str, h_cn, a_cn))
-        use_odds = manual_row
+        auto_row = real_odds_dict.get((match_date_str, h_cn, a_cn))
+        
+        use_odds = None
+        odds_source = ""
+        if manual_row is not None:
+            use_odds = manual_row
+            odds_source = "手动体彩盘"
+        elif auto_row is not None:
+            use_odds = auto_row
+            odds_source = "自动海外盘"
+            
         has_real = False
         
-        # 🚨 铁血纪律二：没有真实手动赔率，不计算凯利，不加入清单
         if use_odds is not None:
             real_h, real_d, real_a = float(use_odds['主胜赔率']), float(use_odds['平局赔率']), float(use_odds['客胜赔率'])
-            hc_line, hc_h_odd, hc_a_odd = float(use_odds['让球盘口']), float(use_odds['主让胜赔率']), float(use_odds['客受让胜赔率'])
-            tl_line, over_odd, under_odd = float(use_odds['大小球盘口']), float(use_odds['大球赔率']), float(use_odds['小球赔率'])
+            hc_line, hc_h_odd, hc_a_odd = float(use_odds.get('让球盘口', 0.0)), float(use_odds.get('主让胜赔率', 0.0)), float(use_odds.get('客受让胜赔率', 0.0))
+            tl_line, over_odd, under_odd = float(use_odds.get('大小球盘口', 2.5)), float(use_odds.get('大球赔率', 0.0)), float(use_odds.get('小球赔率', 0.0))
             has_real = True
-            trap_warning = ""
+            trap_warning = f"✅ 赔率来源：{odds_source}"
         else:
             real_h, real_d, real_a = 0, 0, 0
             hc_line, hc_h_odd, hc_a_odd = 0.0, 0.0, 0.0
             tl_line, over_odd, under_odd = 2.5, 0.0, 0.0
             has_real = False
-            trap_warning = "⚠️ 缺失手动真实赔率，系统不提供价值推荐。"
+            trap_warning = "⚠️ 缺失真实赔率，系统不提供价值推荐。"
 
         h = team_stats.get(h_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]})
         a = team_stats.get(a_cn, {'xg':[], 'xga':[], 'home_xg':[], 'home_xga':[], 'away_xg':[], 'away_xga':[], 'opp_elo':[], 'pts':[], 'dates':[]})
@@ -349,8 +390,6 @@ for league in df_next_round['联赛'].unique():
         injury_info = f"主队伤停: {h_inj_str}; 客队伤停: {a_inj_str}"
         
         odds_trend = "暂无盘口轨迹数据"
-        
-        # 🚨 铁血纪律三：AI 只负责微调，不负责迎合
         p_h, p_d, p_a, ai_reason = ai_adjust_probabilities(h_cn, a_cn, p_h, p_d, p_a, injury_info, odds_trend, knowledge_base, ref_info, coach_info)
         
         predict_choice = "主胜" if p_h > max(p_d, p_a) else ("平局" if p_d > max(p_h, p_a) else "客胜")
@@ -395,7 +434,6 @@ for league in df_next_round['联赛'].unique():
             bet_amt = 0.0
             split_msg = "(无真实盘口，仅供观赛)"
 
-        # 🚨 铁血纪律四：严格依据泊松矩阵，保留真实比分概率
         valid_scores = [s for s in scores_list if s[1] > 0.012]
         top3 = valid_scores[:3]
         if abs(h_elo - a_elo) > 100 and not any(int(s[0].split('-')[0]) >= 3 or int(s[0].split('-')[1]) >= 3 for s in top3):
@@ -407,7 +445,6 @@ for league in df_next_round['联赛'].unique():
 
         total_goals_rec_str, best_goal = get_total_goals_recommendation(prob_matrix)
 
-        # 只有带有真实赔率的单子，才能进入狙击清单
         if has_real and (bet_amt > 0 or "高价值" in ou_rec or "高价值" in hc_rec):
             jczq_picks_list.append({
                 '比赛时间': m_time, '赛事': league, '对阵': f"{h_cn} vs {a_cn}",
@@ -419,7 +456,6 @@ for league in df_next_round['联赛'].unique():
 
         venue = f"{h_cn}主场" 
 
-        # 🚨 铁血纪律五：AI 点评恢复客观，不强行干预倾向
         prompt = f"""资深专家，点评(150字内)：比赛：{h_cn} vs {a_cn}。
         基础模型倾向：{predict_choice}。首选比分：{best_score}。
         伤停：{injury_info}。大小球/让球：{ou_msg} / {hc_msg}。
@@ -480,7 +516,7 @@ for league in df_next_round['联赛'].unique():
                 </div>
             </div>
 
-            {f"<div style='background-color: #fff3cd; color: #856404; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; font-weight: bold;'>{trap_warning}</div>" if trap_warning else ""}
+            {f"<div style='background-color: #e8f4fd; color: #1e3c72; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; font-weight: bold;'>{trap_warning}</div>" if trap_warning else ""}
 
             <div style="display: flex; flex-wrap: wrap; font-size: 13px; line-height: 1.8; color: #444; margin-bottom: 12px; background-color: #f8f9fa; padding: 10px; border-radius: 6px;">
                 <div style="width: 50%;">💪 <b>Elo:</b> 主 {h_elo:.0f} / 客 {a_elo:.0f}</div>
@@ -524,7 +560,7 @@ final_html = """
 <div class="container">
 """
 
-final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V51.0 专业客观版)</h1>"
+final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V51.1 双源融合版)</h1>"
 
 final_html += "<h2 style='color: #e74c3c; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;'>🎯 Part 1: 今日竞彩狙击清单 (价值投资)</h2>"
 if jczq_picks_list:
@@ -558,4 +594,4 @@ if not log_df.empty:
     log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V51.0 专业客观版)", final_html, img_buffers)
+send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V51.1 双源融合版)", final_html, img_buffers)
