@@ -8,6 +8,7 @@ import json
 import re
 from datetime import datetime, timedelta
 import warnings
+from scipy.stats import poisson
 from openai import OpenAI
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -25,7 +26,7 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
 print("==================================================")
-print("🚀 启动 V200.0 玄学美学·天气全知版")
+print("🚀 启动 V210.0 纯正解析解双泊松引擎 (拒绝伪科学)")
 print("==================================================")
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -36,9 +37,8 @@ API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY")
 
 llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com") if DEEPSEEK_API_KEY else None
 
-# ================= 1. 玄学五行模块 =================
+# ================= 1. 玄学五行模块 (保留，增加情绪价值) =================
 def get_wuxing_theme():
-    """计算当天的天干地支及五行主题颜色"""
     base_date = datetime(1900, 1, 31)
     today = datetime.now()
     days_diff = (today - base_date).days
@@ -50,10 +50,7 @@ def get_wuxing_theme():
     zhi_idx = days_diff % 12
     day_ganzhi = tiangan[gan_idx] + dizhi[zhi_idx]
     
-    wuxing_map = {
-        '甲': '木', '乙': '木', '丙': '火', '丁': '火', '戊': '土', 
-        '己': '土', '庚': '金', '辛': '金', '壬': '水', '癸': '水'
-    }
+    wuxing_map = {'甲': '木', '乙': '木', '丙': '火', '丁': '火', '戊': '土', '己': '土', '庚': '金', '辛': '金', '壬': '水', '癸': '水'}
     element = wuxing_map[tiangan[gan_idx]]
     
     themes = {
@@ -63,12 +60,9 @@ def get_wuxing_theme():
         '金': {'bg': '#f8f9fa', 'primary': '#c0a060', 'grad1': '#8d6e63', 'grad2': '#d4af37', 'icon': '⚔️'},
         '水': {'bg': '#f0f4f8', 'primary': '#1565c0', 'grad1': '#0d47a1', 'grad2': '#42a5f5', 'icon': '🌊'}
     }
-    
-    theme = themes[element]
-    return day_ganzhi, element, theme
+    return day_ganzhi, element, themes[element]
 
 DAY_GANZHI, ELEMENT, THEME = get_wuxing_theme()
-print(f"🌙 今日玄学匹配: {DAY_GANZHI}日 ({ELEMENT}属性)")
 
 # ================= 2. 鲁棒性工具类 =================
 def safe_request(url, timeout=8):
@@ -96,95 +90,77 @@ def send_email(subject, html, imgs, receiver="308730509@qq.com"):
 
 # ================= 3. 超级天气智能追踪模块 =================
 def get_weather(team, date_str):
-    # 1. 超大静态字典（覆盖五大联赛及常见球队）
     city_map = {
-        '阿森纳': 'London', '切尔西': 'London', '热刺': 'London', '西汉姆联': 'London', '水晶宫': 'London', '富勒姆': 'London', '布伦特福德': 'London',
-        '曼联': 'Manchester', '曼城': 'Manchester',
-        '利物浦': 'Liverpool', '埃弗顿': 'Liverpool',
-        '纽卡斯尔联': 'Newcastle', '阿斯顿维拉': 'Birmingham', '狼队': 'Wolverhampton', '诺丁汉森林': 'Nottingham', '莱斯特城': 'Leicester', '南安普敦': 'Southampton', '布莱顿': 'Brighton', '伯恩茅斯': 'Bournemouth', '伊普斯维奇': 'Ipswich',
-        '皇家马德里': 'Madrid', '马德里竞技': 'Madrid', '巴塞罗那': 'Barcelona', '西班牙人': 'Barcelona', '塞维利亚': 'Seville', '皇家贝蒂斯': 'Seville', '瓦伦西亚': 'Valencia', '比利亚雷亚尔': 'Villarreal', '毕尔巴鄂竞技': 'Bilbao', '皇家社会': 'San Sebastian', '赫罗纳': 'Girona', '塞尔塔': 'Vigo',
-        '拜仁慕尼黑': 'Munich', '多特蒙德': 'Dortmund', '勒沃库森': 'Leverkusen', 'RB莱比锡': 'Leipzig', '法兰克福': 'Frankfurt', '斯图加特': 'Stuttgart', '门兴格拉德巴赫': 'Monchengladbach', '沃尔夫斯堡': 'Wolfsburg', '云达不莱梅': 'Bremen', '弗赖堡': 'Freiburg', '柏林联合': 'Berlin', '霍芬海姆': 'Sinsheim', '美因茨': 'Mainz', '奥格斯堡': 'Augsburg',
-        '国际米兰': 'Milan', 'AC米兰': 'Milan', '尤文图斯': 'Turin', '都灵': 'Turin', '那不勒斯': 'Naples', '罗马': 'Rome', '拉齐奥': 'Rome', '亚特兰大': 'Bergamo', '佛罗伦萨': 'Florence', '博洛尼亚': 'Bologna', '热那亚': 'Genoa', '乌迪内斯': 'Udine', '蒙扎': 'Monza', '莱切': 'Lecce', '卡利亚里': 'Cagliari', '维罗纳': 'Verona', '恩波利': 'Empoli', '帕尔马': 'Parma', '科莫': 'Como', '威尼斯': 'Venice',
-        '巴黎圣日耳曼': 'Paris', '马赛': 'Marseille', '摩纳哥': 'Monaco', '里尔': 'Lille', '里昂': 'Lyon', '尼斯': 'Nice', '朗斯': 'Lens', '雷恩': 'Rennes', '兰斯': 'Reims', '图卢兹': 'Toulouse', '蒙彼利埃': 'Montpellier', '斯特拉斯堡': 'Strasbourg', '南特': 'Nantes', '布雷斯特': 'Brest', '勒阿弗尔': 'Le Havre',
-        '马尔默': 'Malmo', '哥本哈根': 'Copenhagen', '博多格林特': 'Bodo'
+        '阿森纳': 'London', '切尔西': 'London', '热刺': 'London', '曼联': 'Manchester', '曼城': 'Manchester',
+        '利物浦': 'Liverpool', '埃弗顿': 'Liverpool', '纽卡斯尔联': 'Newcastle', '阿斯顿维拉': 'Birmingham',
+        '皇家马德里': 'Madrid', '巴塞罗那': 'Barcelona', '塞维利亚': 'Seville', '瓦伦西亚': 'Valencia',
+        '拜仁慕尼黑': 'Munich', '多特蒙德': 'Dortmund', '勒沃库森': 'Leverkusen', 'RB莱比锡': 'Leipzig',
+        '国际米兰': 'Milan', 'AC米兰': 'Milan', '尤文图斯': 'Turin', '那不勒斯': 'Naples', '罗马': 'Rome',
+        '拉齐奥': 'Rome', '亚特兰大': 'Bergamo', '佛罗伦萨': 'Florence', '蒙扎': 'Monza',
+        '巴黎圣日耳曼': 'Paris', '马赛': 'Marseille', '摩纳哥': 'Monaco', '里尔': 'Lille', '里昂': 'Lyon'
     }
-    
-    # 2. 读取本地缓存
     cache_file = 'team_city_cache.json'
     if os.path.exists(cache_file):
         try:
             with open(cache_file, 'r', encoding='utf-8') as f:
                 cache = json.load(f)
-                if team in cache:
-                    city_map[team] = cache[team]
+                if team in cache: city_map[team] = cache[team]
         except: pass
 
     city = city_map.get(team)
-    
-    # 3. 智能反查（针对冷门球队）
-    if not city:
-        print(f"🌍 字典中未找到 '{team}' 的城市，正在让 AI 自动检索...")
-        if llm_client:
-            try:
-                prompt = f"球队 '{team}' 的主场在哪个城市？请只回复英文城市名，不要标点符号。例如：Milan。"
-                res = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False, timeout=5)
-                city = res.choices[0].message.content.strip().replace('.', '')
-                if city and len(city) < 30:
-                    city_map[team] = city
-                    with open(cache_file, 'w', encoding='utf-8') as f:
-                        json.dump(city_map, f, ensure_ascii=False, indent=4)
-                else:
-                    city = 'London'
-            except:
-                city = 'London'
-        else:
-            city = 'London'
+    if not city and llm_client:
+        try:
+            prompt = f"球队 '{team}' 的主场在哪个城市？请只回复英文城市名，不要标点符号。例如：Milan。"
+            res = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False, timeout=5)
+            city = res.choices[0].message.content.strip().replace('.', '')
+            if city and len(city) < 30:
+                city_map[team] = city
+                with open(cache_file, 'w', encoding='utf-8') as f: json.dump(city_map, f, ensure_ascii=False)
+            else: city = 'London'
+        except: city = 'London'
+            
+    if not city: city = 'London'
 
     data = safe_request(f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={city}&dt={date_str[:10]}&lang=zh")
     if data and 'forecast' in data:
         day = data['forecast']['forecastday'][0]['day']
         return day['condition']['text'], round(day['avgtemp_c'], 1)
-    
     return "未知", 0
 
-# ================= 4. 核心算法：零膨胀时间切片 =================
-def zinb_time_sliced_simulation(home_xg, away_xg, h_def_rate=0.2, a_def_rate=0.2, sims=10000):
-    h_goals = np.zeros(sims, dtype=int)
-    a_goals = np.zeros(sims, dtype=int)
-    time_weights = np.array([0.12, 0.15, 0.18, 0.18, 0.17, 0.20]) 
-    
-    for i, weight in enumerate(time_weights):
-        base_h = (home_xg / 6.0) * weight * 6
-        base_a = (away_xg / 6.0) * weight * 6
-        h_adv = (h_goals - a_goals) > 0
-        a_adv = (a_goals - h_goals) > 0
+# ================= 4. 纯正解析解：双泊松矩阵 =================
+def generate_score_matrix(home_xg, away_xg, max_goals=8, rho=-0.15):
+    """纯数学解析解，瞬间出结果，无需蒙特卡洛"""
+    def dixon_coles_tau(h, a):
+        if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
+        elif h == 0 and a == 1: return 1 + home_xg * rho
+        elif h == 1 and a == 0: return 1 + away_xg * rho
+        elif h == 1 and a == 1: return 1 - rho
+        return 1.0
         
-        h_seg_xg = np.where(h_adv, base_h * 0.95, np.where(a_adv, base_h * 1.10, base_h))
-        a_seg_xg = np.where(a_adv, base_a * 0.95, np.where(h_adv, base_a * 1.10, base_a))
-        
-        h_goals += np.random.negative_binomial(5.0, 5.0 / (5.0 + h_seg_xg))
-        a_goals += np.random.negative_binomial(5.0, 5.0 / (5.0 + a_seg_xg))
-        
-    h_zero_mask = np.random.rand(sims) < h_def_rate
-    a_zero_mask = np.random.rand(sims) < a_def_rate
-    h_goals = np.where(h_zero_mask & (h_goals < 2), 0, h_goals)
-    a_goals = np.where(a_zero_mask & (a_goals < 2), 0, a_goals)
-    h_goals = np.clip(h_goals, 0, 10)
-    a_goals = np.clip(a_goals, 0, 10)
+    matrix = np.zeros((max_goals + 1, max_goals + 1))
+    for i in range(max_goals + 1):
+        for j in range(max_goals + 1):
+            matrix[i][j] = poisson.pmf(i, home_xg) * poisson.pmf(j, away_xg) * dixon_coles_tau(i, j)
+            
+    matrix = matrix / np.sum(matrix)
+    scores = [(f"{i}-{j}", matrix[i][j]) for i in range(max_goals + 1) for j in range(max_goals + 1)]
+    scores.sort(key=lambda x: x[1], reverse=True)
+    return scores, matrix
+
+def get_total_goals(matrix, max_goals=8):
+    totals = {}
+    for h in range(max_goals + 1):
+        for a in range(max_goals + 1):
+            total = h + a
+            totals[total] = totals.get(total, 0) + matrix[h][a]
     
-    h_win = np.mean(h_goals > a_goals)
-    draw = np.mean(h_goals == a_goals)
-    a_win = np.mean(h_goals < a_goals)
+    sorted_goals = sorted(totals.items(), key=lambda x: x[1], reverse=True)
+    top2 = [f"{k}球" for k, v in sorted_goals[:2] if k <= 7]
     
-    scores = h_goals * 100 + a_goals
-    unique, counts = np.unique(scores, return_counts=True)
-    probs = counts / sims
-    score_probs = []
-    for u, p in zip(unique, probs):
-        h, a = u // 100, u % 100
-        score_probs.append((f"{h}-{a}", p))
-    score_probs.sort(key=lambda x: x[1], reverse=True)
-    return h_win, draw, a_win, score_probs, h_goals, a_goals
+    prob_over_25 = sum(p for g, p in totals.items() if g > 2.5)
+    prob_under_25 = sum(p for g, p in totals.items() if g < 2.5)
+    
+    return " / ".join(top2), prob_over_25, prob_under_25
 
 # ================= 5. 数据装载 =================
 bankroll, base_kelly = 10000.0, 0.2
@@ -260,11 +236,9 @@ stats, last_date = {}, {}
 for _, r in df_hist.iterrows():
     h, a, d = r['h_cn'], r['a_cn'], r['date']
     for t in [h, a]:
-        if t not in stats: stats[t] = {'xg':[], 'xga':[], 'h_xg':[], 'h_xga':[], 'a_xg':[], 'a_xga':[], 'dates':[], 'count':0, 'clean_sheets':0}
+        if t not in stats: stats[t] = {'xg':[], 'xga':[], 'h_xg':[], 'h_xga':[], 'a_xg':[], 'a_xga':[], 'dates':[], 'count':0}
         if t not in last_date: last_date[t] = None
     stats[h]['count'] += 1; stats[a]['count'] += 1
-    if r['away_goals'] == 0: stats[h]['clean_sheets'] += 1
-    if r['home_goals'] == 0: stats[a]['clean_sheets'] += 1
     stats[h]['xg'].append(r['home_goals']); stats[h]['xga'].append(r['away_goals'])
     stats[a]['xg'].append(r['away_goals']); stats[a]['xga'].append(r['home_goals'])
     stats[h]['h_xg'].append(r['home_goals']); stats[h]['h_xga'].append(r['away_goals'])
@@ -353,15 +327,15 @@ for league in df_next['联赛'].unique():
             s = tl / (home_xg + away_xg)
             home_xg *= s; away_xg *= s
 
-        h_cs_rate = hs.get('clean_sheets', 0) / hs.get('count', 1)
-        a_cs_rate = as_.get('clean_sheets', 0) / as_.get('count', 1)
-
-        ph, pd_, pa, sc_probs, h_sim, a_sim = zinb_time_sliced_simulation(
-            home_xg, away_xg, h_def_rate=a_cs_rate*0.5, a_def_rate=h_cs_rate*0.5
-        )
+        # 🌟 核心：直接使用双泊松解析解，毫秒级出结果
+        sc_probs, matrix = generate_score_matrix(home_xg, away_xg, max_goals=8)
+        ph = np.sum(np.tril(matrix, -1))
+        pd_ = np.sum(np.diag(matrix))
+        pa = np.sum(np.triu(matrix, 1))
+        tg_str, prob_over, prob_under = get_total_goals(matrix)
         
         warn_t, final_rec, bet = "", "观望", 0.0
-        ou_rec, tg_str = "观望", ""
+        ou_rec = "观望"
         
         if has_odds:
             margin = 1/oh + 1/od_ + 1/oa
@@ -395,17 +369,10 @@ for league in df_next['联赛'].unique():
                 else: final_rec = "观望"
             else: final_rec = "观望"
             
-            totals = h_sim + a_sim
-            over_prob = np.mean(totals > tl)
-            ou_rec = "大球" if over_prob*over > 1.05 else ("小球" if (1-over_prob)*under > 1.05 else "观望")
-            tg_counts = pd.Series(totals).value_counts()
-            tg_str = " / ".join([f"{k}球" for k in tg_counts.index[:2] if k <= 7])
+            ou_rec = "大球" if prob_over*over > 1.05 else ("小球" if prob_under*under > 1.05 else "观望")
         else:
             choice = "主胜" if ph > max(pd_, pa) else ("平局" if pd_ > max(ph, pa) else "客胜")
             final_rec = f"倾向:{choice}"
-            totals = h_sim + a_sim
-            tg_counts = pd.Series(totals).value_counts()
-            tg_str = " / ".join([f"{k}球" for k in tg_counts.index[:2] if k <= 7])
 
         top3 = " | ".join([f"{s[0]} ({s[1]*100:.1f}%)" for s in sc_probs[:3]])
         best_sc = sc_probs[0][0]
@@ -423,7 +390,7 @@ for league in df_next['联赛'].unique():
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 3.2))
         ax1.bar(['主胜', '平局', '客胜'], [ph*100, pd_*100, pa*100], color=[THEME['primary'], '#f28e2b', '#e15759'], width=0.5)
-        ax1.set_title("零膨胀融合胜率", color=THEME['primary'], fontweight='bold'); ax1.set_ylim(0,100)
+        ax1.set_title("解析解双泊松胜率", color=THEME['primary'], fontweight='bold'); ax1.set_ylim(0,100)
         for i,v in enumerate([ph*100,pd_*100,pa*100]): ax1.text(i, v+2, f"{v:.1f}%", ha='center', fontweight='bold')
         ax2.barh(['客队', '主队'], [away_xg, home_xg], color=['#59a14f', THEME['primary']], height=0.4)
         ax2.set_title("基准预期进球(xG)", color=THEME['primary'], fontweight='bold')
@@ -581,5 +548,5 @@ html = f"""<html><body style="font-family:'Helvetica Neue', Arial, sans-serif; p
 if logs:
     pd.DataFrame(logs).to_csv('predictions_log.csv', mode='a', header=not os.path.exists('predictions_log.csv'), index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html)
-send_email(f"【{DAY_GANZHI}日·{ELEMENT}】⚽ 足球量化决策清单 (V200.0)", html, imgs)
+send_email(f"【{DAY_GANZHI}日·{ELEMENT}】⚽ 足球量化决策清单 (V210.0)", html, imgs)
 print("🏁 运行完毕！")
