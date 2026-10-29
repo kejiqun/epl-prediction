@@ -18,6 +18,8 @@ warnings.filterwarnings('ignore')
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
 EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY")
+
 llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
 def send_email(subject, html_content, receiver="308730509@qq.com"):
@@ -32,7 +34,7 @@ def send_email(subject, html_content, receiver="308730509@qq.com"):
         print("✅ 复盘邮件发送成功！")
     except Exception as e: print(f"❌ 邮件发送失败: {e}")
 
-print("⏳ 正在启动 V47.0 深度复盘引擎...")
+print("⏳ 正在启动 V48.0 深度复盘引擎...")
 if not os.path.exists('predictions_log.csv'): exit()
 
 df_log = pd.read_csv('predictions_log.csv')
@@ -46,54 +48,33 @@ for c in ['actual_score', 'actual_result', 'is_win', 'profit', 'bet_amount', 'pr
 
 pending_review = df_log[(df_log['actual_score'].isna() | (df_log['actual_score'] == "")) & (df_log['date'].dt.strftime('%Y-%m-%d') <= yesterday)].copy()
 
-# 🌟 核心抢救：清理超过3天的死账
-if not pending_review.empty:
-    pending_review['days_diff'] = (today - pending_review['date']).dt.days
-    expired_matches = pending_review[pending_review['days_diff'] > 3]
-    if not expired_matches.empty:
-        print(f"🧹 发现 {len(expired_matches)} 场比赛过期无赛果，强制作废。")
-        for idx in expired_matches.index:
-            df_log.at[idx, 'actual_score'] = "赛果丢失"
-            df_log.at[idx, 'is_win'] = "作废"
-            df_log.at[idx, 'profit'] = 0.0
-        pending_review = pending_review[~pending_review.index.isin(expired_matches.index)]
-
 if pending_review.empty:
     print("✅ 没有需要复盘的新比赛。")
     send_email("☕ 每日复盘通知 (今日无战事)", "<html><body><h2>今日无待复盘比赛</h2></body></html>")
-    df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
     exit()
 
-print(f"⏳ 找到 {len(pending_review)} 场待复盘比赛，正在抓取真实赛果...")
+print(f"⏳ 找到 {len(pending_review)} 场待复盘比赛，正在通过 API-Football 抓取赛果...")
 
 actual_results = {}
-for league_name, config in LEAGUES.items():
-    for i in range(1, 5):
-        date_str = (today - timedelta(days=i)).strftime('%Y%m%d')
-        url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{config['espn_code']}/scoreboard?dates={date_str}"
-        try:
-            resp = requests.get(url, timeout=10)
-            if resp.status_code == 200:
-                for event in resp.json().get('events', []):
-                    if event['status']['type']['state'] == 'post':
-                        comps = event.get('competitions', [])
-                        if comps:
-                            competitors = comps[0].get('competitors', [])
-                            home = next((c for c in competitors if c['homeAway'] == 'home'), None)
-                            away = next((c for c in competitors if c['homeAway'] == 'away'), None)
-                            if home and away:
-                                h_name = translate_team_name(home['team']['name'])
-                                a_name = translate_team_name(away['team']['name'])
-                                h_score = int(home.get('score', 0))
-                                a_score = int(away.get('score', 0))
-                                match_date_str = pd.to_datetime(event['date']).tz_convert('Asia/Shanghai').strftime('%Y-%m-%d')
-                                actual_results[(match_date_str, h_name, a_name)] = (h_score, a_score)
-        except: continue
+headers = {"x-apisports-key": API_FOOTBALL_KEY}
 
-bankroll = 10000.0
-if os.path.exists('bankroll.csv'):
-    try: bankroll = pd.read_csv('bankroll.csv').iloc[-1]['当前资金']
-    except: pass
+# 计算需要查询的日期 (包含昨天和前天)
+dates_to_query = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(1, 6)]
+
+for d_str in dates_to_query:
+    try:
+        # 查这一天的所有已完赛比赛
+        url = f"https://v3.football.api-sports.io/fixtures?date={d_str}&status=FT"
+        resp = requests.get(url, headers=headers, timeout=15)
+        if resp.status_code == 200:
+            for fixture in resp.json().get('response', []):
+                h_name = translate_team_name(fixture['teams']['home']['name'])
+                a_name = translate_team_name(fixture['teams']['away']['name'])
+                hg = fixture['goals']['home']
+                ag = fixture['goals']['away']
+                if hg is not None and ag is not None:
+                    actual_results[(d_str, h_name, a_name)] = (hg, ag)
+    except: continue
 
 review_records = []
 correct_count = 0
@@ -139,12 +120,23 @@ for idx, row in pending_review.iterrows():
             '财务情况': round(profit, 2)
         })
 
+# 🌟 核心修复：3天抓不到赛果，强制作废，不再死等
 if total_count == 0:
-    print("⚠️ 扫描到了比赛，但暂无已结算赛果。")
+    print("⚠️ 扫描到了比赛，但 API 依然没查到赛果，可能比赛延期。强制清理死账...")
+    for idx, row in pending_review.iterrows():
+        if (today - row['date']).days > 3:
+            df_log.at[idx, 'actual_score'] = "赛果丢失"
+            df_log.at[idx, 'is_win'] = "作废"
+            df_log.at[idx, 'profit'] = 0.0
+            
     df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
     send_email("⏳ 每日复盘通知 (待结算)", "<html><body><h2>比赛尚未结算，系统将在明日重试。</h2></body></html>")
     exit()
 
+bankroll = 10000.0
+if os.path.exists('bankroll.csv'):
+    try: bankroll = pd.read_csv('bankroll.csv').iloc[-1]['当前资金']
+    except: pass
 bankroll += total_profit
 win_rate = (correct_count / total_count) * 100 if total_count > 0 else 0
 
@@ -156,7 +148,6 @@ else:
     df_bank = new_bankroll_row
 df_bank.to_csv('bankroll.csv', index=False, encoding='utf-8-sig')
 
-# 组装邮件（简化版，输出复盘表格）
 html_table = pd.DataFrame(review_records).to_html(index=False, border=0, classes='report-table', justify='center')
 
 html_content = f"""
@@ -173,7 +164,7 @@ html_content = f"""
 </style></head>
 <body>
 <div class="container">
-    <h1>💼 每日量化实盘复盘战报 (V47.0 强制清算版)</h1>
+    <h1>💼 每日量化实盘复盘战报 (V48.0)</h1>
     <div class="stats-dashboard">
         <div class="stat-item"><div class="stat-value">{win_rate:.1f}%</div><div class="stat-label">胜率 ({correct_count}/{total_count})</div></div>
         <div class="stat-item"><div class="stat-value">{total_profit:+.2f}</div><div class="stat-label">盈亏 (元)</div></div>
@@ -186,5 +177,5 @@ html_content = f"""
 """
 
 df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
-send_email("💼 每日量化实盘复盘战报 (V47.0 强制清算版)", html_content)
+send_email("💼 每日量化实盘复盘战报 (V48.0)", html_content)
 print("✅ 复盘完毕！")
