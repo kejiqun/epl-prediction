@@ -21,12 +21,11 @@ from team_mapping import translate_team_name
 from itertools import combinations
 
 warnings.filterwarnings('ignore')
-plt.style.use('seaborn-v0_8-darkgrid')
 plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
 print("==================================================")
-print("🚀 启动 V190.1 动态凯利与串关策略引擎 (修复版)")
+print("🚀 启动 V200.0 玄学美学·天气全知版")
 print("==================================================")
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -37,6 +36,41 @@ API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY")
 
 llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com") if DEEPSEEK_API_KEY else None
 
+# ================= 1. 玄学五行模块 =================
+def get_wuxing_theme():
+    """计算当天的天干地支及五行主题颜色"""
+    base_date = datetime(1900, 1, 31)
+    today = datetime.now()
+    days_diff = (today - base_date).days
+    
+    tiangan = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸']
+    dizhi = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥']
+    
+    gan_idx = days_diff % 10
+    zhi_idx = days_diff % 12
+    day_ganzhi = tiangan[gan_idx] + dizhi[zhi_idx]
+    
+    wuxing_map = {
+        '甲': '木', '乙': '木', '丙': '火', '丁': '火', '戊': '土', 
+        '己': '土', '庚': '金', '辛': '金', '壬': '水', '癸': '水'
+    }
+    element = wuxing_map[tiangan[gan_idx]]
+    
+    themes = {
+        '木': {'bg': '#f0f7f4', 'primary': '#2e7d32', 'grad1': '#1b5e20', 'grad2': '#4caf50', 'icon': '🌳'},
+        '火': {'bg': '#fdf5f5', 'primary': '#c62828', 'grad1': '#b71c1c', 'grad2': '#ef5350', 'icon': '🔥'},
+        '土': {'bg': '#faf8f5', 'primary': '#e65100', 'grad1': '#bf360c', 'grad2': '#ff9800', 'icon': '⛰️'},
+        '金': {'bg': '#f8f9fa', 'primary': '#c0a060', 'grad1': '#8d6e63', 'grad2': '#d4af37', 'icon': '⚔️'},
+        '水': {'bg': '#f0f4f8', 'primary': '#1565c0', 'grad1': '#0d47a1', 'grad2': '#42a5f5', 'icon': '🌊'}
+    }
+    
+    theme = themes[element]
+    return day_ganzhi, element, theme
+
+DAY_GANZHI, ELEMENT, THEME = get_wuxing_theme()
+print(f"🌙 今日玄学匹配: {DAY_GANZHI}日 ({ELEMENT}属性)")
+
+# ================= 2. 鲁棒性工具类 =================
 def safe_request(url, timeout=8):
     try:
         resp = requests.get(url, timeout=timeout)
@@ -60,15 +94,60 @@ def send_email(subject, html, imgs, receiver="308730509@qq.com"):
         print("✅ 邮件发送成功！")
     except Exception as e: print(f"❌ 邮件失败: {e}")
 
+# ================= 3. 超级天气智能追踪模块 =================
 def get_weather(team, date_str):
-    city = {'阿森纳': 'London', '曼联': 'Manchester', '利物浦': 'Liverpool', '皇家马德里': 'Madrid', '巴塞罗那': 'Barcelona', '拜仁慕尼黑': 'Munich', '国际米兰': 'Milan', 'AC米兰': 'Milan', '尤文图斯': 'Turin'}.get(team, 'London')
+    # 1. 超大静态字典（覆盖五大联赛及常见球队）
+    city_map = {
+        '阿森纳': 'London', '切尔西': 'London', '热刺': 'London', '西汉姆联': 'London', '水晶宫': 'London', '富勒姆': 'London', '布伦特福德': 'London',
+        '曼联': 'Manchester', '曼城': 'Manchester',
+        '利物浦': 'Liverpool', '埃弗顿': 'Liverpool',
+        '纽卡斯尔联': 'Newcastle', '阿斯顿维拉': 'Birmingham', '狼队': 'Wolverhampton', '诺丁汉森林': 'Nottingham', '莱斯特城': 'Leicester', '南安普敦': 'Southampton', '布莱顿': 'Brighton', '伯恩茅斯': 'Bournemouth', '伊普斯维奇': 'Ipswich',
+        '皇家马德里': 'Madrid', '马德里竞技': 'Madrid', '巴塞罗那': 'Barcelona', '西班牙人': 'Barcelona', '塞维利亚': 'Seville', '皇家贝蒂斯': 'Seville', '瓦伦西亚': 'Valencia', '比利亚雷亚尔': 'Villarreal', '毕尔巴鄂竞技': 'Bilbao', '皇家社会': 'San Sebastian', '赫罗纳': 'Girona', '塞尔塔': 'Vigo',
+        '拜仁慕尼黑': 'Munich', '多特蒙德': 'Dortmund', '勒沃库森': 'Leverkusen', 'RB莱比锡': 'Leipzig', '法兰克福': 'Frankfurt', '斯图加特': 'Stuttgart', '门兴格拉德巴赫': 'Monchengladbach', '沃尔夫斯堡': 'Wolfsburg', '云达不莱梅': 'Bremen', '弗赖堡': 'Freiburg', '柏林联合': 'Berlin', '霍芬海姆': 'Sinsheim', '美因茨': 'Mainz', '奥格斯堡': 'Augsburg',
+        '国际米兰': 'Milan', 'AC米兰': 'Milan', '尤文图斯': 'Turin', '都灵': 'Turin', '那不勒斯': 'Naples', '罗马': 'Rome', '拉齐奥': 'Rome', '亚特兰大': 'Bergamo', '佛罗伦萨': 'Florence', '博洛尼亚': 'Bologna', '热那亚': 'Genoa', '乌迪内斯': 'Udine', '蒙扎': 'Monza', '莱切': 'Lecce', '卡利亚里': 'Cagliari', '维罗纳': 'Verona', '恩波利': 'Empoli', '帕尔马': 'Parma', '科莫': 'Como', '威尼斯': 'Venice',
+        '巴黎圣日耳曼': 'Paris', '马赛': 'Marseille', '摩纳哥': 'Monaco', '里尔': 'Lille', '里昂': 'Lyon', '尼斯': 'Nice', '朗斯': 'Lens', '雷恩': 'Rennes', '兰斯': 'Reims', '图卢兹': 'Toulouse', '蒙彼利埃': 'Montpellier', '斯特拉斯堡': 'Strasbourg', '南特': 'Nantes', '布雷斯特': 'Brest', '勒阿弗尔': 'Le Havre',
+        '马尔默': 'Malmo', '哥本哈根': 'Copenhagen', '博多格林特': 'Bodo'
+    }
+    
+    # 2. 读取本地缓存
+    cache_file = 'team_city_cache.json'
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                cache = json.load(f)
+                if team in cache:
+                    city_map[team] = cache[team]
+        except: pass
+
+    city = city_map.get(team)
+    
+    # 3. 智能反查（针对冷门球队）
+    if not city:
+        print(f"🌍 字典中未找到 '{team}' 的城市，正在让 AI 自动检索...")
+        if llm_client:
+            try:
+                prompt = f"球队 '{team}' 的主场在哪个城市？请只回复英文城市名，不要标点符号。例如：Milan。"
+                res = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False, timeout=5)
+                city = res.choices[0].message.content.strip().replace('.', '')
+                if city and len(city) < 30:
+                    city_map[team] = city
+                    with open(cache_file, 'w', encoding='utf-8') as f:
+                        json.dump(city_map, f, ensure_ascii=False, indent=4)
+                else:
+                    city = 'London'
+            except:
+                city = 'London'
+        else:
+            city = 'London'
+
     data = safe_request(f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={city}&dt={date_str[:10]}&lang=zh")
     if data and 'forecast' in data:
         day = data['forecast']['forecastday'][0]['day']
         return day['condition']['text'], round(day['avgtemp_c'], 1)
+    
     return "未知", 0
 
-# 🌟 核心：零膨胀时间切片引擎
+# ================= 4. 核心算法：零膨胀时间切片 =================
 def zinb_time_sliced_simulation(home_xg, away_xg, h_def_rate=0.2, a_def_rate=0.2, sims=10000):
     h_goals = np.zeros(sims, dtype=int)
     a_goals = np.zeros(sims, dtype=int)
@@ -107,7 +186,7 @@ def zinb_time_sliced_simulation(home_xg, away_xg, h_def_rate=0.2, a_def_rate=0.2
     score_probs.sort(key=lambda x: x[1], reverse=True)
     return h_win, draw, a_win, score_probs, h_goals, a_goals
 
-# ================= 3. 数据装载 =================
+# ================= 5. 数据装载 =================
 bankroll, base_kelly = 10000.0, 0.2
 if os.path.exists('bankroll.csv'):
     try:
@@ -208,9 +287,13 @@ elo = joblib.load('elo_dict.pkl') if os.path.exists('elo_dict.pkl') else {}
 picks, logs, html_cards, imgs = [], [], "", []
 parlay_pool = [] 
 
-# ================= 4. 主预测流 =================
+# ================= 6. 主预测流 =================
 for league in df_next['联赛'].unique():
-    html_cards += f"<div style='background:linear-gradient(90deg,#1e3c72,#2a5298);color:#fff;padding:10px 20px;border-radius:8px;margin-top:30px;margin-bottom:20px;'><h2 style='margin:0;'>{league}</h2></div>"
+    html_cards += f"""
+    <div style="background: linear-gradient(90deg, {THEME['grad1']} 0%, {THEME['grad2']} 100%); color: white; padding: 12px 20px; border-radius: 8px; margin-top: 35px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <h2 style="margin: 0; font-size: 20px; letter-spacing: 1px;">🏆 {league}</h2>
+    </div>
+    """
     
     for _, m in df_next[df_next['联赛'] == league].iterrows():
         h, a = m['主队'], m['客队']
@@ -219,7 +302,6 @@ for league in df_next['联赛'].unique():
         
         if stats.get(h, {'count':0})['count'] < 3 or stats.get(a, {'count':0})['count'] < 3: continue
         
-        # 🌟 核心修复：规避 Series 的真假值歧义问题
         od_manual = manual_odds.get((date_str, h, a))
         od_auto = real_odds.get((date_str, h, a))
         od = od_manual if od_manual is not None else od_auto
@@ -340,31 +422,60 @@ for league in df_next['联赛'].unique():
             except: pass
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 3.2))
-        ax1.bar(['主胜', '平局', '客胜'], [ph*100, pd_*100, pa*100], color=['#4e79a7','#f28e2b','#e15759'], width=0.5)
-        ax1.set_title("零膨胀融合胜率"); ax1.set_ylim(0,100)
+        ax1.bar(['主胜', '平局', '客胜'], [ph*100, pd_*100, pa*100], color=[THEME['primary'], '#f28e2b', '#e15759'], width=0.5)
+        ax1.set_title("零膨胀融合胜率", color=THEME['primary'], fontweight='bold'); ax1.set_ylim(0,100)
         for i,v in enumerate([ph*100,pd_*100,pa*100]): ax1.text(i, v+2, f"{v:.1f}%", ha='center', fontweight='bold')
-        ax2.barh(['客队', '主队'], [away_xg, home_xg], color=['#59a14f','#e15759'], height=0.4)
-        ax2.set_title("基准预期进球(xG)")
+        ax2.barh(['客队', '主队'], [away_xg, home_xg], color=['#59a14f', THEME['primary']], height=0.4)
+        ax2.set_title("基准预期进球(xG)", color=THEME['primary'], fontweight='bold')
         plt.tight_layout(); buf = io.BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); buf.seek(0); imgs.append(buf); plt.close(fig)
 
         logs.append({'date': date_str, 'league': league, 'home': h, 'away': a, 'res': final_rec, 'bet': round(bet,2), 'score': best_sc})
 
         html_cards += f"""
-        <div style="border:1px solid #ddd; border-radius:10px; padding:20px; margin-bottom:20px; background:#fff;">
-            <h3 style="color:#2c3e50; border-bottom:2px solid #eee; padding-bottom:10px;">{time_str} {h} vs {a} <span style="float:right; font-size:14px; background:#e8f4fd; padding:4px 8px; border-radius:10px;">{src}</span></h3>
-            <img src="cid:chart_{len(imgs)-1}" width="100%" style="margin:10px 0;">
-            <div style="display:flex; justify-content:space-between; background:#f8f9fa; padding:10px; border-radius:6px;">
-                <div><b>首选比分:</b> {best_sc} <br><span style="color:#666; font-size:12px;">防冷: {top3}</span></div>
-                <div><b>总进球:</b> {tg_str}</div>
+        <div style="border: 1px solid #e0e0e0; border-radius: 12px; padding: 25px; margin-bottom: 25px; background: #ffffff; box-shadow: 0 6px 12px rgba(0,0,0,0.05); border-top: 4px solid {THEME['primary']};">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 15px; margin-bottom: 20px;">
+                <h3 style="margin: 0; color: #2c3e50; font-size: 19px; font-weight: 600;">⏰ {time_str} &nbsp;&nbsp; {h} <span style="color:{THEME['primary']}; font-size:16px; font-weight:normal;">vs</span> {a}</h3>
+                <span style="background-color: {THEME['bg']}; color: {THEME['primary']}; padding: 6px 14px; border-radius: 20px; font-weight: bold; font-size: 13px; border: 1px solid {THEME['primary']};">{src}</span>
             </div>
-            {f"<p style='color:#c0392b; font-size:13px; margin-top:10px;'>{warn_c} {warn_t} {warn_r}</p>" if warn_c or warn_t or warn_r else ""}
-            <p style="font-size:13px; margin-top:10px;"><b>💡 结论:</b> {choice} (推荐: {final_rec})</p>
-            <p style="font-size:13px; color:#333;"><b>⚖️ AI裁判长:</b> {ai_txt}</p>
+            
+            <img src="cid:chart_{len(imgs)-1}" width="100%" style="margin-bottom: 20px; border-radius: 8px;">
+            
+            <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+                <div style="flex: 1; background: #fdfbf7; border-left: 4px solid #ffc107; padding: 15px; border-radius: 6px;">
+                    <span style="font-size: 13px; color: #856404; font-weight: bold; display: block; margin-bottom: 8px;">🎯 首选比分</span>
+                    <span style="font-size: 24px; color: {THEME['primary']}; font-weight: bold; letter-spacing: 1px;">{best_sc}</span>
+                    <span style="font-size: 12px; color: #666; margin-left: 10px;">防冷: {top3}</span>
+                </div>
+                <div style="flex: 1; background: #f4f8fd; border-left: 4px solid {THEME['primary']}; padding: 15px; border-radius: 6px;">
+                    <span style="font-size: 13px; color: {THEME['primary']}; font-weight: bold; display: block; margin-bottom: 8px;">⚽ 总进球数</span>
+                    <span style="font-size: 20px; color: #1e3c72; font-weight: bold;">{tg_str}</span>
+                </div>
+            </div>
+
+            <div style="background: #fff8f8; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; text-align: center; font-size: 13px; color: #555; font-weight: bold;">
+                    <div>主胜概率: <span style="color:{THEME['primary']};">{ph*100:.1f}%</span></div>
+                    <div>平局概率: <span style="color:#f28e2b;">{pd_*100:.1f}%</span></div>
+                    <div>客胜概率: <span style="color:#e15759;">{pa*100:.1f}%</span></div>
+                </div>
+            </div>
+
+            {f"<div style='background-color: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; font-weight: bold; border-left: 3px solid #ffc107;'>{warn_c} {warn_t} {warn_r}</div>" if warn_c or warn_t or warn_r else ""}
+
+            <div style="padding: 16px; border: 1px dashed {THEME['primary']}; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; background-color: {THEME['bg']};">
+                <div>
+                    <span style="font-size: 15px; color:#555;"><b>💡 预测结论：</b></span>
+                    <span style="font-size: 24px; color: {THEME['primary']}; font-weight: bold; margin-right: 15px;">{choice}</span>
+                    <span style="font-size: 16px; color: #d9534f; font-weight: bold;">推荐关注: {final_rec}</span>
+                </div>
+            </div>
+
+            <p style="margin-top: 20px; margin-bottom: 0; color: #444; font-size: 14px; line-height: 1.7; border-top: 1px solid #eee; padding-top: 15px;"><b>⚖️ AI裁判长：</b>{ai_txt}</p>
         </div>
         """
 
-# ================= 5. V190.1 核心：串关策略引擎 =================
-parlay_html = "<p style='text-align:center; color:#666;'>今日无明显正期望值单子，不推荐串关。</p>"
+# ================= 7. 串关策略引擎 =================
+parlay_html = "<p style='text-align:center; color:#888; padding: 20px;'>今日无明显正期望值单子，不推荐串关。</p>"
 if len(parlay_pool) >= 2:
     parlay_pool = sorted(parlay_pool, key=lambda x: x['ev'], reverse=True)[:5]
     parlay_candidates = []
@@ -386,30 +497,89 @@ if len(parlay_pool) >= 2:
         parlay_candidates = sorted(parlay_candidates, key=lambda x: x['ev'], reverse=True)[:3]
         df_parlay = pd.DataFrame(parlay_candidates)
         df_parlay['建议金额'] = df_parlay['ev'].apply(lambda x: round(bankroll * 0.02, 2)) 
+        
         parlay_html = f"""
-        <div style="background:#fff; padding:20px; border-radius:10px; border-top:5px solid #27ae60;">
-            <p style="color:#27ae60; font-weight:bold;">✨ 系统侦测到高期望值串关机会，利用复利法则博取高赔率：</p>
-            {df_parlay.to_html(index=False, border=0, classes='report-table', justify='center', escape=False)}
+        <div style="background:#ffffff; padding:25px; border-radius:12px; border-top:5px solid #27ae60; box-shadow: 0 6px 12px rgba(0,0,0,0.05);">
+            <p style="color:#27ae60; font-weight:bold; font-size:16px; margin-bottom:15px;">✨ 系统侦测到高期望值串关机会，利用复利法则博取高赔率：</p>
+            <table style="width:100%; border-collapse:collapse; text-align:center; font-size:14px;">
+                <thead>
+                    <tr style="background:#27ae60; color:white;">
+                        <th style="padding:12px; border:1px solid #eee;">类型</th>
+                        <th style="padding:12px; border:1px solid #eee;">组合</th>
+                        <th style="padding:12px; border:1px solid #eee;">赔率</th>
+                        <th style="padding:12px; border:1px solid #eee;">命中率</th>
+                        <th style="padding:12px; border:1px solid #eee;">EV</th>
+                        <th style="padding:12px; border:1px solid #eee;">建议金额</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {"".join([f"<tr style='border-bottom:1px solid #eee;'><td style='padding:12px;'>{row['type']}</td><td style='padding:12px; text-align:left;'>{row['matches']}</td><td style='padding:12px; color:#e74c3c; font-weight:bold;'>{row['odds']}</td><td style='padding:12px;'>{row['prob']}</td><td style='padding:12px; color:#27ae60; font-weight:bold;'>{row['ev']}</td><td style='padding:12px; font-weight:bold;'>{row['建议金额']}元</td></tr>" for _, row in df_parlay.iterrows()])}
+                </tbody>
+            </table>
         </div>
         """
     else:
-        parlay_html = "<p style='text-align:center; color:#666;'>今日单场EV不足，不强行组合串关。</p>"
+        parlay_html = "<p style='text-align:center; color:#888; padding: 20px;'>今日单场EV不足，不强行组合串关。</p>"
 
-# ================= 6. 结果发送 =================
-html = f"""<html><body style="font-family:Arial; padding:20px; background-color:#f4f7f6;">
-<div style="max-width:900px; margin:auto;">
-<h1 style="text-align:center; color:#2c3e50;">⚽ 足球量化决策清单 (V190.1 终极资金版)</h1>
-<h2 style="color:#e74c3c; border-bottom:2px solid #e74c3c; padding-bottom:10px;">Part 1: 单关狙击清单</h2>
-{ pd.DataFrame(picks).to_html(index=False, border=0, justify='center', escape=False) if picks else "<p style='text-align:center; color:#c0392b; font-weight:bold; padding:20px;'>今日无高价值单关，建议空仓。</p>" }
-<h2 style="color:#27ae60; border-bottom:2px solid #27ae60; padding-bottom:10px; margin-top:30px;">Part 2: 串关复利策略 (High EV)</h2>
-{parlay_html}
-<h2 style="color:#2980b9; border-bottom:2px solid #2980b9; padding-bottom:10px; margin-top:40px;">Part 3: 全景数据剖析</h2>
-{html_cards}
+# ================= 8. 最终组装发送 =================
+if picks:
+    df_picks = pd.DataFrame(picks)
+    picks_rows = ""
+    for _, r in df_picks.iterrows():
+        picks_rows += f"<tr style='border-bottom:1px solid #f0f0f0;'><td style='padding:15px;'>{r['时间']}</td><td style='padding:15px;'>{r['赛事']}</td><td style='padding:15px; font-weight:bold;'>{r['对阵']}</td><td style='padding:15px; color:{THEME['primary']}; font-weight:bold;'>{r['推荐']}</td><td style='padding:15px; color:#d9534f; font-weight:bold;'>{r['金额']}</td><td style='padding:15px;'>{r['比分']}</td><td style='padding:15px;'>{r['总进球']}</td><td style='padding:15px;'>{r['大小球']}</td></tr>"
+        
+    picks_html = f"""
+    <table style="width:100%; border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.05); text-align:center; font-size:14px;">
+        <thead>
+            <tr style="background:linear-gradient(90deg, {THEME['grad1']}, {THEME['grad2']}); color:white;">
+                <th style="padding:15px;">时间</th>
+                <th style="padding:15px;">赛事</th>
+                <th style="padding:15px;">对阵</th>
+                <th style="padding:15px;">推荐</th>
+                <th style="padding:15px;">金额</th>
+                <th style="padding:15px;">比分</th>
+                <th style="padding:15px;">总进球</th>
+                <th style="padding:15px;">大小球</th>
+            </tr>
+        </thead>
+        <tbody>
+            {picks_rows}
+        </tbody>
+    </table>
+    """
+else:
+    picks_html = f"<div style='background:#fff; border-top:5px solid {THEME['primary']}; padding:30px; border-radius:12px; text-align:center; box-shadow:0 4px 12px rgba(0,0,0,0.05);'><h3 style='color:{THEME['primary']}; margin:0; font-size:18px;'>🛑 今日无高价值单关，建议空仓。</h3></div>"
+
+html = f"""<html><body style="font-family:'Helvetica Neue', Arial, sans-serif; padding:20px; background-color:{THEME['bg']}; color:#333;">
+<div style="max-width:950px; margin:auto;">
+    
+    <div style="text-align:center; margin-bottom:30px;">
+        <h1 style="color:{THEME['primary']}; margin:0; font-size:28px; letter-spacing:2px;">{THEME['icon']} 足球量化决策清单</h1>
+        <p style="color:#666; font-size:14px; margin-top:10px; background:#fff; display:inline-block; padding:6px 15px; border-radius:20px; border:1px solid #eee;">
+            农历匹配：今日干支为 <b>{DAY_GANZHI}</b> 日（属<b>{ELEMENT}</b>），运势主题已契合更换。
+        </p>
+    </div>
+
+    <div style="margin-bottom:40px;">
+        <h2 style="color:{THEME['primary']}; border-left:5px solid {THEME['primary']}; padding-left:12px; font-size:20px; margin-bottom:15px;">Part 1: 单关狙击清单</h2>
+        {picks_html}
+    </div>
+
+    <div style="margin-bottom:40px;">
+        <h2 style="color:#27ae60; border-left:5px solid #27ae60; padding-left:12px; font-size:20px; margin-bottom:15px;">Part 2: 串关复利策略 (High EV)</h2>
+        {parlay_html}
+    </div>
+
+    <div>
+        <h2 style="color:{THEME['primary']}; border-left:5px solid {THEME['primary']}; padding-left:12px; font-size:20px; margin-bottom:15px;">Part 3: 全景数据剖析</h2>
+        {html_cards}
+    </div>
+
 </div>
 </body></html>"""
 
 if logs:
     pd.DataFrame(logs).to_csv('predictions_log.csv', mode='a', header=not os.path.exists('predictions_log.csv'), index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html)
-send_email("⚽ 今日竞彩量化清单 (V190.1 终极资金版)", html, imgs)
+send_email(f"【{DAY_GANZHI}日·{ELEMENT}】⚽ 足球量化决策清单 (V200.0)", html, imgs)
 print("🏁 运行完毕！")
