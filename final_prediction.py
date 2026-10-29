@@ -25,7 +25,7 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
 print("==================================================")
-print("🚀 启动 V320.0 全自动双轨版 (终极完整版)")
+print("🚀 启动 V320.0 全自动双轨版 (最终完整修复版)")
 print("==================================================")
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -146,7 +146,7 @@ if os.path.exists('bankroll.csv'):
     try:
         df_bank = pd.read_csv('bankroll.csv')
         bankroll = df_bank.iloc[-1]['当前资金']
-        win_rate = len(df_bank.tail(10)[df_bank.tail(10)]['盈亏'] > 0) / 10
+        win_rate = len(df_bank.tail(10)[df_bank.tail(10)['盈亏'] > 0]) / 10
         if win_rate < 0.4: 
             base_kelly = 0.1 
         elif win_rate > 0.6: 
@@ -257,7 +257,8 @@ for league in df_next['联赛'].unique():
         od_auto = real_odds.get((date_str, h, a))
         od = od_manual if od_manual is not None else od_auto
         
-        has_odds, src = False, "无赔率"
+        has_odds = False
+        src = "无赔率"
         if od is not None:
             try:
                 oh, od_, oa = float(od['主胜赔率']), float(od['平局赔率']), float(od['客胜赔率'])
