@@ -46,7 +46,7 @@ def send_rich_email(subject, html_content, img_buffers, receiver="308730509@qq.c
     except Exception as e: print(f"❌ 邮件失败: {e}")
 
 def get_match_weather(home_team, date_str):
-    city = {'阿森纳': 'London', '曼联': 'Manchester', '利物浦': 'Liverpool', '皇家马德里': 'Madrid', '巴塞罗那': 'Barcelona', '拜仁慕尼黑': 'Munich'}.get(home_team, 'London')
+    city = {'阿森纳': 'London', '曼联': 'Manchester', '利物浦': 'Liverpool', '皇家马德里': 'Madrid', '巴塞罗那': 'Barcelona', '拜仁慕尼黑': 'Munich', '国际米兰': 'Milan', 'AC米兰': 'Milan'}.get(home_team, 'London')
     try:
         url = f"http://api.weatherapi.com/v1/forecast.json?key={WEATHER_API_KEY}&q={city}&dt={date_str[:10]}&lang=zh"
         resp = requests.get(url, timeout=10)
@@ -131,6 +131,7 @@ df_next_round['客队'] = df_next_round['客队'].apply(translate_team_name)
 df_next_round['datetime_parsed'] = pd.to_datetime(df_next_round['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
 df_next_round['match_date_str'] = df_next_round['datetime_parsed'].dt.strftime('%Y-%m-%d')
 
+# 🌟 核心时间逻辑：覆盖当前时间往后推 24 小时内的比赛，完美解决时差问题
 now_ts = pd.Timestamp.now()
 end_window = now_ts + pd.Timedelta(hours=24)
 df_next_round = df_next_round[(df_next_round['datetime_parsed'] > now_ts) & (df_next_round['datetime_parsed'] <= end_window)]
@@ -219,6 +220,7 @@ if os.path.exists('elo_dict.pkl'): elo_dict = joblib.load('elo_dict.pkl')
 
 knowledge_base = open('knowledge.txt', 'r', encoding='utf-8').read() if os.path.exists('knowledge.txt') else ""
 
+# 确保这几个模型文件存在，否则会报错
 model_h_lgb = joblib.load('epl_v31_home_goals_model_lgb.pkl')
 model_a_lgb = joblib.load('epl_v31_away_goals_model_lgb.pkl')
 model_h_xgb = joblib.load('epl_v31_home_goals_model_xgb.pkl')
@@ -457,6 +459,8 @@ for league in df_next_round['联赛'].unique():
                 </div>
             </div>
 
+            {f"<div style='background-color: #f8d7da; color: #721c24; padding: 8px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; font-weight: bold;'>{trap_warning}</div>" if trap_warning else ""}
+
             <div style="display: flex; flex-wrap: wrap; font-size: 13px; line-height: 1.8; color: #444; margin-bottom: 12px; background-color: #f8f9fa; padding: 10px; border-radius: 6px;">
                 <div style="width: 50%;">💪 <b>Elo:</b> 主 {h_elo:.0f} / 客 {a_elo:.0f}</div>
                 <div style="width: 50%;">🌤️ <b>天气:</b> {w_text} {w_temp}℃</div>
@@ -500,7 +504,7 @@ final_html = """
 <div class="container">
 """
 
-final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V48.0 满血复活版)</h1>"
+final_html += "<h1>⚽ 今日竞彩全景预测与狙击清单 (V49.0 时差修复版)</h1>"
 
 final_html += "<h2 style='color: #e74c3c; border-bottom: 2px solid #e74c3c; padding-bottom: 10px;'>🎯 Part 1: 今日竞彩狙击清单 (价值投资)</h2>"
 if jczq_picks_list:
@@ -527,10 +531,11 @@ final_html += html_report_cards
 final_html += "</div></body></html>"
 
 log_df = pd.DataFrame(prediction_logs)
-if os.path.exists('predictions_log.csv'):
-    old = pd.read_csv('predictions_log.csv')
-    log_df = pd.concat([old, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
-log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
+if not log_df.empty:
+    if os.path.exists('predictions_log.csv'):
+        old = pd.read_csv('predictions_log.csv')
+        log_df = pd.concat([old, log_df]).drop_duplicates(subset=['date', 'home_team', 'away_team'], keep='last')
+    log_df.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
 
 open('dashboard.html', 'w', encoding='utf-8').write(final_html)
-send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V48.0 满血复活版)", final_html, img_buffers)
+send_rich_email("⚽ 今日竞彩全景预测与狙击清单 (V49.0 时差修复版)", final_html, img_buffers)
