@@ -10,7 +10,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.header import Header
 import re
-from config import LEAGUES
 from team_mapping import translate_team_name
 
 warnings.filterwarnings('ignore')
@@ -34,7 +33,7 @@ def send_email(subject, html_content, receiver="308730509@qq.com"):
         print("✅ 复盘邮件发送成功！")
     except Exception as e: print(f"❌ 邮件发送失败: {e}")
 
-print("⏳ 正在启动 V48.0 深度复盘引擎...")
+print("⏳ 正在启动 V51.0 深度复盘引擎...")
 if not os.path.exists('predictions_log.csv'): exit()
 
 df_log = pd.read_csv('predictions_log.csv')
@@ -70,7 +69,7 @@ for d_str in dates_to_query:
                 hg = fixture['goals']['home']
                 ag = fixture['goals']['away']
                 if hg is not None and ag is not None:
-                    actual_results[(h_name, a_name)] = (hg, ag) # 🌟 核心修复：不再用日期匹配，直接用主客队名称做唯一键！
+                    actual_results[(h_name, a_name)] = (hg, ag)
     except: continue
 
 review_records = []
@@ -80,7 +79,7 @@ total_profit = 0.0
 
 for idx, row in pending_review.iterrows():
     m_date = row['date'].strftime('%Y-%m-%d')
-    res = actual_results.get((row['home_team'], row['away_team'])) # 精确匹配主客队
+    res = actual_results.get((row['home_team'], row['away_team']))
     
     if res:
         hg, ag = res
@@ -154,7 +153,7 @@ html_content = f"""
 </style></head>
 <body>
 <div class="container">
-    <h1>💼 每日量化实盘复盘战报 (V48.0)</h1>
+    <h1>💼 每日量化实盘复盘战报 (V51.0)</h1>
     <div class="stats-dashboard">
         <div class="stat-item"><div class="stat-value">{win_rate:.1f}%</div><div class="stat-label">胜率 ({correct_count}/{total_count})</div></div>
         <div class="stat-item"><div class="stat-value">{total_profit:+.2f}</div><div class="stat-label">盈亏 (元)</div></div>
@@ -167,5 +166,5 @@ html_content = f"""
 """
 
 df_log.to_csv('predictions_log.csv', index=False, encoding='utf-8-sig')
-send_email("💼 每日量化实盘复盘战报 (V48.0)", html_content)
+send_email("💼 每日量化实盘复盘战报 (V51.0)", html_content)
 print("✅ 复盘完毕！")
