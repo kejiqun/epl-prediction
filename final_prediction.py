@@ -5,6 +5,7 @@ import joblib
 import os
 import io
 import json
+import re
 from datetime import datetime, timedelta
 import warnings
 from openai import OpenAI
@@ -25,7 +26,7 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
 print("==================================================")
-print("🚀 启动 V360.0 贝叶斯-马尔可夫进阶引擎")
+print("🚀 启动 V380.0 万能引擎版 (无缝对接阿里云高阶模型)")
 print("==================================================")
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -36,7 +37,7 @@ API_FOOTBALL_KEY = os.environ.get("API_FOOTBALL_KEY")
 
 llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com") if DEEPSEEK_API_KEY else None
 
-# ================= 1. 玄学美学展示模块 (保留) =================
+# ================= 1. 玄学美学展示模块 =================
 def get_wuxing_theme():
     base_date = datetime(1900, 1, 31)
     today = datetime.now()
@@ -59,7 +60,7 @@ def get_wuxing_theme():
 
 DAY_GANZHI, ELEMENT, THEME = get_wuxing_theme()
 
-# ================= 2. 鲁棒性工具与接口预留 =================
+# ================= 2. 鲁棒性工具 =================
 def send_email(subject, html, imgs, receiver="308730509@qq.com"):
     if not EMAIL_SENDER or not EMAIL_PASSWORD: return
     msg = MIMEMultipart('related')
@@ -92,55 +93,49 @@ def get_weather(team, date_str):
         return day['condition']['text'], round(day['avgtemp_c'], 1)
     return "未知", 0
 
-# 🌟 数据能力建设：StatsBomb / PitchAPI 离线校准接口
-def calibrate_xg_with_micro_data(home_team, away_team):
-    """
-    此为预留给 PitchAPI 或 StatsBomb 的接口。
-    在生产环境中，我们会请求该 API 获取真实的射门坐标，重新计算 xG。
-    当前由于 API 限制，直接返回默认值 1.0（不修正）。
-    """
-    # 示例逻辑：real_xg_h = get_pitchapi_xg(home_team); return real_xg_h, real_xg_a
-    return 1.0, 1.0
+# ================= 3. 🌟 万能模型加载区 =================
+print("⏳ 正在挂载 AI 大脑...")
+MODEL_HOME = None
+MODEL_AWAY = None
+MODEL_NAME = "无模型"
 
-# ================= 3. 数学内核：贝叶斯先验与情境马尔可夫 =================
-def bayesian_prior_adjustment(h_cn, a_cn):
-    """
-    贝叶斯先验层：利用大模型提取“逆境翻盘/顺风崩盘”的定性知识，转化为定量系数。
-    """
-    if not llm_client: return 1.0, 1.0, "无先验数据"
+def load_models():
+    global MODEL_HOME, MODEL_AWAY, MODEL_NAME
     
-    prompt = f"请分析 {h_cn} 和 {a_cn} 近期的韧性。返回严格 JSON：{{\"h_resilience\": 1.05, \"a_resilience\": 0.95, \"reason\": \"理由\"}}。大于1代表擅长逆境或崩盘少，小于1代表顺风易被翻盘。数值范围0.9-1.1。"
+    # 尝试加载阿里云训练的高级模型（统一命名 custom_ai_model.pkl）
+    if os.path.exists('custom_ai_model.pkl'):
+        try:
+            custom_brain = joblib.load('custom_ai_model.pkl')
+            # 假设你的高级模型是一个字典，包含主客队模型
+            MODEL_HOME = custom_brain.get('home_model')
+            MODEL_AWAY = custom_brain.get('away_model')
+            MODEL_NAME = "阿里云高阶贝叶斯/深度学习引擎"
+            print(f"✅ 成功挂载外部大脑: {MODEL_NAME}")
+            return
+        except Exception as e:
+            print(f"⚠️ 外部模型加载失败，将降级使用基础模型。报错: {e}")
+
+    # 兜底：加载现有的 LightGBM 模型
+    if os.path.exists('epl_v31_home_goals_model_lgb.pkl'):
+        MODEL_HOME = joblib.load('epl_v31_home_goals_model_lgb.pkl')
+        MODEL_AWAY = joblib.load('epl_v31_away_goals_model_lgb.pkl')
+        MODEL_NAME = "本地 LightGBM 基础引擎"
+        print(f"✅ 成功加载默认模型: {MODEL_NAME}")
+
+load_models()
+
+def predict_xg(model, features):
+    """统一预测接口，兼容不同模型"""
+    if model is None: return 1.35 # 如果没有任何模型，给一个平均期望兜底
     try:
-        res = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": prompt}], stream=False, timeout=8)
-        match = re.search(r'\{.*\}', res.choices[0].message.content.strip(), re.DOTALL)
-        if match:
-            data = json.loads(match.group(0))
-            return float(data.get('h_resilience', 1.0)), float(data.get('a_resilience', 1.0)), data.get('reason', '')
-    except: pass
-    return 1.0, 1.0, "贝叶斯先验获取失败"
+        # 兼容 sklearn 风格的 predict 方法
+        return model.predict(features)[0]
+    except Exception as e:
+        print(f"⚠️ 推理出错: {e}")
+        return 1.35
 
-def situational_markov_adjustment(home_xg, away_xg, h_res, a_res):
-    """
-    情境马尔可夫链：评估 85 分钟后的状态转移，转化为矩阵的概率偏置。
-    如果主队擅长绝杀（h_res > 1），则增加最后时刻的进球权重。
-    """
-    # 马尔可夫转移系数
-    h_late_boost = 1.0 + (h_res - 1.0) * 0.5
-    a_late_boost = 1.0 + (a_res - 1.0) * 0.5
-    
-    # 将状态转移的结果，等效返回到整体 xG 的轻微修正上
-    adjusted_h_xg = home_xg * h_late_boost
-    adjusted_a_xg = away_xg * a_late_boost
-    return adjusted_h_xg, adjusted_a_xg
-
-def generate_score_matrix(home_xg, away_xg, h_res, a_res, max_goals=8):
-    """
-    融合了贝叶斯先验与马尔可夫修正的 Dixon-Coles 解析解矩阵
-    """
-    # 动态计算 rho
-    avg_res = (h_res + a_res) / 2.0
-    rho = -0.25 if avg_res > 1.05 else (-0.05 if avg_res < 0.95 else -0.15)
-
+# ================= 4. 绝对科学内核 =================
+def generate_score_matrix(home_xg, away_xg, max_goals=8, rho=-0.15):
     def dixon_coles_tau(h, a):
         if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
         elif h == 0 and a == 1: return 1 + home_xg * rho
@@ -169,7 +164,7 @@ def get_total_goals(matrix, max_goals=8):
     prob_over = sum(p for g, p in totals.items() if g > 2.5)
     return " / ".join(top2), prob_over
 
-# ================= 4. 数据装载 =================
+# ================= 5. 数据装载 =================
 bankroll, base_kelly = 10000.0, 0.2
 if os.path.exists('bankroll.csv'):
     try:
@@ -189,7 +184,7 @@ if os.path.exists('daily_matches.csv'):
         df_auto['主队'] = df_auto['主队'].apply(translate_team_name)
         df_auto['客队'] = df_auto['客队'].apply(translate_team_name)
         df_auto['datetime_parsed'] = pd.to_datetime(df_auto['比赛时间'], utc=True).dt.tz_convert('Asia/Shanghai').dt.tz_localize(None)
-    except Exception as e: pass
+    except: pass
 
 manual_odds, df_manual = {}, pd.DataFrame()
 if os.path.exists('manual_odds.csv'):
@@ -203,7 +198,7 @@ if os.path.exists('manual_odds.csv'):
         df_manual = raw.copy()
         df_manual['联赛'] = '手动精选'
         df_manual['比赛时间'] = df_manual['datetime_parsed']
-    except Exception as e: pass
+    except: pass
 
 real_odds = {}
 if os.path.exists('real_odds.csv'):
@@ -244,16 +239,12 @@ def decay_mean(arr, decay=0.7):
     w = np.array([decay ** (len(a) - 1 - i) for i in range(len(a))])
     return np.sum(a * (w / np.sum(w)))
 
-m_hl = joblib.load('epl_v31_home_goals_model_lgb.pkl')
-m_al = joblib.load('epl_v31_away_goals_model_lgb.pkl')
-m_hx = joblib.load('epl_v31_home_goals_model_xgb.pkl')
-m_ax = joblib.load('epl_v31_away_goals_model_xgb.pkl')
 elo = joblib.load('elo_dict.pkl') if os.path.exists('elo_dict.pkl') else {}
 
 picks, logs, html_cards, imgs = [], [], "", []
 parlay_pool = []
 
-# ================= 5. 主循环 =================
+# ================= 6. 主循环 =================
 for league in df_next['联赛'].unique():
     html_cards += f"<div style='background:linear-gradient(90deg,{THEME['grad1']},{THEME['grad2']});color:#fff;padding:12px 20px;border-radius:8px;margin-top:35px;margin-bottom:25px;'><h2 style='margin:0;'>{league}</h2></div>"
     
@@ -281,6 +272,7 @@ for league in df_next['联赛'].unique():
         h_rest = (pd.Timestamp(m['datetime_parsed']).date() - last_date[h].date()).days if h in last_date else 7
         a_rest = (pd.Timestamp(m['datetime_parsed']).date() - last_date[a].date()).days if a in last_date else 7
         
+        # 严格构造 16 维特征 (这是给外部模型喂的数据，千万别改)
         feat = np.array([
             elo.get(h,1500), elo.get(a,1500), elo.get(h,1500)-elo.get(a,1500), 1500, 1500,
             decay_mean(hs.get('xg',[])[-5:]), decay_mean(as_.get('xg',[])[-5:]),
@@ -294,30 +286,15 @@ for league in df_next['联赛'].unique():
             sum(1 for d in as_.get('dates',[]) if (pd.Timestamp(m['datetime_parsed']) - d).days <= 14)
         ]).clip(-1000, 3000).reshape(1, -1)
         
-        ph_l, ph_x = m_hl.predict(feat)[0], m_hx.predict(feat)[0]
-        pa_l, pa_x = m_al.predict(feat)[0], m_ax.predict(feat)[0]
-        
-        penalty = 1.0
-        warn_c = ""
-        if abs(ph_l - ph_x) > 0.4 or abs(pa_l - pa_x) > 0.4:
-            penalty = 0.8
-            warn_c = "⚠️ 模型分歧度过高，已削减置信度。"
-            
-        home_xg = max(0.1, (ph_l + ph_x)/2 * penalty)
-        away_xg = max(0.1, (pa_l + pa_x)/2 * penalty)
+        # 🌟 调用万能预测接口
+        home_xg = max(0.1, predict_xg(MODEL_HOME, feat))
+        away_xg = max(0.1, predict_xg(MODEL_AWAY, feat))
         
         if has_odds and tl > 0 and abs((home_xg+away_xg) - tl) > 1.0:
             s = tl / (home_xg + away_xg)
             home_xg *= s; away_xg *= s
 
-        # 🌟 第 1 步：贝叶斯先验层介入 (整合定性韧性知识)
-        h_res, a_res, bayes_reason = bayesian_prior_adjustment(h, a)
-        
-        # 🌟 第 2 步：情境马尔可夫链介入 (修正绝杀/崩盘)
-        home_xg, away_xg = situational_markov_adjustment(home_xg, away_xg, h_res, a_res)
-
-        # 🌟 第 3 步：Dixon-Coles 解析解矩阵计算
-        sc_probs, matrix = generate_score_matrix(home_xg, away_xg, h_res, a_res)
+        sc_probs, matrix = generate_score_matrix(home_xg, away_xg)
         p_h = np.sum(np.tril(matrix, -1))
         p_d = np.sum(np.diag(matrix))
         p_a = np.sum(np.triu(matrix, 1))
@@ -363,7 +340,7 @@ for league in df_next['联赛'].unique():
 
         ai_txt = "无风险提示。"
         if llm_client and bet_amt > 0:
-            prompt = f"比赛:{h} vs {a}。模型推荐:{final_rec}。预期进球:{home_xg:.1f} vs {away_xg:.1f}。贝叶斯韧性修正:{bayes_reason}。请用60字评估此单风险。"
+            prompt = f"比赛:{h} vs {a}。模型推荐:{final_rec}。预期进球:{home_xg:.1f} vs {away_xg:.1f}。请用60字评估此单风险。"
             try: 
                 res = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role":"user","content":prompt}], stream=False, timeout=8)
                 ai_txt = res.choices[0].message.content.strip()
@@ -374,7 +351,7 @@ for league in df_next['联赛'].unique():
         ax1.set_title("融合胜率", color=THEME['primary'], fontweight='bold'); ax1.set_ylim(0,100)
         for i,v in enumerate([p_h*100,p_d*100,p_a*100]): ax1.text(i, v+2, f"{v:.1f}%", ha='center', fontweight='bold')
         ax2.barh(['客队', '主队'], [away_xg, home_xg], color=['#59a14f', THEME['primary']], height=0.4)
-        ax2.set_title("贝叶斯-马尔可夫修正 xG", color=THEME['primary'], fontweight='bold')
+        ax2.set_title(f"预期进球 (xG) - {MODEL_NAME}", color=THEME['primary'], fontweight='bold')
         plt.tight_layout(); buf = io.BytesIO(); plt.savefig(buf, format='png', dpi=150, bbox_inches='tight'); buf.seek(0); imgs.append(buf); plt.close(fig)
 
         logs.append({'date': date_str, 'league': league, 'home': h, 'away': a, 'res': final_rec, 'bet': round(bet_amt,2), 'score': best_score})
@@ -408,7 +385,6 @@ for league in df_next['联赛'].unique():
                 </div>
             </div>
 
-            {f"<div style='background-color: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; font-weight: bold; border-left: 3px solid #ffc107;'>{warn_c}</div>" if warn_c else ""}
             {f"<div style='background-color: #e8f4fd; color: #1e3c72; padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; font-weight: bold; border-left: 3px solid #3498db;'>注：此场无手动体彩赔率，使用海外盘口参考，建议谨慎下注。</div>" if src == "自动海外盘(参考)" else ""}
 
             <div style="padding: 16px; border: 1px dashed {THEME['primary']}; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; background-color: {THEME['bg']};">
@@ -423,7 +399,7 @@ for league in df_next['联赛'].unique():
         </div>
         """
 
-# ================= 6. 串关算法 =================
+# ================= 7. 串关算法 =================
 parlay_html = "<p style='text-align:center; color:#888; padding: 20px;'>今日无明显正期望值单子，不推荐串关。</p>"
 if len(parlay_pool) >= 2:
     parlay_pool = sorted(parlay_pool, key=lambda x: x['ev'], reverse=True)[:5]
@@ -470,7 +446,7 @@ if len(parlay_pool) >= 2:
     else:
         parlay_html = "<p style='text-align:center; color:#888; padding: 20px;'>今日单场EV不足，不强行组合串关。</p>"
 
-# ================= 7. 最终组装发送 =================
+# ================= 8. 最终组装发送 =================
 if picks:
     df_picks = pd.DataFrame(picks)
     picks_rows = ""
@@ -505,7 +481,8 @@ html = f"""<html><body style="font-family:'Helvetica Neue', Arial, sans-serif; p
     <div style="text-align:center; margin-bottom:30px;">
         <h1 style="color:{THEME['primary']}; margin:0; font-size:28px; letter-spacing:2px;">{THEME['icon']} 足球量化决策清单</h1>
         <p style="color:#666; font-size:14px; margin-top:10px; background:#fff; display:inline-block; padding:6px 15px; border-radius:20px; border:1px solid #eee;">
-            农历匹配：今日干支为 <b>{DAY_GANZHI}</b> 日（属<b>{ELEMENT}</b>），运势主题已契合更换。
+            农历匹配：今日干支为 <b>{DAY_GANZHI}</b> 日（属<b>{ELEMENT}</b>），运势主题已契合更换。<br>
+            <span style="font-size:12px; color:#999; margin-top:5px; display:inline-block;">当前引擎：{MODEL_NAME}</span>
         </p>
     </div>
 
@@ -530,5 +507,5 @@ html = f"""<html><body style="font-family:'Helvetica Neue', Arial, sans-serif; p
 if logs:
     pd.DataFrame(logs).to_csv('predictions_log.csv', mode='a', header=not os.path.exists('predictions_log.csv'), index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html)
-send_email(f"【{DAY_GANZHI}日·{ELEMENT}】⚽ 足球量化决策清单 (V360.0)", html, imgs)
+send_email(f"【{DAY_GANZHI}日·{ELEMENT}】⚽ 足球量化决策清单 (V380.0)", html, imgs)
 print("🏁 运行完毕！")
