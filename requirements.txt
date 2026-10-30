@@ -10,3 +10,4 @@ matplotlib
 joblib
 lxml
 tzdata
+pgmpy
