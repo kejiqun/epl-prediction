@@ -26,7 +26,7 @@ plt.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei', 'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
 print("==================================================")
-print("🚀 启动 V380.0 万能引擎版 (无缝对接阿里云高阶模型)")
+print("🚀 启动 V390.0 全景无死角版 (拒绝隐藏比赛)")
 print("==================================================")
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -93,29 +93,23 @@ def get_weather(team, date_str):
         return day['condition']['text'], round(day['avgtemp_c'], 1)
     return "未知", 0
 
-# ================= 3. 🌟 万能模型加载区 =================
-print("⏳ 正在挂载 AI 大脑...")
+# ================= 3. 模型加载 =================
 MODEL_HOME = None
 MODEL_AWAY = None
 MODEL_NAME = "无模型"
 
 def load_models():
     global MODEL_HOME, MODEL_AWAY, MODEL_NAME
-    
-    # 尝试加载阿里云训练的高级模型（统一命名 custom_ai_model.pkl）
     if os.path.exists('custom_ai_model.pkl'):
         try:
             custom_brain = joblib.load('custom_ai_model.pkl')
-            # 假设你的高级模型是一个字典，包含主客队模型
             MODEL_HOME = custom_brain.get('home_model')
             MODEL_AWAY = custom_brain.get('away_model')
-            MODEL_NAME = "阿里云高阶贝叶斯/深度学习引擎"
+            MODEL_NAME = "阿里云高阶引擎"
             print(f"✅ 成功挂载外部大脑: {MODEL_NAME}")
             return
-        except Exception as e:
-            print(f"⚠️ 外部模型加载失败，将降级使用基础模型。报错: {e}")
+        except Exception as e: pass
 
-    # 兜底：加载现有的 LightGBM 模型
     if os.path.exists('epl_v31_home_goals_model_lgb.pkl'):
         MODEL_HOME = joblib.load('epl_v31_home_goals_model_lgb.pkl')
         MODEL_AWAY = joblib.load('epl_v31_away_goals_model_lgb.pkl')
@@ -125,16 +119,11 @@ def load_models():
 load_models()
 
 def predict_xg(model, features):
-    """统一预测接口，兼容不同模型"""
-    if model is None: return 1.35 # 如果没有任何模型，给一个平均期望兜底
-    try:
-        # 兼容 sklearn 风格的 predict 方法
-        return model.predict(features)[0]
-    except Exception as e:
-        print(f"⚠️ 推理出错: {e}")
-        return 1.35
+    if model is None: return 1.35
+    try: return model.predict(features)[0]
+    except: return 1.35
 
-# ================= 4. 绝对科学内核 =================
+# ================= 4. 数学内核 =================
 def generate_score_matrix(home_xg, away_xg, max_goals=8, rho=-0.15):
     def dixon_coles_tau(h, a):
         if h == 0 and a == 0: return 1 - home_xg * away_xg * rho
@@ -253,13 +242,22 @@ for league in df_next['联赛'].unique():
         date_str = m['datetime_parsed'].strftime('%Y-%m-%d')
         time_str = m['datetime_parsed'].strftime('%m月%d日 %H:%M')
         
-        if stats.get(h, {'count':0})['count'] < 3 or stats.get(a, {'count':0})['count'] < 3: continue
+        # 🌟 1. 历史数据不足拦截 (展示红牌警告)
+        if stats.get(h, {'count':0})['count'] < 3 or stats.get(a, {'count':0})['count'] < 3:
+            html_cards += f"""
+            <div style="border: 2px dashed #e74c3c; border-radius: 10px; padding: 20px; margin-bottom: 25px; background-color: #fdf2f2;">
+                <h3 style="margin: 0; color: #c0392b; font-size: 18px;">⏰ {time_str} {h} vs {a}</h3>
+                <p style="color: #c0392b; margin-top: 15px; font-weight: bold;">❌ 已拦截：球队历史数据库场次不足。系统拒绝使用假数据污染模型。</p>
+            </div>
+            """
+            continue
         
         od_manual = manual_odds.get((date_str, h, a))
         od_auto = real_odds.get((date_str, h, a))
         od = od_manual if od_manual is not None else od_auto
         
-        has_odds, src = False, "无赔率"
+        has_odds = False
+        src = "无赔率"
         if od is not None:
             try:
                 oh, od_, oa = float(od['主胜赔率']), float(od['平局赔率']), float(od['客胜赔率'])
@@ -272,7 +270,6 @@ for league in df_next['联赛'].unique():
         h_rest = (pd.Timestamp(m['datetime_parsed']).date() - last_date[h].date()).days if h in last_date else 7
         a_rest = (pd.Timestamp(m['datetime_parsed']).date() - last_date[a].date()).days if a in last_date else 7
         
-        # 严格构造 16 维特征 (这是给外部模型喂的数据，千万别改)
         feat = np.array([
             elo.get(h,1500), elo.get(a,1500), elo.get(h,1500)-elo.get(a,1500), 1500, 1500,
             decay_mean(hs.get('xg',[])[-5:]), decay_mean(as_.get('xg',[])[-5:]),
@@ -286,7 +283,6 @@ for league in df_next['联赛'].unique():
             sum(1 for d in as_.get('dates',[]) if (pd.Timestamp(m['datetime_parsed']) - d).days <= 14)
         ]).clip(-1000, 3000).reshape(1, -1)
         
-        # 🌟 调用万能预测接口
         home_xg = max(0.1, predict_xg(MODEL_HOME, feat))
         away_xg = max(0.1, predict_xg(MODEL_AWAY, feat))
         
@@ -303,6 +299,7 @@ for league in df_next['联赛'].unique():
         choice = "主胜" if p_h > max(p_d, p_a) else ("平局" if p_d > max(p_h, p_a) else "客胜")
         tg_str, prob_over = get_total_goals(matrix, 8)
         
+        # 🌟 2. 无赔率比赛依然展示，但不参与凯利推荐
         if has_odds:
             margin = 1/oh + 1/od_ + 1/oa
             ih, id_, ia = (1/oh)/margin, (1/od_)/margin, (1/oa)/margin
@@ -330,7 +327,7 @@ for league in df_next['联赛'].unique():
             
             ou_rec = "大球" if prob_over * over_odd > 1.05 else ("小球" if (1-prob_over) * under_odd > 1.05 else "观望")
         else:
-            final_rec = "无盘口观望"
+            final_rec = "无盘口"
 
         best_score = sc_probs[0][0]
         top3 = " | ".join([f"{s[0]} ({s[1]*100:.1f}%)" for s in sc_probs[:3]])
@@ -339,7 +336,7 @@ for league in df_next['联赛'].unique():
             picks.append({'时间': time_str, '赛事': league, '对阵': f"{h} vs {a}", '推荐': final_rec, '金额': round(bet_amt,2), '比分': best_score, '总进球': tg_str, '大小球': ou_rec})
 
         ai_txt = "无风险提示。"
-        if llm_client and bet_amt > 0:
+        if llm_client and has_odds and bet_amt > 0:
             prompt = f"比赛:{h} vs {a}。模型推荐:{final_rec}。预期进球:{home_xg:.1f} vs {away_xg:.1f}。请用60字评估此单风险。"
             try: 
                 res = llm_client.chat.completions.create(model="deepseek-chat", messages=[{"role":"user","content":prompt}], stream=False, timeout=8)
@@ -385,7 +382,7 @@ for league in df_next['联赛'].unique():
                 </div>
             </div>
 
-            {f"<div style='background-color: #e8f4fd; color: #1e3c72; padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; font-weight: bold; border-left: 3px solid #3498db;'>注：此场无手动体彩赔率，使用海外盘口参考，建议谨慎下注。</div>" if src == "自动海外盘(参考)" else ""}
+            {f"<div style='background-color: #e8f4fd; color: #1e3c72; padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; font-weight: bold; border-left: 3px solid #3498db;'>注：此场无手动体彩赔率且未抓取到海外盘口，仅展示模型概率，不计算推荐。</div>" if not has_odds else ""}
 
             <div style="padding: 16px; border: 1px dashed {THEME['primary']}; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; background-color: {THEME['bg']};">
                 <div>
@@ -507,5 +504,5 @@ html = f"""<html><body style="font-family:'Helvetica Neue', Arial, sans-serif; p
 if logs:
     pd.DataFrame(logs).to_csv('predictions_log.csv', mode='a', header=not os.path.exists('predictions_log.csv'), index=False, encoding='utf-8-sig')
 open('dashboard.html', 'w', encoding='utf-8').write(html)
-send_email(f"【{DAY_GANZHI}日·{ELEMENT}】⚽ 足球量化决策清单 (V380.0)", html, imgs)
+send_email(f"【{DAY_GANZHI}日·{ELEMENT}】⚽ 足球量化决策清单 (V390.0)", html, imgs)
 print("🏁 运行完毕！")
